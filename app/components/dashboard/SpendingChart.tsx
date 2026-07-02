@@ -95,8 +95,8 @@ export default function SpendingChart({
             />
 
             <Tooltip
-              formatter={(value: number) =>
-                `${value.toLocaleString("sv-SE")} kr`
+              formatter={(value) =>
+                `${Number(value ?? 0).toLocaleString("sv-SE")} kr`
               }
               contentStyle={{
                 backgroundColor: "#18181b",

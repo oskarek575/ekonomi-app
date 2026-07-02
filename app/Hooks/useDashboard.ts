@@ -42,17 +42,17 @@ export function useDashboard() {
     setKop(data);
   }
 
-  async function loadProfile() {
-    const profile = await getProfile();
-
-    setIncome(profile.monthly_income);
-    setSavings(profile.monthly_savings);
-  }
-
   useEffect(() => {
-    loadBudgets();
-    loadKop();
-    loadProfile();
+    void Promise.all([
+      getBudgets(),
+      getPurchases(selectedMonth, selectedYear),
+      getProfile(),
+    ]).then(([budgetData, purchaseData, profile]) => {
+      setBudgets(budgetData);
+      setKop(purchaseData);
+      setIncome(profile.monthly_income);
+      setSavings(profile.monthly_savings);
+    });
   }, [selectedMonth, selectedYear]);
 
   async function sparaKop() {

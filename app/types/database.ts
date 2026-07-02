@@ -18,3 +18,12 @@ export interface Category {
   color: string;
   icon: string;
 }
+
+export interface Subscription {
+  id: number;
+  name: string;
+  amount: number;
+  category: string;
+  day_of_month: number;
+  active: boolean;
+}

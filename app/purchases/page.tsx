@@ -48,19 +48,15 @@ export default function PurchasesPage() {
     }
   }
 
-  async function loadCategories() {
-    try {
-      const data = await getCategories();
-      setCategories(data);
-    } catch (error) {
-      console.log(error);
-    }
-  }
-
   useEffect(() => {
-    loadPurchases();
-    loadCategories();
-  }, []);
+    void Promise.all([
+      getPurchases(selectedMonth, selectedYear),
+      getCategories(),
+    ]).then(([purchaseData, categoryData]) => {
+      setPurchases(purchaseData);
+      setCategories(categoryData);
+    });
+  }, [selectedMonth, selectedYear]);
 
   function handleEdit(purchase: Purchase) {
     setSelectedPurchase(purchase);

@@ -8,10 +8,6 @@ import { Subscription } from "../../types/database";
 export default function UpcomingSubscriptions() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
 
-  useEffect(() => {
-    loadSubscriptions();
-  }, []);
-
   async function loadSubscriptions() {
     try {
       const data = await getSubscriptions();
@@ -27,6 +23,10 @@ export default function UpcomingSubscriptions() {
       console.log(error);
     }
   }
+
+  useEffect(() => {
+    loadSubscriptions();
+  }, []);
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
