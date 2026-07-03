@@ -10,6 +10,7 @@ export interface Purchase {
   belopp: number;
   kategori: string;
   created_at: string;
+  source?: "budget" | "free";
 }
 
 export interface Category {

@@ -1,5 +1,7 @@
 import { supabase } from "./supabase";
 
+export type PurchaseSource = "budget" | "free";
+
 export async function getBudgets() {
   const { data, error } = await supabase
     .from("budgets")
@@ -47,21 +49,47 @@ export async function addPurchase(
   belopp: number,
   kategori: string,
   subscription_id?: number,
-  created_at?: string
+  created_at?: string,
+  source?: PurchaseSource
 ) {
-  const { data, error } = await supabase
+  const payload: {
+    beskrivning: string;
+    belopp: number;
+    kategori: string;
+    subscription_id?: number;
+    created_at?: string;
+    source?: PurchaseSource;
+  } = {
+    beskrivning,
+    belopp,
+    kategori,
+  };
+
+  if (subscription_id !== undefined) {
+    payload.subscription_id = subscription_id;
+  }
+
+  if (created_at !== undefined) {
+    payload.created_at = created_at;
+  }
+
+  if (source !== undefined) {
+    payload.source = source;
+  }
+
+  const insertPurchase = async (nextPayload: typeof payload) => supabase
     .from("kop")
-    .insert([
-      {
-        beskrivning,
-        belopp,
-        kategori,
-        subscription_id,
-        created_at,
-      },
-    ])
+    .insert([nextPayload])
     .select()
     .single();
+
+  let { data, error } = await insertPurchase(payload);
+
+  if (error && source !== undefined) {
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.source;
+    ({ data, error } = await insertPurchase(fallbackPayload));
+  }
 
   if (error) throw error;
 
@@ -104,17 +132,38 @@ export async function updatePurchase(
   beskrivning: string,
   belopp: number,
   kategori: string,
-  created_at?: string
+  created_at?: string,
+  source?: PurchaseSource
 ) {
-  const { error } = await supabase
+  const payload: {
+    beskrivning: string;
+    belopp: number;
+    kategori: string;
+    created_at?: string;
+    source?: PurchaseSource;
+  } = {
+    beskrivning,
+    belopp,
+    kategori,
+    created_at,
+  };
+
+  if (source !== undefined) {
+    payload.source = source;
+  }
+
+  const updatePurchaseRow = async (nextPayload: typeof payload) => supabase
     .from("kop")
-    .update({
-      beskrivning,
-      belopp,
-      kategori,
-      created_at,
-    })
+    .update(nextPayload)
     .eq("id", id);
+
+  let { error } = await updatePurchaseRow(payload);
+
+  if (error && source !== undefined) {
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.source;
+    ({ error } = await updatePurchaseRow(fallbackPayload));
+  }
 
   if (error) throw error;
 }
@@ -321,15 +370,13 @@ export async function generateSubscriptionsForCurrentMonth() {
       continue;
     }
 
-    await supabase
-      .from("kop")
-      .insert([
-        {
-          beskrivning: subscription.name,
-          belopp: subscription.amount,
-          kategori: subscription.category,
-          subscription_id: subscription.id,
-        },
-      ]);
+    await addPurchase(
+      subscription.name,
+      subscription.amount,
+      subscription.category,
+      subscription.id,
+      undefined,
+      "budget"
+    );
   }
 }

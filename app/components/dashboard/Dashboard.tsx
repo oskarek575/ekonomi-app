@@ -72,6 +72,7 @@ type RemotePurchase = {
   belopp: number;
   kategori: string;
   created_at: string;
+  source?: PurchaseSource | null;
 };
 
 type RemoteBudget = {
@@ -150,7 +151,18 @@ const defaultData: FinanceData = {
 };
 
 function kr(value: number) {
+  if (!Number.isFinite(value)) return "0 kr";
   return `${Math.round(value).toLocaleString("sv-SE")} kr`;
+}
+
+function parseMoney(value: string) {
+  const withoutCurrency = value.replace(/kr/gi, "").trim();
+  const normalized = withoutCurrency
+    .replace(/\s/g, "")
+    .replace(",", ".");
+  const amount = Number(normalized);
+
+  return Number.isFinite(amount) ? amount : NaN;
 }
 
 function formatMonthInput(date: Date) {
@@ -213,6 +225,18 @@ function toRemoteId(id: string) {
 
 function toDateTime(date: string) {
   return `${date}T12:00:00`;
+}
+
+function isFreePurchase(item: Pick<Transaction, "type" | "source" | "category">) {
+  return item.type === "expense" && (item.source === "free" || item.category === "Fria köp");
+}
+
+function sourceFromRemotePurchase(purchase: RemotePurchase): PurchaseSource {
+  if (purchase.source === "free" || purchase.source === "budget") {
+    return purchase.source;
+  }
+
+  return purchase.kategori === "Fria köp" ? "free" : "budget";
 }
 
 function Sparkline({ color }: { color: string }) {
@@ -280,15 +304,20 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
         setData((current) => ({
           ...current,
-          transactions: purchaseRows.map((purchase) => ({
-            id: String(purchase.id),
-            title: purchase.beskrivning,
-            amount: Number(purchase.belopp),
-            category: purchase.kategori,
-            date: purchase.created_at.slice(0, 10),
-            type: purchase.kategori === "Lön" ? "income" : "expense",
-            source: purchase.kategori === "Fria köp" ? "free" : "budget",
-          })),
+          transactions: purchaseRows.map((purchase) => {
+            const type: TransactionType = purchase.kategori === "Lön" ? "income" : "expense";
+            const source = type === "expense" ? sourceFromRemotePurchase(purchase) : undefined;
+
+            return {
+              id: String(purchase.id),
+              title: purchase.beskrivning,
+              amount: Number(purchase.belopp),
+              category: purchase.kategori,
+              date: purchase.created_at.slice(0, 10),
+              type,
+              source,
+            };
+          }),
           budgets: budgetRowsData.map((budget) => ({
             id: String(budget.id),
             category: budget.category,
@@ -327,6 +356,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   useEffect(() => {
     if (activeSection === "freePurchases") {
       setTransactionForm((form) => ({ ...form, type: "expense", source: "free", category: "Fria köp" }));
+    } else {
+      setTransactionForm((form) => ({
+        ...form,
+        source: "budget",
+        category: form.category === "Fria köp" ? "Mat & Livsmedel" : form.category,
+      }));
     }
   }, [activeSection]);
 
@@ -339,7 +374,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   const income = monthTransactions.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amount, 0);
   const expenses = monthTransactions.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
-  const freePurchaseSpent = monthTransactions.filter((item) => item.type === "expense" && item.source === "free").reduce((sum, item) => sum + item.amount, 0);
+  const freePurchaseSpent = monthTransactions.filter(isFreePurchase).reduce((sum, item) => sum + item.amount, 0);
   const actualBalance = income - expenses;
   const reservedBudgetTotal = data.budgets.reduce((sum, budget) => sum + budget.limit, 0);
   const fixedExpenseTotal = data.subscriptions
@@ -348,6 +383,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const reservedTotal = reservedBudgetTotal + fixedExpenseTotal;
   const freeMoney = income - reservedTotal - freePurchaseSpent;
   const goalProgress = Math.min(100, Math.round((data.goal.saved / data.goal.target) * 100));
+  const transactionCategories = transactionForm.type === "income"
+    ? data.categories.filter((category) => category === "Lön")
+    : data.categories.filter((category) => !["Lön", "Fria köp"].includes(category));
 
   const expensesByCategory = data.categories
     .filter((category) => category !== "Lön")
@@ -374,13 +412,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const freePurchaseTransactions = monthTransactions
-    .filter((item) => item.type === "expense" && item.source === "free")
+    .filter(isFreePurchase)
     .filter((item) => item.title.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const budgetRows = data.budgets.map((budget) => {
     const used = monthTransactions
-      .filter((item) => item.type === "expense" && item.category === budget.category && item.source !== "free")
+      .filter((item) => item.type === "expense" && item.category === budget.category && !isFreePurchase(item))
       .reduce((sum, item) => sum + item.amount, 0);
     const pct = Math.min(100, Math.round((used / budget.limit) * 100));
     const remaining = Math.max(budget.limit - used, 0);
@@ -393,28 +431,45 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function addTransaction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const amount = Number(transactionForm.amount);
-    if (!transactionForm.title.trim() || amount <= 0) return;
+    const amount = parseMoney(transactionForm.amount);
 
+    if (!transactionForm.title.trim()) {
+      show("Skriv vad köpet gäller först.");
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      show("Skriv ett giltigt belopp, till exempel 129 eller 129,50.");
+      return;
+    }
+
+    const expenseSource: PurchaseSource = activeSection === "freePurchases" ? "free" : "budget";
     const transaction = {
       title: transactionForm.title.trim(),
       amount,
-      category: transactionForm.type === "expense" && transactionForm.source === "free" ? "Fria köp" : transactionForm.category,
+      category: transactionForm.type === "expense" && expenseSource === "free" ? "Fria köp" : transactionForm.category,
       type: transactionForm.type,
-      source: transactionForm.type === "expense" ? transactionForm.source : undefined,
+      source: transactionForm.type === "expense" ? expenseSource : undefined,
       date: transactionForm.date,
     };
 
     if (editingTransactionId) {
       const remoteId = toRemoteId(editingTransactionId);
       if (remoteReady && remoteId) {
-        await updateRemotePurchase(
-          remoteId,
-          transaction.title,
-          transaction.amount,
-          transaction.category,
-          toDateTime(transaction.date)
-        );
+        try {
+          await updateRemotePurchase(
+            remoteId,
+            transaction.title,
+            transaction.amount,
+            transaction.category,
+            toDateTime(transaction.date),
+            transaction.source
+          );
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+          show("Kunde inte uppdatera i Supabase, ändringen sparades lokalt.");
+        }
       }
       setData((current) => ({
         ...current,
@@ -426,23 +481,33 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       show("Transaktionen är uppdaterad.");
     } else {
       let id = crypto.randomUUID();
+      let savedRemotely = false;
+      let remoteFailed = false;
 
       if (remoteReady) {
-        const created = await addRemotePurchase(
-          transaction.title,
-          transaction.amount,
-          transaction.category,
-          undefined,
-          toDateTime(transaction.date)
-        ) as RemotePurchase;
-        id = String(created.id);
+        try {
+          const created = await addRemotePurchase(
+            transaction.title,
+            transaction.amount,
+            transaction.category,
+            undefined,
+            toDateTime(transaction.date),
+            transaction.source
+          ) as RemotePurchase;
+          id = String(created.id);
+          savedRemotely = true;
+        } catch (error) {
+          console.error(error);
+          remoteFailed = true;
+          setRemoteReady(false);
+        }
       }
 
       setData((current) => ({
         ...current,
         transactions: [{ id, ...transaction }, ...current.transactions],
       }));
-      show(transaction.type === "income" ? "Inkomst tillagd och saldot är uppdaterat." : "Utgift tillagd och budgeten är uppdaterad.");
+      show(savedRemotely || !remoteFailed ? (transaction.type === "income" ? "Inkomst tillagd." : "Köp sparat.") : "Köp sparat lokalt, men Supabase svarade inte.");
     }
 
     setTransactionForm((form) => ({ ...form, title: "", amount: "" }));
@@ -673,6 +738,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         category: "Prenumerationer",
         amount: subscription.amount,
         type: "expense",
+        source: "budget",
         date: dateForPeriodDay(month, subscription.day),
       }));
 
@@ -683,7 +749,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             transaction.amount,
             transaction.category,
             undefined,
-            toDateTime(transaction.date)
+            toDateTime(transaction.date),
+            "budget"
           ) as RemotePurchase;
 
           return { ...transaction, id: String(created.id) };
@@ -785,15 +852,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <p>Registrera inkomst eller köp.</p>
             </div>
             <form onSubmit={addTransaction} className="quick-form">
-              <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, category: event.target.value === "income" ? "Lön" : "Mat & Livsmedel" }))}>
+              <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: "budget", category: event.target.value === "income" ? "Lön" : "Mat & Livsmedel" }))}>
                 <option value="expense">Utgift</option>
                 <option value="income">Inkomst</option>
               </select>
-              {transactionForm.type === "expense" && <select value={transactionForm.source} onChange={(event) => setTransactionForm((form) => ({ ...form, source: event.target.value as PurchaseSource, category: event.target.value === "free" ? "Fria köp" : "Mat & Livsmedel" }))}><option value="budget">Budget</option><option value="free">Fria pengar</option></select>}
               <input placeholder={transactionForm.type === "income" ? "Ex. Lön" : "Ex. ICA Kvantum"} value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value }))} />
-              <input inputMode="numeric" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value }))} />
+              <input inputMode="decimal" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value }))} />
               <select value={transactionForm.category} onChange={(event) => setTransactionForm((form) => ({ ...form, category: event.target.value }))}>
-                {data.categories.map((category) => <option key={category}>{category}</option>)}
+                {transactionCategories.map((category) => <option key={category}>{category}</option>)}
               </select>
               <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
               <button type="submit"><Plus size={17}/> {editingTransactionId ? "Spara ändring" : "Spara"}</button>
@@ -847,7 +913,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 </article>
                 <article className="panel list-panel">
                   <CardTitle link="Visa alla" onClick={() => onNavigate("budgets")}>Budgetöversikt</CardTitle>
-                  <div className="budget-list">{budgetRows.map((budget) => <div className="budget-row" key={budget.id}><span className="budget-icon">⚑</span><div><span className="budget-meta"><b>{budget.category}</b><small>{budget.pct}%</small></span><small>{kr(budget.used)} / {kr(budget.limit)}</small><div className="progress"><i style={{width: `${budget.pct}%`}}/></div></div></div>)}</div>
+                  <div className="budget-list">{budgetRows.map((budget) => <div className="budget-row" key={budget.id}><span className="budget-icon">⚑</span><div><span className="budget-meta"><b>{budget.category}</b><small>{kr(budget.remaining)} kvar</small></span><small>{kr(budget.used)} använt av {kr(budget.limit)}</small><div className="progress"><i style={{width: `${budget.pct}%`}}/></div></div></div>)}</div>
                   <button className="wide-button" onClick={() => onNavigate("budgets")} type="button">Visa alla budgetar <ArrowRight size={15}/></button>
                 </article>
               </div>
@@ -866,15 +932,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       {activeSection === "transactions" && (
         <SectionPanel title="Transaktioner" description="Lägg till inkomster och köp, sök i listan och ta bort poster.">
           <form className="management-form purchase-form" onSubmit={addTransaction}>
-            <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, category: event.target.value === "income" ? "Lön" : "Mat & Livsmedel" }))}>
+            <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: "budget", category: event.target.value === "income" ? "Lön" : "Mat & Livsmedel" }))}>
               <option value="expense">Köp / utgift</option>
               <option value="income">Inkomst</option>
             </select>
-            {transactionForm.type === "expense" && <select value={transactionForm.source} onChange={(event) => setTransactionForm((form) => ({ ...form, source: event.target.value as PurchaseSource, category: event.target.value === "free" ? "Fria köp" : "Mat & Livsmedel" }))}><option value="budget">Budget</option><option value="free">Fria pengar</option></select>}
             <input placeholder={transactionForm.type === "income" ? "Ex. Lön" : "Ex. Willys"} value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value }))} />
-            <input inputMode="numeric" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value }))} />
+            <input inputMode="decimal" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value }))} />
             <select value={transactionForm.category} onChange={(event) => setTransactionForm((form) => ({ ...form, category: event.target.value }))}>
-              {data.categories.map((category) => <option key={category}>{category}</option>)}
+              {transactionCategories.map((category) => <option key={category}>{category}</option>)}
             </select>
             <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
             <button type="submit"><Plus size={16}/> {editingTransactionId ? "Spara ändring" : "Skapa köp"}</button>
@@ -893,7 +958,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           </div>
           <form className="management-form free-purchase-form" onSubmit={addTransaction}>
             <input placeholder="Ex. kaffe, glass, snabbmat" value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value, type: "expense", source: "free", category: "Fria köp" }))} />
-            <input inputMode="numeric" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value, type: "expense", source: "free", category: "Fria köp" }))} />
+            <input inputMode="decimal" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value, type: "expense", source: "free", category: "Fria köp" }))} />
             <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value, type: "expense", source: "free", category: "Fria köp" }))} />
             <button type="submit"><Plus size={16}/> {editingTransactionId ? "Spara ändring" : "Lägg till köp"}</button>
             {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
