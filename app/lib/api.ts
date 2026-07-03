@@ -27,13 +27,29 @@ const end = new Date(year, month + 1, 1).toISOString();
 
   return data;
 }
+export async function getPurchasesByDateRange(
+  start: Date,
+  end: Date
+) {
+  const { data, error } = await supabase
+    .from("kop")
+    .select("*")
+    .gte("created_at", start.toISOString())
+    .lt("created_at", end.toISOString())
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return data;
+}
 export async function addPurchase(
   beskrivning: string,
   belopp: number,
   kategori: string,
-  subscription_id?: number
+  subscription_id?: number,
+  created_at?: string
 ) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("kop")
     .insert([
       {
@@ -41,10 +57,15 @@ export async function addPurchase(
         belopp,
         kategori,
         subscription_id,
+        created_at,
       },
-    ]);
+    ])
+    .select()
+    .single();
 
   if (error) throw error;
+
+  return data;
 }
 export async function deletePurchase(id: number) {
   const { error } = await supabase
@@ -82,7 +103,8 @@ export async function updatePurchase(
   id: number,
   beskrivning: string,
   belopp: number,
-  kategori: string
+  kategori: string,
+  created_at?: string
 ) {
   const { error } = await supabase
     .from("kop")
@@ -90,6 +112,7 @@ export async function updatePurchase(
       beskrivning,
       belopp,
       kategori,
+      created_at,
     })
     .eq("id", id);
 
@@ -99,16 +122,20 @@ export async function addBudget(
   category: string,
   monthly_budget: number
 ) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("budgets")
     .insert([
       {
         category,
         monthly_budget,
       },
-    ]);
+    ])
+    .select()
+    .single();
 
   if (error) throw error;
+
+  return data;
 }
 
 export async function updateBudget(
@@ -151,7 +178,7 @@ export async function addCategory(
   color: string,
   icon: string
 ) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("categories")
     .insert([
       {
@@ -159,9 +186,13 @@ export async function addCategory(
         color,
         icon,
       },
-    ]);
+    ])
+    .select()
+    .single();
 
   if (error) throw error;
+
+  return data;
 }
 
 export async function updateCategory(
@@ -207,7 +238,7 @@ export async function addSubscription(
   category: string,
   day_of_month: number
 ) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("subscriptions")
     .insert([
       {
@@ -216,9 +247,13 @@ export async function addSubscription(
         category,
         day_of_month,
       },
-    ]);
+    ])
+    .select()
+    .single();
 
   if (error) throw error;
+
+  return data;
 }
 
 export async function updateSubscription(
