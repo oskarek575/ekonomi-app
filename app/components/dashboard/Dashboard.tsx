@@ -53,9 +53,23 @@ type Subscription = {
 };
 
 type Goal = {
+  id: string;
   title: string;
   saved: number;
   target: number;
+};
+
+type SavingsAccount = {
+  id: string;
+  name: string;
+  amount: number;
+};
+
+type AffordabilityResult = {
+  answer: "Ja" | "Nej" | "Ja, men tajt";
+  tone: "good" | "warning" | "bad";
+  summary: string;
+  details: string[];
 };
 
 type FinanceData = {
@@ -63,7 +77,8 @@ type FinanceData = {
   budgets: Budget[];
   subscriptions: Subscription[];
   categories: string[];
-  goal: Goal;
+  goals: Goal[];
+  savings: SavingsAccount[];
 };
 
 type RemotePurchase = {
@@ -147,7 +162,10 @@ const defaultData: FinanceData = {
     { id: "s4", name: "Adobe", plan: "Creative Cloud", amount: 239, day: 10, active: true },
     { id: "s5", name: "YouTube Premium", plan: "Familj", amount: 179, day: 15, active: true },
   ],
-  goal: { title: "Resa 2025", saved: 20400, target: 30000 },
+  goals: [{ id: "g1", title: "Resa 2025", saved: 20400, target: 30000 }],
+  savings: [
+    { id: "sv1", name: "Resekonto", amount: 0 },
+  ],
 };
 
 function kr(value: number) {
@@ -227,6 +245,18 @@ function toDateTime(date: string) {
   return `${date}T12:00:00`;
 }
 
+function daysLeftInPeriod(period: { start: Date; end: Date }) {
+  const oneDay = 86400000;
+  const today = new Date();
+  const todayAtNoon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
+
+  if (todayAtNoon < period.start || todayAtNoon >= period.end) {
+    return Math.max(1, Math.ceil((period.end.getTime() - period.start.getTime()) / oneDay));
+  }
+
+  return Math.max(1, Math.ceil((period.end.getTime() - todayAtNoon.getTime()) / oneDay));
+}
+
 function isFreePurchase(item: Pick<Transaction, "type" | "source" | "category">) {
   return item.type === "expense" && (item.source === "free" || item.category === "Fria köp");
 }
@@ -237,6 +267,74 @@ function sourceFromRemotePurchase(purchase: RemotePurchase): PurchaseSource {
   }
 
   return purchase.kategori === "Fria köp" ? "free" : "budget";
+}
+
+function getAffordabilityResult({
+  title,
+  amount,
+  freeMoney,
+  remainingDays,
+}: {
+  title: string;
+  amount: number;
+  freeMoney: number;
+  remainingDays: number;
+}): AffordabilityResult | null {
+  if (!title.trim() && (!Number.isFinite(amount) || amount <= 0)) {
+    return null;
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return {
+      answer: "Nej",
+      tone: "bad",
+      summary: "Skriv ett giltigt pris först.",
+      details: ["Exempel: 499 eller 499,90."],
+    };
+  }
+
+  const remainingAfterPurchase = freeMoney - amount;
+  const dailyMoneyBefore = freeMoney / remainingDays;
+  const dailyMoneyAfter = remainingAfterPurchase / remainingDays;
+  const safetyBuffer = Math.max(500, dailyMoneyBefore * 2);
+  const purchaseName = title.trim() || "detta";
+
+  if (amount > freeMoney) {
+    return {
+      answer: "Nej",
+      tone: "bad",
+      summary: `Nej, ${purchaseName} är för dyrt just nu.`,
+      details: [
+        `Det kostar ${kr(amount)}, men du har ${kr(freeMoney)} fria pengar.`,
+        `Du skulle hamna på ${kr(remainingAfterPurchase)} efter köpet.`,
+        `Det är ${remainingDays} dagar kvar i perioden.`,
+      ],
+    };
+  }
+
+  if (remainingAfterPurchase < safetyBuffer) {
+    return {
+      answer: "Ja, men tajt",
+      tone: "warning",
+      summary: `Du har råd med ${purchaseName}, men marginalen blir låg.`,
+      details: [
+        `Efter köpet har du ${kr(remainingAfterPurchase)} kvar i fria pengar.`,
+        `Det blir ungefär ${kr(dailyMoneyAfter)} per dag i ${remainingDays} dagar.`,
+        `Jag hade helst sett en buffert på minst ${kr(safetyBuffer)}.`,
+      ],
+    };
+  }
+
+  return {
+    answer: "Ja",
+    tone: "good",
+    summary: `Ja, ${purchaseName} ser rimligt ut.`,
+    details: [
+      `Köpet kostar ${kr(amount)} och du har ${kr(freeMoney)} fria pengar.`,
+      `Efter köpet har du ${kr(remainingAfterPurchase)} kvar.`,
+      `Det blir ungefär ${kr(dailyMoneyAfter)} per dag tills perioden är slut.`,
+    ],
+  };
 }
 
 function Sparkline({ color }: { color: string }) {
@@ -273,20 +371,28 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [budgetForm, setBudgetForm] = useState({ category: "Mat & Livsmedel", limit: "" });
   const [subscriptionForm, setSubscriptionForm] = useState({ name: "", plan: "", amount: "", day: "1" });
   const [categoryName, setCategoryName] = useState("");
-  const [goalForm, setGoalForm] = useState(defaultData.goal);
+  const [goalForm, setGoalForm] = useState({ title: "", saved: "", target: "" });
+  const [savingsForm, setSavingsForm] = useState({ name: "", amount: "" });
+  const [affordabilityForm, setAffordabilityForm] = useState({ title: "", amount: "" });
   const [proActive, setProActive] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
   const [editingSubscriptionId, setEditingSubscriptionId] = useState<string | null>(null);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
   const [remoteReady, setRemoteReady] = useState(false);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(storageKey);
     if (saved) {
-      const parsed = JSON.parse(saved) as FinanceData;
+      const parsed = JSON.parse(saved) as Partial<FinanceData> & { goal?: Omit<Goal, "id"> };
+      const savedGoals = parsed.goals ?? (parsed.goal ? [{ id: "g-migrated", ...parsed.goal }] : defaultData.goals);
       setData({
+        ...defaultData,
         ...parsed,
-        categories: Array.from(new Set([...defaultData.categories, ...parsed.categories])),
+        goals: savedGoals,
+        savings: parsed.savings ?? [],
+        categories: Array.from(new Set([...defaultData.categories, ...(parsed.categories ?? [])])),
       });
     }
   }, []);
@@ -323,7 +429,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             category: budget.category,
             limit: Number(budget.monthly_budget),
           })),
-          categories: Array.from(new Set([...defaultData.categories, ...categoryRows.map((category) => category.name)])),
+          categories: Array.from(new Set([...defaultData.categories, ...current.categories, ...categoryRows.map((category) => category.name)])),
           subscriptions: subscriptionRows.map((subscription) => ({
             id: String(subscription.id),
             name: subscription.name,
@@ -367,6 +473,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   const monthDate = new Date(`${month}-01T12:00:00`);
   const period = getFinancialPeriod(month);
+  const remainingDays = daysLeftInPeriod(period);
   const monthTransactions = useMemo(
     () => data.transactions.filter((transaction) => isInFinancialPeriod(transaction.date, month)),
     [data.transactions, month]
@@ -382,7 +489,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     .reduce((sum, subscription) => sum + subscription.amount, 0);
   const reservedTotal = reservedBudgetTotal + fixedExpenseTotal;
   const freeMoney = income - reservedTotal - freePurchaseSpent;
-  const goalProgress = Math.min(100, Math.round((data.goal.saved / data.goal.target) * 100));
+  const savingsTotal = data.savings.reduce((sum, saving) => sum + saving.amount, 0);
+  const manualGoalsSaved = data.goals.reduce((sum, goal) => sum + goal.saved, 0);
+  const goalsTargetTotal = data.goals.reduce((sum, goal) => sum + goal.target, 0);
+  const goalSavedTotal = manualGoalsSaved + savingsTotal;
+  const goalProgress = goalsTargetTotal ? Math.min(100, Math.round((goalSavedTotal / goalsTargetTotal) * 100)) : 0;
+  const affordabilityAmount = parseMoney(affordabilityForm.amount);
+  const affordabilityResult = getAffordabilityResult({
+    title: affordabilityForm.title,
+    amount: affordabilityAmount,
+    freeMoney,
+    remainingDays,
+  });
   const transactionCategories = transactionForm.type === "income"
     ? data.categories.filter((category) => category === "Lön")
     : data.categories.filter((category) => !["Lön", "Fria köp"].includes(category));
@@ -778,13 +896,125 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   function saveGoal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setData((current) => ({ ...current, goal: goalForm }));
-    show("Sparmålet är uppdaterat.");
+    const title = goalForm.title.trim();
+    const saved = parseMoney(goalForm.saved);
+    const target = parseMoney(goalForm.target);
+
+    if (!title) {
+      show("Skriv namn på målet först.");
+      return;
+    }
+
+    if (!Number.isFinite(saved) || saved < 0 || !Number.isFinite(target) || target <= 0) {
+      show("Skriv giltiga belopp för sparat och mål.");
+      return;
+    }
+
+    setData((current) => ({
+      ...current,
+      goals: editingGoalId
+        ? current.goals.map((goal) => goal.id === editingGoalId ? { ...goal, title, saved, target } : goal)
+        : [...current.goals, { id: crypto.randomUUID(), title, saved, target }],
+    }));
+    setGoalForm({ title: "", saved: "", target: "" });
+    setEditingGoalId(null);
+    show(editingGoalId ? "Målet är uppdaterat." : "Nytt mål är skapat.");
+  }
+
+  function editGoal(goal: Goal) {
+    setEditingGoalId(goal.id);
+    setGoalForm({ title: goal.title, saved: String(goal.saved), target: String(goal.target) });
+    show("Redigerar mål.");
+  }
+
+  function cancelGoalEdit() {
+    setEditingGoalId(null);
+    setGoalForm({ title: "", saved: "", target: "" });
+    show("Redigering av mål avbruten.");
+  }
+
+  function removeGoal(id: string) {
+    setData((current) => ({ ...current, goals: current.goals.filter((goal) => goal.id !== id) }));
+    if (editingGoalId === id) {
+      cancelGoalEdit();
+    }
+    show("Målet togs bort.");
+  }
+
+  async function addSavings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = savingsForm.name.trim();
+    const amount = parseMoney(savingsForm.amount);
+
+    if (!name) {
+      show("Skriv namn på sparkontot först.");
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      show("Skriv ett giltigt sparbelopp, till exempel 500 eller 500,50.");
+      return;
+    }
+
+    if (remoteReady && !data.categories.includes(name)) {
+      try {
+        await addRemoteCategory(name, categoryColors[name] ?? "#22c55e", "💰");
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
+    setData((current) => {
+      const existing = current.savings.find((saving) => saving.name.toLowerCase() === name.toLowerCase());
+      const savings = editingSavingsId
+        ? current.savings.map((saving) =>
+            saving.id === editingSavingsId ? { ...saving, name, amount } : saving
+          )
+        : existing
+          ? current.savings.map((saving) =>
+              saving.id === existing.id ? { ...saving, amount: saving.amount + amount } : saving
+            )
+          : [...current.savings, { id: crypto.randomUUID(), name, amount }];
+
+      return {
+        ...current,
+        savings,
+        categories: current.categories.includes(name) ? current.categories : [...current.categories, name],
+      };
+    });
+
+    setSavingsForm({ name: "", amount: "" });
+    setEditingSavingsId(null);
+    show(editingSavingsId ? "Sparkontot är uppdaterat." : `${kr(amount)} lades till i ${name}.`);
+  }
+
+  function editSavings(saving: SavingsAccount) {
+    setEditingSavingsId(saving.id);
+    setSavingsForm({ name: saving.name, amount: String(saving.amount) });
+    show("Redigerar sparkonto.");
+  }
+
+  function cancelSavingsEdit() {
+    setEditingSavingsId(null);
+    setSavingsForm({ name: "", amount: "" });
+    show("Redigering av sparkonto avbruten.");
+  }
+
+  function removeSavings(id: string) {
+    setData((current) => ({ ...current, savings: current.savings.filter((saving) => saving.id !== id) }));
+    if (editingSavingsId === id) {
+      cancelSavingsEdit();
+    }
+    show("Sparkontot togs bort.");
   }
 
   function resetDemo() {
     setData(defaultData);
-    setGoalForm(defaultData.goal);
+    setGoalForm({ title: "", saved: "", target: "" });
+    setSavingsForm({ name: "", amount: "" });
+    setEditingGoalId(null);
+    setEditingSavingsId(null);
     show("Demodata är återställd.");
   }
 
@@ -803,7 +1033,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const topInsights = [
     freeMoney < 0 ? "Du har använt mer fria pengar än perioden tillåter." : `Du har ${kr(freeMoney)} kvar i fria pengar.`,
     data.subscriptions.length ? `Fasta utgifter är ${kr(fixedExpenseTotal)} och budgetar reserverar ${kr(reservedBudgetTotal)}.` : "Lägg in fasta utgifter för att räkna fria pengar bättre.",
-    goalProgress >= 100 ? "Sparmålet är nått. Dags för nästa mål!" : `Du är ${goalProgress}% på väg mot ${data.goal.title}.`,
+    goalProgress >= 100 ? "Sparmålen är nådda. Dags för nästa mål!" : `Du är ${goalProgress}% på väg mot dina mål. Sparkonton: ${kr(savingsTotal)}.`,
   ];
 
   function openStat(title: string) {
@@ -920,12 +1150,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </div>
 
             <div className="right-stack">
-              <InsightsPanel insights={topInsights} onNavigate={onNavigate} />
+              <InsightsPanel insights={topInsights} onNavigate={onNavigate} affordabilityForm={affordabilityForm} onAffordabilityChange={setAffordabilityForm} affordabilityResult={affordabilityResult} />
               <SubscriptionsPanel subscriptions={data.subscriptions} onNavigate={onNavigate} onGenerate={createSubscriptionExpenses} onEdit={editSubscription} onToggle={toggleSubscription} onRemove={removeSubscription} />
             </div>
           </section>
 
-          <GoalPanel goal={data.goal} goalProgress={goalProgress} onNavigate={onNavigate} />
+          <GoalPanel goals={data.goals} savings={data.savings} savingsTotal={savingsTotal} manualGoalsSaved={manualGoalsSaved} goalsTargetTotal={goalsTargetTotal} goalSavedTotal={goalSavedTotal} goalProgress={goalProgress} onNavigate={onNavigate} />
         </>
       )}
 
@@ -987,9 +1217,21 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       )}
 
       {activeSection === "goals" && (
-        <SectionPanel title="Mål" description="Uppdatera ditt sparmål.">
-          <form className="management-form goal-editor" onSubmit={saveGoal}><input value={goalForm.title} onChange={(event) => setGoalForm((goal) => ({ ...goal, title: event.target.value }))}/><input inputMode="numeric" value={goalForm.saved} onChange={(event) => setGoalForm((goal) => ({ ...goal, saved: Number(event.target.value) }))}/><input inputMode="numeric" value={goalForm.target} onChange={(event) => setGoalForm((goal) => ({ ...goal, target: Number(event.target.value) }))}/><button type="submit"><Edit3 size={16}/> Uppdatera mål</button></form>
-          <GoalPanel goal={data.goal} goalProgress={goalProgress} onNavigate={onNavigate} />
+        <SectionPanel title="Mål" description="Skapa flera mål, uppdatera dem och håll koll på sparkonton.">
+          <form className="management-form goal-editor" onSubmit={saveGoal}>
+            <input placeholder="Mål, t.ex. Resa 2027" value={goalForm.title} onChange={(event) => setGoalForm((goal) => ({ ...goal, title: event.target.value }))}/>
+            <input inputMode="decimal" placeholder="Sparat nu" value={goalForm.saved} onChange={(event) => setGoalForm((goal) => ({ ...goal, saved: event.target.value }))}/>
+            <input inputMode="decimal" placeholder="Målsumma" value={goalForm.target} onChange={(event) => setGoalForm((goal) => ({ ...goal, target: event.target.value }))}/>
+            <button type="submit"><Edit3 size={16}/> {editingGoalId ? "Spara mål" : "Skapa mål"}</button>
+            {editingGoalId && <button className="secondary-action" onClick={cancelGoalEdit} type="button">Avbryt</button>}
+          </form>
+          <form className="management-form savings-form" onSubmit={addSavings}>
+            <input placeholder="Sparkonto, t.ex. Resa 2027" value={savingsForm.name} onChange={(event) => setSavingsForm((form) => ({ ...form, name: event.target.value }))}/>
+            <input inputMode="decimal" placeholder={editingSavingsId ? "Totalt belopp" : "Belopp att lägga till"} value={savingsForm.amount} onChange={(event) => setSavingsForm((form) => ({ ...form, amount: event.target.value }))}/>
+            <button type="submit"><Plus size={16}/> {editingSavingsId ? "Spara sparkonto" : "Lägg till sparande"}</button>
+            {editingSavingsId && <button className="secondary-action" onClick={cancelSavingsEdit} type="button">Avbryt</button>}
+          </form>
+          <GoalPanel goals={data.goals} savings={data.savings} savingsTotal={savingsTotal} manualGoalsSaved={manualGoalsSaved} goalsTargetTotal={goalsTargetTotal} goalSavedTotal={goalSavedTotal} goalProgress={goalProgress} onNavigate={onNavigate} onEditGoal={editGoal} onRemoveGoal={removeGoal} onEditSavings={editSavings} onRemoveSavings={removeSavings} showSavingsDetails />
         </SectionPanel>
       )}
 
@@ -1001,7 +1243,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         </SectionPanel>
       )}
 
-      {activeSection === "insights" && <SectionPanel title="AI Insights" description="Smarta sammanfattningar baserat på det du lagt in."><InsightsPanel insights={topInsights} onNavigate={onNavigate} /></SectionPanel>}
+      {activeSection === "insights" && <SectionPanel title="AI Insights" description="Smarta sammanfattningar baserat på det du lagt in."><InsightsPanel insights={topInsights} onNavigate={onNavigate} affordabilityForm={affordabilityForm} onAffordabilityChange={setAffordabilityForm} affordabilityResult={affordabilityResult} expanded /></SectionPanel>}
 
       {activeSection === "reports" && (
         <SectionPanel title="Rapporter" description={`Sammanfattning för ${monthFormatter.format(monthDate)}.`}>
@@ -1023,11 +1265,64 @@ function SectionPanel({ title, description, children }: { title: string; descrip
   return <section className="panel section-panel"><div className="section-heading"><h2>{title}</h2><p>{description}</p></div>{children}</section>;
 }
 
-function InsightsPanel({ insights, onNavigate }: { insights: string[]; onNavigate: (section: AppSection) => void }) {
+function InsightsPanel({
+  insights,
+  onNavigate,
+  affordabilityForm,
+  onAffordabilityChange,
+  affordabilityResult,
+  expanded = false,
+}: {
+  insights: string[];
+  onNavigate: (section: AppSection) => void;
+  affordabilityForm: { title: string; amount: string };
+  onAffordabilityChange: (form: { title: string; amount: string }) => void;
+  affordabilityResult: AffordabilityResult | null;
+  expanded?: boolean;
+}) {
   return (
-    <article className="panel insights-panel">
+    <article className={`panel insights-panel ${expanded ? "expanded" : ""}`}>
       <CardTitle><Sparkles size={18} className="purple-text"/> AI Insights</CardTitle>
       <div className="insight-hero"><b>Din ekonomi är analyserad! 🎉</b><span>{insights[0]}</span></div>
+      <div className="affordability-card">
+        <div className="affordability-heading">
+          <div>
+            <b>Har jag råd?</b>
+            <small>Skriv priset så räknar jag mot fria pengar och perioden som är kvar.</small>
+          </div>
+          <span>AI-råd</span>
+        </div>
+        <div className="affordability-form">
+          <label>
+            <span>Vad vill du köpa?</span>
+            <input
+              placeholder="Ex. nya skor"
+              value={affordabilityForm.title}
+              onChange={(event) => onAffordabilityChange({ ...affordabilityForm, title: event.target.value })}
+            />
+          </label>
+          <label>
+            <span>Pris</span>
+            <input
+              inputMode="decimal"
+              placeholder="1990"
+              value={affordabilityForm.amount}
+              onChange={(event) => onAffordabilityChange({ ...affordabilityForm, amount: event.target.value })}
+            />
+          </label>
+        </div>
+        {affordabilityResult ? (
+          <div className={`affordability-result ${affordabilityResult.tone}`}>
+            <strong>{affordabilityResult.answer}</strong>
+            <span>{affordabilityResult.summary}</span>
+            <ul>
+              {affordabilityResult.details.map((detail) => <li key={detail}>{detail}</li>)}
+            </ul>
+          </div>
+        ) : (
+          <div className="affordability-empty">Exempel: “AirPods” och “1990”.</div>
+        )}
+      </div>
       <div className="insight-list">
         <button onClick={() => onNavigate("reports")} type="button"><i className="insight-icon green"><CircleCheck/></i><span><b>Månadsstatus</b><small>{insights[0]}</small></span><ChevronRight/></button>
         <button onClick={() => onNavigate("subscriptions")} type="button"><i className="insight-icon purple"><Lightbulb/></i><span><b>Sparpotential</b><small>{insights[1]}</small></span><ChevronRight/></button>
@@ -1066,10 +1361,83 @@ function SubscriptionsPanel({
   );
 }
 
-function GoalPanel({ goal, goalProgress, onNavigate }: { goal: Goal; goalProgress: number; onNavigate: (section: AppSection) => void }) {
+function GoalPanel({
+  goals,
+  savings,
+  savingsTotal,
+  manualGoalsSaved,
+  goalsTargetTotal,
+  goalSavedTotal,
+  goalProgress,
+  onNavigate,
+  onEditGoal,
+  onRemoveGoal,
+  onEditSavings,
+  onRemoveSavings,
+  showSavingsDetails = false,
+}: {
+  goals: Goal[];
+  savings: SavingsAccount[];
+  savingsTotal: number;
+  manualGoalsSaved: number;
+  goalsTargetTotal: number;
+  goalSavedTotal: number;
+  goalProgress: number;
+  onNavigate: (section: AppSection) => void;
+  onEditGoal?: (goal: Goal) => void;
+  onRemoveGoal?: (id: string) => void;
+  onEditSavings?: (saving: SavingsAccount) => void;
+  onRemoveSavings?: (id: string) => void;
+  showSavingsDetails?: boolean;
+}) {
   return (
     <section className="goal-card panel">
-      <div className="goal-copy"><h3>Ditt sparmål</h3><b>{goal.title}</b><strong>{goalProgress}%</strong><span>{kr(goal.saved)} av {kr(goal.target)}</span><div className="goal-progress"><i style={{ width: `${goalProgress}%` }}/></div><p>Du är på god väg! Fortsätt spara för att nå ditt mål.</p><button className="inline-link" onClick={() => onNavigate("goals")} type="button">Ändra sparmål</button></div>
+      <div className="goal-copy">
+        <h3>Dina mål</h3>
+        <b>{goals.length ? `${goals.length} aktiva mål` : "Inga mål ännu"}</b>
+        <strong>{goalProgress}%</strong>
+        <span>{kr(goalSavedTotal)} av {kr(goalsTargetTotal)}</span>
+        <div className="goal-progress"><i style={{ width: `${goalProgress}%` }}/></div>
+        <div className="savings-summary">
+          <span><b>{kr(manualGoalsSaved)}</b><small>Manuellt sparat</small></span>
+          <span><b>{kr(savingsTotal)}</b><small>Sparkonton</small></span>
+        </div>
+        <div className="goals-list">
+          {goals.length ? goals.map((goal) => {
+            const progress = goal.target ? Math.min(100, Math.round((goal.saved / goal.target) * 100)) : 0;
+
+            return (
+              <div className="goal-row" key={goal.id}>
+                <span><b>{goal.title}</b><small>{kr(goal.saved)} av {kr(goal.target)}</small></span>
+                <div className="mini-progress"><i style={{ width: `${progress}%` }}/></div>
+                <strong>{progress}%</strong>
+                {showSavingsDetails && (
+                  <span className="row-actions">
+                    {onEditGoal && <button onClick={() => onEditGoal(goal)} type="button">Redigera</button>}
+                    {onRemoveGoal && <button onClick={() => onRemoveGoal(goal.id)} type="button"><Trash2 size={14}/></button>}
+                  </span>
+                )}
+              </div>
+            );
+          }) : <EmptyState text="Skapa ditt första mål ovanför." />}
+        </div>
+        {showSavingsDetails && (
+          <div className="savings-list">
+            {savings.length ? savings.map((saving) => (
+              <div className="savings-row" key={saving.id}>
+                <span><b>{saving.name}</b><small>Kategori skapad</small></span>
+                <strong>{kr(saving.amount)}</strong>
+                <span className="row-actions">
+                  {onEditSavings && <button onClick={() => onEditSavings(saving)} type="button">Redigera</button>}
+                  {onRemoveSavings && <button onClick={() => onRemoveSavings(saving.id)} type="button"><Trash2 size={14}/></button>}
+                </span>
+              </div>
+            )) : <EmptyState text="Inga sparkonton ännu. Lägg till ett ovanför." />}
+          </div>
+        )}
+        <p>Du är på god väg! Fortsätt spara för att nå ditt mål.</p>
+        <button className="inline-link" onClick={() => onNavigate("goals")} type="button">Ändra sparmål</button>
+      </div>
       <button className="goal-image" onClick={() => onNavigate("goals")} type="button"><span><Crosshair size={27}/></span></button>
     </section>
   );
