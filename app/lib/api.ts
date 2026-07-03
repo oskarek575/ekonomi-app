@@ -2,6 +2,17 @@ import { supabase } from "./supabase";
 
 export type PurchaseSource = "budget" | "free";
 
+export type GoalInput = {
+  title: string;
+  saved: number;
+  target: number;
+};
+
+export type SavingsInput = {
+  name: string;
+  amount: number;
+};
+
 export async function getBudgets() {
   const { data, error } = await supabase
     .from("budgets")
@@ -28,6 +39,94 @@ const end = new Date(year, month + 1, 1).toISOString();
   if (error) throw error;
 
   return data;
+}
+
+export async function getGoals() {
+  const { data, error } = await supabase
+    .from("goals")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function addGoal({ title, saved, target }: GoalInput) {
+  const { data, error } = await supabase
+    .from("goals")
+    .insert([{ title, saved, target }])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function updateGoal(
+  id: number,
+  { title, saved, target }: GoalInput
+) {
+  const { error } = await supabase
+    .from("goals")
+    .update({ title, saved, target })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function deleteGoal(id: number) {
+  const { error } = await supabase
+    .from("goals")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function getSavingsAccounts() {
+  const { data, error } = await supabase
+    .from("savings_accounts")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function addSavingsAccount({ name, amount }: SavingsInput) {
+  const { data, error } = await supabase
+    .from("savings_accounts")
+    .insert([{ name, amount }])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function updateSavingsAccount(
+  id: number,
+  { name, amount }: SavingsInput
+) {
+  const { error } = await supabase
+    .from("savings_accounts")
+    .update({ name, amount })
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function deleteSavingsAccount(id: number) {
+  const { error } = await supabase
+    .from("savings_accounts")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
 }
 export async function getPurchasesByDateRange(
   start: Date,

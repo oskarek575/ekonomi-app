@@ -28,3 +28,18 @@ export interface Subscription {
   day_of_month: number;
   active: boolean;
 }
+
+export interface Goal {
+  id: number;
+  title: string;
+  saved: number;
+  target: number;
+  created_at: string;
+}
+
+export interface SavingsAccount {
+  id: number;
+  name: string;
+  amount: number;
+  created_at: string;
+}

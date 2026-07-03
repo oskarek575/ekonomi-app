@@ -9,17 +9,25 @@ import {
 import {
   addBudget as addRemoteBudget,
   addCategory as addRemoteCategory,
+  addGoal as addRemoteGoal,
   addPurchase as addRemotePurchase,
+  addSavingsAccount as addRemoteSavingsAccount,
   addSubscription as addRemoteSubscription,
   deleteBudget as deleteRemoteBudget,
+  deleteGoal as deleteRemoteGoal,
   deletePurchase as deleteRemotePurchase,
+  deleteSavingsAccount as deleteRemoteSavingsAccount,
   deleteSubscription as deleteRemoteSubscription,
   getBudgets,
   getCategories,
+  getGoals,
   getPurchasesByDateRange,
+  getSavingsAccounts,
   getSubscriptions,
   updateBudget as updateRemoteBudget,
+  updateGoal as updateRemoteGoal,
   updatePurchase as updateRemotePurchase,
+  updateSavingsAccount as updateRemoteSavingsAccount,
   updateSubscription as updateRemoteSubscription,
 } from "../../lib/api";
 import type { AppSection } from "../Sidebar";
@@ -110,6 +118,19 @@ type RemoteSubscription = {
   category: string;
   day_of_month: number;
   active: boolean;
+};
+
+type RemoteGoal = {
+  id: number;
+  title: string;
+  saved: number;
+  target: number;
+};
+
+type RemoteSavingsAccount = {
+  id: number;
+  name: string;
+  amount: number;
 };
 
 type DashboardProps = {
@@ -401,11 +422,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     async function loadSupabaseData() {
       try {
         const periodRange = getFinancialPeriod(month);
-        const [purchaseRows, budgetRowsData, categoryRows, subscriptionRows] = await Promise.all([
+        const [purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows] = await Promise.all([
           getPurchasesByDateRange(periodRange.start, periodRange.end) as Promise<RemotePurchase[]>,
           getBudgets() as Promise<RemoteBudget[]>,
           getCategories() as Promise<RemoteCategory[]>,
           getSubscriptions() as Promise<RemoteSubscription[]>,
+          getGoals().catch(() => []) as Promise<RemoteGoal[]>,
+          getSavingsAccounts().catch(() => []) as Promise<RemoteSavingsAccount[]>,
         ]);
 
         setData((current) => ({
@@ -438,6 +461,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             day: Number(subscription.day_of_month),
             active: subscription.active,
           })),
+          goals: goalRows.length ? goalRows.map((goal) => ({
+            id: String(goal.id),
+            title: goal.title,
+            saved: Number(goal.saved),
+            target: Number(goal.target),
+          })) : current.goals,
+          savings: savingsRows.length ? savingsRows.map((saving) => ({
+            id: String(saving.id),
+            name: saving.name,
+            amount: Number(saving.amount),
+          })) : current.savings,
         }));
         setRemoteReady(true);
         setNotice("Synkad med Supabase.");
@@ -894,7 +928,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Kategorin är tillagd.");
   }
 
-  function saveGoal(event: FormEvent<HTMLFormElement>) {
+  async function saveGoal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const title = goalForm.title.trim();
     const saved = parseMoney(goalForm.saved);
@@ -910,11 +944,30 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
+    let id = editingGoalId ?? crypto.randomUUID();
+
+    if (remoteReady) {
+      try {
+        if (editingGoalId) {
+          const remoteId = toRemoteId(editingGoalId);
+          if (remoteId) {
+            await updateRemoteGoal(remoteId, { title, saved, target });
+          }
+        } else {
+          const created = await addRemoteGoal({ title, saved, target }) as RemoteGoal;
+          id = String(created.id);
+        }
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
     setData((current) => ({
       ...current,
       goals: editingGoalId
         ? current.goals.map((goal) => goal.id === editingGoalId ? { ...goal, title, saved, target } : goal)
-        : [...current.goals, { id: crypto.randomUUID(), title, saved, target }],
+        : [...current.goals, { id, title, saved, target }],
     }));
     setGoalForm({ title: "", saved: "", target: "" });
     setEditingGoalId(null);
@@ -933,7 +986,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Redigering av mål avbruten.");
   }
 
-  function removeGoal(id: string) {
+  async function removeGoal(id: string) {
+    const remoteId = toRemoteId(id);
+    if (remoteReady && remoteId) {
+      try {
+        await deleteRemoteGoal(remoteId);
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
     setData((current) => ({ ...current, goals: current.goals.filter((goal) => goal.id !== id) }));
     if (editingGoalId === id) {
       cancelGoalEdit();
@@ -965,6 +1028,31 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       }
     }
 
+    let newRemoteId: string | null = null;
+
+    if (remoteReady) {
+      try {
+        if (editingSavingsId) {
+          const remoteId = toRemoteId(editingSavingsId);
+          if (remoteId) {
+            await updateRemoteSavingsAccount(remoteId, { name, amount });
+          }
+        } else {
+          const existing = data.savings.find((saving) => saving.name.toLowerCase() === name.toLowerCase());
+          const existingRemoteId = existing ? toRemoteId(existing.id) : null;
+          if (existing && existingRemoteId) {
+            await updateRemoteSavingsAccount(existingRemoteId, { name: existing.name, amount: existing.amount + amount });
+          } else {
+            const created = await addRemoteSavingsAccount({ name, amount }) as RemoteSavingsAccount;
+            newRemoteId = String(created.id);
+          }
+        }
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
     setData((current) => {
       const existing = current.savings.find((saving) => saving.name.toLowerCase() === name.toLowerCase());
       const savings = editingSavingsId
@@ -975,7 +1063,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           ? current.savings.map((saving) =>
               saving.id === existing.id ? { ...saving, amount: saving.amount + amount } : saving
             )
-          : [...current.savings, { id: crypto.randomUUID(), name, amount }];
+          : [...current.savings, { id: newRemoteId ?? crypto.randomUUID(), name, amount }];
 
       return {
         ...current,
@@ -1001,7 +1089,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Redigering av sparkonto avbruten.");
   }
 
-  function removeSavings(id: string) {
+  async function removeSavings(id: string) {
+    const remoteId = toRemoteId(id);
+    if (remoteReady && remoteId) {
+      try {
+        await deleteRemoteSavingsAccount(remoteId);
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
     setData((current) => ({ ...current, savings: current.savings.filter((saving) => saving.id !== id) }));
     if (editingSavingsId === id) {
       cancelSavingsEdit();
