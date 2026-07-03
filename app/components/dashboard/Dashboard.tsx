@@ -383,6 +383,33 @@ function EmptyState({ text }: { text: string }) {
   return <div className="empty-state">{text}</div>;
 }
 
+function getUserDisplayName(user: AuthUser) {
+  const metadata = user?.user_metadata as { full_name?: string; name?: string } | undefined;
+  const name = metadata?.full_name ?? metadata?.name;
+
+  if (name?.trim()) return name.trim();
+
+  return user?.email?.split("@")[0] ?? "där";
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "OE";
+}
+
+function getTimeGreeting(date = new Date()) {
+  const hour = date.getHours();
+
+  if (hour < 11) return "God morgon";
+  if (hour < 17) return "God dag";
+
+  return "God kväll";
+}
+
 export default function Dashboard({ activeSection, onNavigate }: DashboardProps) {
   const [data, setData] = useState<FinanceData>(defaultData);
   const [month, setMonth] = useState(currentMonthValue);
@@ -413,9 +440,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [user, setUser] = useState<AuthUser>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
-  const [authForm, setAuthForm] = useState({ email: "", password: "" });
+  const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authMessage, setAuthMessage] = useState("");
   const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
+  const displayName = getUserDisplayName(user);
+  const greeting = getTimeGreeting();
+  const initials = getInitials(displayName);
 
   useEffect(() => {
     let active = true;
@@ -1208,8 +1238,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const name = authForm.name.trim();
     const email = authForm.email.trim();
     const password = authForm.password;
+
+    if (authMode === "signup" && !name) {
+      setAuthMessage("Skriv ditt namn också, så appen kan hälsa rätt.");
+      return;
+    }
 
     if (!email || password.length < 6) {
       setAuthMessage("Skriv e-post och minst 6 tecken som lösenord.");
@@ -1220,12 +1256,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setAuthMessage("");
 
     try {
-      const nextUser = authMode === "signin"
+      const authResult = authMode === "signin"
         ? await signInWithEmail(email, password)
-        : await signUpWithEmail(email, password);
+        : await signUpWithEmail(email, password, name);
 
-      setUser(nextUser);
-      setAuthMessage(authMode === "signin" ? "Du är inloggad." : "Kontot är skapat. Om Supabase kräver e-postbekräftelse, kolla inkorgen.");
+      if (authMode === "signup" && !authResult.session) {
+        setAuthMode("signin");
+        setAuthMessage("Kontot är skapat. Bekräfta mejlet från Supabase om du får ett, och logga sedan in.");
+        return;
+      }
+
+      setUser(authResult.user);
+      setAuthMessage(authMode === "signin" ? "Du är inloggad." : "Kontot är skapat och du är inloggad.");
       setNotice("Inloggad och redo att synka säkert.");
     } catch (error) {
       console.error(error);
@@ -1268,6 +1310,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           <h1>{authMode === "signin" ? "Logga in" : "Skapa konto"}</h1>
           <p>Varje person får sin egen data. Supabase-reglerna släpper bara igenom rader som tillhör den inloggade användaren.</p>
           <form onSubmit={handleAuth} className="auth-form">
+            {authMode === "signup" && (
+              <input
+                autoComplete="name"
+                placeholder="Ditt namn"
+                value={authForm.name}
+                onChange={(event) => setAuthForm((form) => ({ ...form, name: event.target.value }))}
+              />
+            )}
             <input
               autoComplete="email"
               inputMode="email"
@@ -1304,10 +1354,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   return (
     <div className="dashboard-shell">
       <header className="topbar">
-        <div><h1>God morgon, Oskar! <span>👋</span></h1><p>Här är din ekonomiöversikt för idag.</p></div>
+        <div><h1>{greeting}, {displayName}! <span>👋</span></h1><p>Här är din ekonomiöversikt för idag.</p></div>
         <div className="top-actions">
           <button className="icon-button" onClick={() => show("Du har inga nya notiser just nu.")} type="button"><Bell size={19}/></button>
-          <button className="top-avatar" onClick={() => onNavigate("settings")} type="button">OE</button>
+          <button className="top-avatar" onClick={() => onNavigate("settings")} type="button">{initials}</button>
         </div>
       </header>
 
@@ -1498,6 +1548,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       {activeSection === "settings" && (
         <SectionPanel title="Inställningar" description="Hantera testdata och kontoinställningar.">
           <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
+          <div className="settings-status"><span>Profil</span><b>{displayName}</b></div>
           <div className="settings-status"><span>Inloggad som</span><b>{user.email ?? "Ditt konto"}</b></div>
           <div className="settings-status"><span>Status</span><b>{remoteReady ? "Privat Supabase-synk aktiv" : "Lokal cache / väntar på Supabase"}</b></div>
           <div className="settings-status"><span>Läge</span><b>{proActive ? "Pro-demo aktiv" : "Standardläge"}</b></div>
