@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Oskars Ekonomi
 
-## Getting Started
+En personlig ekonomiapp för budget, fria pengar, fasta utgifter, köp, sparkonton och mål.
 
-First, run the development server:
+## Starta lokalt
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Öppna sedan:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Supabase innan riktig användning
 
-## Learn More
+Kör den samlade release-filen i Supabase SQL Editor:
 
-To learn more about Next.js, take a look at the following resources:
+```text
+supabase/release-setup.sql
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Den lägger till:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- fria köp-källa på transaktioner
+- tabeller för mål och sparkonton
+- `user_id` på appens tabeller
+- RLS-regler så varje användare bara ser sin egen data
 
-## Deploy on Vercel
+Om gammal data redan finns i Supabase kan den behöva kopplas till ditt konto efter att RLS aktiverats.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Miljövariabler
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Appen behöver dessa i `.env.local` lokalt och i hostingen:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+```
+
+## Publicera
+
+Publicera som en vanlig Next.js-app, till exempel på Vercel.
+
+När appen ligger på en HTTPS-adress kan den installeras på mobilen:
+
+### iPhone
+
+1. Öppna appens webbadress i Safari.
+2. Tryck på dela-knappen.
+3. Välj “Lägg till på hemskärmen”.
+
+### Android
+
+1. Öppna appens webbadress i Chrome.
+2. Tryck på menyn.
+3. Välj “Installera app” eller “Lägg till på startskärmen”.
+
+## Kontroll inför release
+
+Kör:
+
+```bash
+npm run lint
+npm run build
+```
