@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
   ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
@@ -18,12 +19,17 @@ import {
   deletePurchase as deleteRemotePurchase,
   deleteSavingsAccount as deleteRemoteSavingsAccount,
   deleteSubscription as deleteRemoteSubscription,
+  getCurrentUser,
   getBudgets,
   getCategories,
   getGoals,
   getPurchasesByDateRange,
   getSavingsAccounts,
   getSubscriptions,
+  onAuthChange,
+  signInWithEmail,
+  signOut,
+  signUpWithEmail,
   updateBudget as updateRemoteBudget,
   updateGoal as updateRemoteGoal,
   updatePurchase as updateRemotePurchase,
@@ -137,6 +143,8 @@ type DashboardProps = {
   activeSection: AppSection;
   onNavigate: (section: AppSection) => void;
 };
+
+type AuthUser = User | null;
 
 const storageKey = "oskars-ekonomi-v2";
 const salaryDay = 25;
@@ -402,9 +410,44 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
   const [remoteReady, setRemoteReady] = useState(false);
+  const [user, setUser] = useState<AuthUser>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authForm, setAuthForm] = useState({ email: "", password: "" });
+  const [authMessage, setAuthMessage] = useState("");
+  const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
 
   useEffect(() => {
-    const saved = window.localStorage.getItem(storageKey);
+    let active = true;
+
+    getCurrentUser()
+      .then((currentUser) => {
+        if (!active) return;
+        setUser(currentUser);
+        setAuthLoading(false);
+      })
+      .catch((error) => {
+        console.error(error);
+        if (!active) return;
+        setUser(null);
+        setAuthLoading(false);
+      });
+
+    const { data: listener } = onAuthChange((currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+
+    const saved = window.localStorage.getItem(userStorageKey);
     if (saved) {
       const parsed = JSON.parse(saved) as Partial<FinanceData> & { goal?: Omit<Goal, "id"> };
       const savedGoals = parsed.goals ?? (parsed.goal ? [{ id: "g-migrated", ...parsed.goal }] : defaultData.goals);
@@ -416,10 +459,16 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         categories: Array.from(new Set([...defaultData.categories, ...(parsed.categories ?? [])])),
       });
     }
-  }, []);
+  }, [authLoading, user, userStorageKey]);
 
   useEffect(() => {
     async function loadSupabaseData() {
+      if (!user) {
+        setRemoteReady(false);
+        setNotice("Logga in för att synka säkert med Supabase.");
+        return;
+      }
+
       try {
         const periodRange = getFinancialPeriod(month);
         const [purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows] = await Promise.all([
@@ -483,11 +532,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
 
     void loadSupabaseData();
-  }, [month]);
+  }, [month, user]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey, JSON.stringify(data));
-  }, [data]);
+    if (authLoading || !user) return;
+
+    window.localStorage.setItem(userStorageKey, JSON.stringify(data));
+  }, [authLoading, data, user, userStorageKey]);
 
   useEffect(() => {
     setTransactionForm((form) => ({ ...form, date: defaultDateForPeriod(month) }));
@@ -1155,6 +1206,101 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     onNavigate("freePurchases");
   }
 
+  async function handleAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = authForm.email.trim();
+    const password = authForm.password;
+
+    if (!email || password.length < 6) {
+      setAuthMessage("Skriv e-post och minst 6 tecken som lösenord.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthMessage("");
+
+    try {
+      const nextUser = authMode === "signin"
+        ? await signInWithEmail(email, password)
+        : await signUpWithEmail(email, password);
+
+      setUser(nextUser);
+      setAuthMessage(authMode === "signin" ? "Du är inloggad." : "Kontot är skapat. Om Supabase kräver e-postbekräftelse, kolla inkorgen.");
+      setNotice("Inloggad och redo att synka säkert.");
+    } catch (error) {
+      console.error(error);
+      setAuthMessage(authMode === "signin" ? "Kunde inte logga in. Kolla e-post och lösenord." : "Kunde inte skapa konto. Testa annan e-post eller längre lösenord.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleSignOut() {
+    try {
+      await signOut();
+      setUser(null);
+      setRemoteReady(false);
+      setData(defaultData);
+      setAuthForm((form) => ({ ...form, password: "" }));
+      setNotice("Du är utloggad.");
+    } catch (error) {
+      console.error(error);
+      show("Kunde inte logga ut just nu.");
+    }
+  }
+
+  if (authLoading && !user) {
+    return (
+      <div className="dashboard-shell auth-shell">
+        <section className="panel auth-card">
+          <h1>Oskars Ekonomi</h1>
+          <p>Laddar säker inloggning…</p>
+        </section>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="dashboard-shell auth-shell">
+        <section className="panel auth-card">
+          <span className="auth-badge">Privat ekonomi</span>
+          <h1>{authMode === "signin" ? "Logga in" : "Skapa konto"}</h1>
+          <p>Varje person får sin egen data. Supabase-reglerna släpper bara igenom rader som tillhör den inloggade användaren.</p>
+          <form onSubmit={handleAuth} className="auth-form">
+            <input
+              autoComplete="email"
+              inputMode="email"
+              placeholder="E-post"
+              type="email"
+              value={authForm.email}
+              onChange={(event) => setAuthForm((form) => ({ ...form, email: event.target.value }))}
+            />
+            <input
+              autoComplete={authMode === "signin" ? "current-password" : "new-password"}
+              placeholder="Lösenord"
+              type="password"
+              value={authForm.password}
+              onChange={(event) => setAuthForm((form) => ({ ...form, password: event.target.value }))}
+            />
+            <button type="submit">{authMode === "signin" ? "Logga in" : "Skapa konto"}</button>
+          </form>
+          {authMessage && <div className="notice-bar auth-notice">{authMessage}</div>}
+          <button
+            className="inline-link"
+            onClick={() => {
+              setAuthMode((mode) => mode === "signin" ? "signup" : "signin");
+              setAuthMessage("");
+            }}
+            type="button"
+          >
+            {authMode === "signin" ? "Har du inget konto? Skapa ett." : "Har du redan konto? Logga in."}
+          </button>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-shell">
       <header className="topbar">
@@ -1351,8 +1497,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "settings" && (
         <SectionPanel title="Inställningar" description="Hantera testdata och kontoinställningar.">
-          <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button></div>
-          <div className="settings-status"><span>Status</span><b>{proActive ? "Pro-demo aktiv" : "Standardläge"}</b></div>
+          <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
+          <div className="settings-status"><span>Inloggad som</span><b>{user.email ?? "Ditt konto"}</b></div>
+          <div className="settings-status"><span>Status</span><b>{remoteReady ? "Privat Supabase-synk aktiv" : "Lokal cache / väntar på Supabase"}</b></div>
+          <div className="settings-status"><span>Läge</span><b>{proActive ? "Pro-demo aktiv" : "Standardläge"}</b></div>
         </SectionPanel>
       )}
     </div>
