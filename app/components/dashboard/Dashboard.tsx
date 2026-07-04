@@ -575,7 +575,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }, [month]);
 
   useEffect(() => {
-    if (activeSection === "freePurchases") {
+    if (activeSection === "overview" || activeSection === "freePurchases") {
       setTransactionForm((form) => ({ ...form, type: "expense", source: "free", category: "Fria köp" }));
     } else {
       setTransactionForm((form) => ({
@@ -676,7 +676,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
-    const expenseSource: PurchaseSource = activeSection === "freePurchases" ? "free" : "budget";
+    const expenseSource: PurchaseSource = activeSection === "freePurchases" ? "free" : transactionForm.source;
     const transaction = {
       title: transactionForm.title.trim(),
       amount,
@@ -1370,27 +1370,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "overview" && (
         <>
-          <section className="quick-add panel">
-            <div>
-              <h2>Ny transaktion</h2>
-              <p>Registrera inkomst eller köp.</p>
-            </div>
-            <form onSubmit={addTransaction} className="quick-form">
-              <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: "budget", category: event.target.value === "income" ? "Lön" : "Mat & Livsmedel" }))}>
-                <option value="expense">Utgift</option>
-                <option value="income">Inkomst</option>
-              </select>
-              <input placeholder={transactionForm.type === "income" ? "Ex. Lön" : "Ex. ICA Kvantum"} value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value }))} />
-              <input inputMode="decimal" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value }))} />
-              <select value={transactionForm.category} onChange={(event) => setTransactionForm((form) => ({ ...form, category: event.target.value }))}>
-                {transactionCategories.map((category) => <option key={category}>{category}</option>)}
-              </select>
-              <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
-              <button type="submit"><Plus size={17}/> {editingTransactionId ? "Spara ändring" : "Spara"}</button>
-              {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
-            </form>
-          </section>
-
           <section className="free-money-panel panel">
             <div>
               <span>Fria pengar</span>
@@ -1405,6 +1384,35 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <i>=</i>
               <span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span>
             </div>
+          </section>
+
+          <section className="quick-add panel">
+            <div>
+              <h2>Ny transaktion</h2>
+              <p>Registrera inkomst eller köp.</p>
+            </div>
+            <form onSubmit={addTransaction} className="quick-form">
+              <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: event.target.value === "income" ? "budget" : "free", category: event.target.value === "income" ? "Lön" : "Fria köp" }))}>
+                <option value="expense">Utgift</option>
+                <option value="income">Inkomst</option>
+              </select>
+              {transactionForm.type === "expense" && (
+                <select value={transactionForm.source} onChange={(event) => setTransactionForm((form) => ({ ...form, source: event.target.value as PurchaseSource, category: event.target.value === "free" ? "Fria köp" : "Mat & Livsmedel" }))}>
+                  <option value="free">Fria köp</option>
+                  <option value="budget">Budget</option>
+                </select>
+              )}
+              <input placeholder={transactionForm.type === "income" ? "Ex. Lön" : "Ex. ICA Kvantum"} value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value }))} />
+              <input inputMode="decimal" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value }))} />
+              {transactionForm.type === "income" || transactionForm.source === "budget" ? (
+                <select value={transactionForm.category} onChange={(event) => setTransactionForm((form) => ({ ...form, category: event.target.value }))}>
+                  {transactionCategories.map((category) => <option key={category}>{category}</option>)}
+                </select>
+              ) : null}
+              <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
+              <button type="submit"><Plus size={17}/> {editingTransactionId ? "Spara ändring" : "Spara"}</button>
+              {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
+            </form>
           </section>
 
           <section className="stats-grid">
