@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
@@ -597,6 +597,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const income = monthTransactions.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amount, 0);
   const expenses = monthTransactions.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
   const freePurchaseSpent = monthTransactions.filter(isFreePurchase).reduce((sum, item) => sum + item.amount, 0);
+  const todayFreePurchaseSpent = monthTransactions
+    .filter((item) => isFreePurchase(item) && item.date === formatDateInput(new Date()))
+    .reduce((sum, item) => sum + item.amount, 0);
   const actualBalance = income - expenses;
   const reservedBudgetTotal = data.budgets.reduce((sum, budget) => sum + budget.limit, 0);
   const fixedExpenseTotal = data.subscriptions
@@ -604,6 +607,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     .reduce((sum, subscription) => sum + subscription.amount, 0);
   const reservedTotal = reservedBudgetTotal + fixedExpenseTotal;
   const freeMoney = income - reservedTotal - freePurchaseSpent;
+  const freeMoneyBase = Math.max(income - reservedTotal, 1);
+  const freeMoneyProgress = Math.max(0, Math.min(100, Math.round((Math.max(freeMoney, 0) / freeMoneyBase) * 100)));
+  const freeMoneyStyle = { "--free-progress": `${freeMoneyProgress}%` } as CSSProperties;
   const savingsTotal = data.savings.reduce((sum, saving) => sum + saving.amount, 0);
   const manualGoalsSaved = data.goals.reduce((sum, goal) => sum + goal.saved, 0);
   const goalsTargetTotal = data.goals.reduce((sum, goal) => sum + goal.target, 0);
@@ -1236,6 +1242,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     onNavigate("freePurchases");
   }
 
+  function startFreePurchase(title = "") {
+    setTransactionForm((form) => ({
+      ...form,
+      title,
+      type: "expense",
+      source: "free",
+      category: "Fria köp",
+    }));
+    onNavigate("freePurchases");
+  }
+
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = authForm.name.trim();
@@ -1352,7 +1369,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   return (
-    <div className="dashboard-shell">
+    <div className={`dashboard-shell mobile-${activeSection}`}>
       <header className="topbar">
         <div><h1>{greeting}, {displayName}! <span>👋</span></h1><p>Här är din ekonomiöversikt för idag.</p></div>
         <div className="top-actions">
@@ -1370,10 +1387,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "overview" && (
         <>
-          <section className="free-money-panel panel">
+          <section className="free-money-panel free-money-hero panel" style={freeMoneyStyle}>
             <div>
               <span>Fria pengar</span>
               <strong>{kr(freeMoney)}</strong>
+              <p>Kvar att spendera denna period</p>
+              <button className="mobile-primary-action" onClick={() => startFreePurchase()} type="button">Lägg till köp</button>
             </div>
             <div className="free-money-math">
               <span><b>{kr(income)}</b><small>Inkomster</small></span>
@@ -1383,6 +1402,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>
               <i>=</i>
               <span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span>
+            </div>
+            <div className="mobile-spend-pills">
+              <span><b>{kr(todayFreePurchaseSpent)}</b><small>Idag</small></span>
+              <span><b>{kr(freePurchaseSpent)}</b><small>Period</small></span>
+              <span><b>{remainingDays}</b><small>dagar kvar</small></span>
             </div>
           </section>
 
@@ -1413,6 +1437,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <button type="submit"><Plus size={17}/> {editingTransactionId ? "Spara ändring" : "Spara"}</button>
               {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
             </form>
+            <div className="quick-chip-row" aria-label="Snabba val">
+              {["Kaffe", "Lunch", "Bensin", "Mat"].map((title) => (
+                <button key={title} onClick={() => startFreePurchase(title)} type="button">{title}</button>
+              ))}
+            </div>
           </section>
 
           <section className="stats-grid">
@@ -1484,7 +1513,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "freePurchases" && (
         <SectionPanel title="Fria köp" description="Småköp som dras direkt från fria pengar.">
-          <div className="free-money-panel compact panel">
+          <div className="free-money-panel compact panel" style={freeMoneyStyle}>
             <div><span>Kvar att handla för</span><strong>{kr(freeMoney)}</strong></div>
             <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>−</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>−</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span><i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Kvar</small></span></div>
           </div>
