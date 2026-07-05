@@ -1326,11 +1326,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           <span className="auth-badge">Privat ekonomi</span>
           <h1>{authMode === "signin" ? "Logga in" : "Skapa konto"}</h1>
           <p>Varje person får sin egen data. Supabase-reglerna släpper bara igenom rader som tillhör den inloggade användaren.</p>
+          <div className="auth-mode-switch">
+            <button className={authMode === "signin" ? "active" : ""} onClick={() => { setAuthMode("signin"); setAuthMessage(""); }} type="button">Logga in</button>
+            <button className={authMode === "signup" ? "active" : ""} onClick={() => { setAuthMode("signup"); setAuthMessage(""); }} type="button">Skapa konto</button>
+          </div>
           <form onSubmit={handleAuth} className="auth-form">
             {authMode === "signup" && (
               <input
                 autoComplete="name"
+                name="name"
                 placeholder="Ditt namn"
+                required
+                type="text"
                 value={authForm.name}
                 onChange={(event) => setAuthForm((form) => ({ ...form, name: event.target.value }))}
               />
@@ -1338,19 +1345,24 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <input
               autoComplete="email"
               inputMode="email"
+              name="email"
               placeholder="E-post"
+              required
               type="email"
               value={authForm.email}
               onChange={(event) => setAuthForm((form) => ({ ...form, email: event.target.value }))}
             />
             <input
               autoComplete={authMode === "signin" ? "current-password" : "new-password"}
+              minLength={6}
+              name="password"
               placeholder="Lösenord"
+              required
               type="password"
               value={authForm.password}
               onChange={(event) => setAuthForm((form) => ({ ...form, password: event.target.value }))}
             />
-            <button type="submit">{authMode === "signin" ? "Logga in" : "Skapa konto"}</button>
+            <button disabled={authLoading} type="submit">{authLoading ? "Vänta..." : authMode === "signin" ? "Logga in" : "Skapa konto"}</button>
           </form>
           {authMessage && <div className="notice-bar auth-notice">{authMessage}</div>}
           <button
