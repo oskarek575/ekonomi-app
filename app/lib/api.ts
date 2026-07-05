@@ -35,6 +35,7 @@ export async function signUpWithEmail(email: string, password: string, name: str
     email,
     password,
     options: {
+      emailRedirectTo: typeof window !== "undefined" ? window.location.origin : undefined,
       data: {
         full_name: name,
         name,

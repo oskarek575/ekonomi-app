@@ -410,6 +410,16 @@ function getTimeGreeting(date = new Date()) {
   return "God kväll";
 }
 
+function getReadableError(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "object" && error && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+
+  return "Okänt fel";
+}
+
 export default function Dashboard({ activeSection, onNavigate }: DashboardProps) {
   const [data, setData] = useState<FinanceData>(defaultData);
   const [month, setMonth] = useState(currentMonthValue);
@@ -1289,6 +1299,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     } catch (error) {
       console.error(error);
       setAuthMessage(authMode === "signin" ? "Kunde inte logga in. Kolla e-post och lösenord." : "Kunde inte skapa konto. Testa annan e-post eller längre lösenord.");
+      const errorMessage = getReadableError(error);
+      setAuthMessage(authMode === "signin" ? `Kunde inte logga in: ${errorMessage}` : `Kunde inte skapa konto: ${errorMessage}`);
     } finally {
       setAuthLoading(false);
     }
