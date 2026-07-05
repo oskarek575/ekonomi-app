@@ -27,6 +27,8 @@ export async function signInWithEmail(email: string, password: string) {
 
   if (error) throw error;
 
+  await ensureProfileForUserSafe(data.user);
+
   return data;
 }
 
@@ -45,7 +47,95 @@ export async function signUpWithEmail(email: string, password: string, name: str
 
   if (error) throw error;
 
+  if (data.session) {
+    await ensureProfileForUserSafe(data.user, name);
+  }
+
   return data;
+}
+
+export type Profile = {
+  id?: number;
+  user_id?: string;
+  monthly_income: number;
+  monthly_savings: number;
+  full_name?: string | null;
+};
+
+async function ensureProfileForUser(user: User | null, name?: string): Promise<Profile | null> {
+  if (!user) return null;
+
+  const fullName =
+    name?.trim() ||
+    (user.user_metadata?.full_name as string | undefined) ||
+    (user.user_metadata?.name as string | undefined) ||
+    null;
+
+  const { data: existing, error: readError } = await supabase
+    .from("profile")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (readError) throw readError;
+
+  if (existing) {
+    if (fullName && existing.full_name !== fullName) {
+      const { data: updated, error: updateError } = await supabase
+        .from("profile")
+        .update({ full_name: fullName })
+        .eq("user_id", user.id)
+        .select()
+        .maybeSingle();
+
+      if (updateError) return existing as Profile;
+
+      return updated as Profile | null;
+    }
+
+    return existing as Profile;
+  }
+
+  const { data: created, error: createError } = await supabase
+    .from("profile")
+    .insert([
+      {
+        user_id: user.id,
+        monthly_income: 0,
+        monthly_savings: 0,
+        full_name: fullName,
+      },
+    ])
+    .select()
+    .single();
+
+  if (createError) {
+    const { data: fallbackCreated, error: fallbackCreateError } = await supabase
+      .from("profile")
+      .insert([
+        {
+          user_id: user.id,
+          monthly_income: 0,
+          monthly_savings: 0,
+        },
+      ])
+      .select()
+      .single();
+
+    if (fallbackCreateError) throw createError;
+
+    return fallbackCreated as Profile;
+  }
+
+  return created as Profile;
+}
+
+async function ensureProfileForUserSafe(user: User | null, name?: string) {
+  try {
+    await ensureProfileForUser(user, name);
+  } catch (error) {
+    console.warn("Profile could not be prepared yet.", error);
+  }
 }
 
 export async function signOut() {
@@ -253,28 +343,30 @@ export async function deletePurchase(id: number) {
     .eq("id", id);
 
   if (error) throw error;
-}export async function getProfile() {
-  const { data, error } = await supabase
-    .from("profile")
-    .select("*")
-    .single();
+}
 
-  if (error) throw error;
+export async function getProfile() {
+  const user = await getCurrentUser();
 
-  return data;
+  return ensureProfileForUser(user);
 }
 
 export async function updateProfile(
   monthly_income: number,
   monthly_savings: number
 ) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Du behöver vara inloggad för att spara profil.");
+
+  await ensureProfileForUser(user);
+
   const { error } = await supabase
     .from("profile")
     .update({
       monthly_income,
       monthly_savings,
     })
-    .eq("id", 1);
+    .eq("user_id", user.id);
 
   if (error) throw error;
 }

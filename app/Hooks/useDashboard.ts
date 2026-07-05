@@ -50,8 +50,8 @@ export function useDashboard() {
     ]).then(([budgetData, purchaseData, profile]) => {
       setBudgets(budgetData);
       setKop(purchaseData);
-      setIncome(profile.monthly_income);
-      setSavings(profile.monthly_savings);
+      setIncome(profile?.monthly_income ?? 0);
+      setSavings(profile?.monthly_savings ?? 0);
     });
   }, [selectedMonth, selectedYear]);
 

@@ -13,8 +13,8 @@ export default function SettingsPage() {
       try {
         const profile = await getProfile();
 
-        setIncome(profile.monthly_income.toString());
-        setSavings(profile.monthly_savings.toString());
+        setIncome(String(profile?.monthly_income ?? 0));
+        setSavings(String(profile?.monthly_savings ?? 0));
       } catch (error) {
         console.log(error);
       }
