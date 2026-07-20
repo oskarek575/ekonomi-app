@@ -1452,6 +1452,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <p>Kvar att spendera denna period</p>
               <button className="mobile-primary-action" onClick={() => startFreePurchase()} type="button">Lägg till köp</button>
             </div>
+            <div className="free-money-ring" aria-hidden="true">
+              <WalletCards size={42} />
+            </div>
             <div className="free-money-math">
               <span><b>{kr(income)}</b><small>Inkomster</small></span>
               <i>−</i>
