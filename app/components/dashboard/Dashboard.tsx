@@ -647,6 +647,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const freeMoneyBase = Math.max(income - reservedTotal, 1);
   const freeMoneyProgress = Math.max(0, Math.min(100, Math.round((Math.max(freeMoney, 0) / freeMoneyBase) * 100)));
   const freeMoneyStyle = { "--free-progress": `${freeMoneyProgress}%` } as CSSProperties;
+  const freeMoneyPerDay = Math.max(0, Math.floor(freeMoney / Math.max(remainingDays, 1)));
   const savingsTotal = data.savings.reduce((sum, saving) => sum + saving.amount, 0);
   const manualGoalsSaved = data.goals.reduce((sum, goal) => sum + goal.saved, 0);
   const goalsTargetTotal = data.goals.reduce((sum, goal) => sum + goal.target, 0);
@@ -691,6 +692,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     .filter(isFreePurchase)
     .filter((item) => item.title.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const latestPurchase = monthTransactions
+    .filter((item) => item.type === "expense")
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  const nextActiveSubscription = data.subscriptions
+    .filter((subscription) => subscription.active)
+    .sort((a, b) => a.day - b.day)[0];
 
   const budgetRows = data.budgets.map((budget) => {
     const used = monthTransactions
@@ -1504,6 +1511,29 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 <Sparkline color={color === "purple" ? "#8a3ffc" : color === "blue" ? "#1e9fd3" : "#16a34a"}/>
               </button>
             ))}
+          </section>
+
+          <section className="mobile-overview-metrics" aria-label="Översikt">
+            <button onClick={() => { setCategoryFilter("Lön"); onNavigate("transactions"); }} type="button"><ArrowDownToLine size={22}/><span>Inkomster</span><b>{kr(income)}</b></button>
+            <button onClick={() => { setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button"><ArrowUpRight size={22}/><span>Utgifter</span><b>{kr(expenses)}</b></button>
+            <button onClick={() => onNavigate("budgets")} type="button"><WalletCards size={22}/><span>Reserverat</span><b>{kr(reservedTotal)}</b></button>
+            <button onClick={() => onNavigate("freePurchases")} type="button"><PiggyBank size={22}/><span>Fritt idag</span><b>{kr(freeMoneyPerDay)}</b></button>
+          </section>
+
+          <section className="mobile-overview-quick" aria-label="Snabbvy">
+            <h2>Snabbvy</h2>
+            <button onClick={() => onNavigate(latestPurchase?.source === "free" ? "freePurchases" : "transactions")} type="button">
+              <Logo title={latestPurchase?.title ?? "Köp"} tone="white" />
+              <span><small>Senaste köp:</small><b>{latestPurchase?.title ?? "Inget köp än"}</b></span>
+              <strong>{latestPurchase ? kr(latestPurchase.amount) : "0 kr"}</strong>
+              <ChevronRight size={18}/>
+            </button>
+            <button onClick={() => onNavigate("subscriptions")} type="button">
+              <Logo title={nextActiveSubscription?.name ?? "Fast"} tone={nextActiveSubscription?.name === "Netflix" ? "black" : "blue"} />
+              <span><small>Nästa fasta utgift:</small><b>{nextActiveSubscription?.name ?? "Ingen aktiv"}</b></span>
+              <strong>{nextActiveSubscription ? `${kr(nextActiveSubscription.amount)}, dag ${nextActiveSubscription.day}` : "0 kr"}</strong>
+              <ChevronRight size={18}/>
+            </button>
           </section>
 
           <section className="main-grid">
