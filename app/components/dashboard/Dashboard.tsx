@@ -145,11 +145,21 @@ type DashboardProps = {
 };
 
 type AuthUser = User | null;
+type LayoutTheme = "blue" | "green" | "purple" | "rose" | "orange";
 
 const storageKey = "oskars-ekonomi-v2";
+const themeStorageKey = "oskars-ekonomi-theme";
 const salaryDay = 25;
 const monthFormatter = new Intl.DateTimeFormat("sv-SE", { month: "long", year: "numeric" });
 const dateFormatter = new Intl.DateTimeFormat("sv-SE", { day: "numeric", month: "short" });
+
+const layoutThemes: { id: LayoutTheme; label: string; description: string }[] = [
+  { id: "blue", label: "Mörkblå", description: "Lugn app-känsla" },
+  { id: "green", label: "Grön", description: "Ekonomi & sparande" },
+  { id: "purple", label: "Lila", description: "Lite mer premium" },
+  { id: "rose", label: "Rosa", description: "Varmare ton" },
+  { id: "orange", label: "Orange", description: "Mer energi" },
+];
 
 const categoryColors: Record<string, string> = {
   "Bostad": "#8b45f5",
@@ -452,7 +462,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authMessage, setAuthMessage] = useState("");
+  const [layoutTheme, setLayoutTheme] = useState<LayoutTheme>("blue");
   const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
+  const userThemeStorageKey = user ? `${themeStorageKey}-${user.id}` : themeStorageKey;
   const displayName = getUserDisplayName(user);
   const greeting = getTimeGreeting();
   const initials = getInitials(displayName);
@@ -487,6 +499,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   useEffect(() => {
     if (authLoading || !user) return;
 
+    const savedTheme = window.localStorage.getItem(userThemeStorageKey) as LayoutTheme | null;
+    if (savedTheme && layoutThemes.some((theme) => theme.id === savedTheme)) {
+      setLayoutTheme(savedTheme);
+    }
+
     const saved = window.localStorage.getItem(userStorageKey);
     if (saved) {
       const parsed = JSON.parse(saved) as Partial<FinanceData> & { goal?: Omit<Goal, "id"> };
@@ -499,7 +516,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         categories: Array.from(new Set([...defaultData.categories, ...(parsed.categories ?? [])])),
       });
     }
-  }, [authLoading, user, userStorageKey]);
+  }, [authLoading, user, userStorageKey, userThemeStorageKey]);
+
+  useEffect(() => {
+    document.documentElement.dataset.layoutTheme = layoutTheme;
+  }, [layoutTheme]);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+
+    window.localStorage.setItem(userThemeStorageKey, layoutTheme);
+  }, [authLoading, layoutTheme, user, userThemeStorageKey]);
 
   useEffect(() => {
     async function loadSupabaseData() {
@@ -1393,7 +1420,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   return (
-    <div className={`dashboard-shell mobile-${activeSection}`}>
+    <div className={`dashboard-shell theme-${layoutTheme} mobile-${activeSection}`}>
       <header className="topbar">
         <div><h1>{greeting}, {displayName}! <span>👋</span></h1><p>Här är din ekonomiöversikt för idag.</p></div>
         <div className="top-actions">
@@ -1608,10 +1635,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "settings" && (
         <SectionPanel title="Inställningar" description="Hantera testdata och kontoinställningar.">
+          <ThemePicker selectedTheme={layoutTheme} onSelect={setLayoutTheme} />
           <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
           <div className="settings-status"><span>Profil</span><b>{displayName}</b></div>
           <div className="settings-status"><span>Inloggad som</span><b>{user.email ?? "Ditt konto"}</b></div>
           <div className="settings-status"><span>Status</span><b>{remoteReady ? "Privat Supabase-synk aktiv" : "Lokal cache / väntar på Supabase"}</b></div>
+          <div className="settings-status"><span>Layoutfärg</span><b>{layoutThemes.find((theme) => theme.id === layoutTheme)?.label ?? "Mörkblå"}</b></div>
           <div className="settings-status"><span>Läge</span><b>{proActive ? "Pro-demo aktiv" : "Standardläge"}</b></div>
         </SectionPanel>
       )}
@@ -1621,6 +1650,41 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
 function SectionPanel({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return <section className="panel section-panel"><div className="section-heading"><h2>{title}</h2><p>{description}</p></div>{children}</section>;
+}
+
+function ThemePicker({
+  selectedTheme,
+  onSelect,
+}: {
+  selectedTheme: LayoutTheme;
+  onSelect: (theme: LayoutTheme) => void;
+}) {
+  return (
+    <div className="theme-picker">
+      <div>
+        <span>Layoutfärg</span>
+        <b>Välj din stil</b>
+        <small>Färgen sparas för din användare i den här webbläsaren.</small>
+      </div>
+      <div className="theme-options">
+        {layoutThemes.map((theme) => (
+          <button
+            aria-pressed={selectedTheme === theme.id}
+            className={`theme-option theme-option-${theme.id} ${selectedTheme === theme.id ? "active" : ""}`}
+            key={theme.id}
+            onClick={() => onSelect(theme.id)}
+            type="button"
+          >
+            <i />
+            <span>
+              <b>{theme.label}</b>
+              <small>{theme.description}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function InsightsPanel({
