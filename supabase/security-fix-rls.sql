@@ -21,6 +21,9 @@ alter table if exists public.budgets
 alter table if exists public.kop
   add column if not exists user_id uuid references auth.users(id) on delete cascade default auth.uid();
 
+alter table if exists public.transactions
+  add column if not exists user_id uuid references auth.users(id) on delete cascade default auth.uid();
+
 alter table if exists public.categories
   add column if not exists user_id uuid references auth.users(id) on delete cascade default auth.uid();
 
@@ -60,6 +63,7 @@ create unique index if not exists profile_user_id_key
 
 alter table if exists public.budgets enable row level security;
 alter table if exists public.kop enable row level security;
+alter table if exists public.transactions enable row level security;
 alter table if exists public.categories enable row level security;
 alter table if exists public.subscriptions enable row level security;
 alter table if exists public.goals enable row level security;
@@ -83,6 +87,15 @@ create policy "Users can select their own purchases" on public.kop for select us
 create policy "Users can insert their own purchases" on public.kop for insert with check (auth.uid() = user_id);
 create policy "Users can update their own purchases" on public.kop for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Users can delete their own purchases" on public.kop for delete using (auth.uid() = user_id);
+
+drop policy if exists "Users can select their own transactions" on public.transactions;
+drop policy if exists "Users can insert their own transactions" on public.transactions;
+drop policy if exists "Users can update their own transactions" on public.transactions;
+drop policy if exists "Users can delete their own transactions" on public.transactions;
+create policy "Users can select their own transactions" on public.transactions for select using (auth.uid() = user_id);
+create policy "Users can insert their own transactions" on public.transactions for insert with check (auth.uid() = user_id);
+create policy "Users can update their own transactions" on public.transactions for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "Users can delete their own transactions" on public.transactions for delete using (auth.uid() = user_id);
 
 drop policy if exists "Users can select their own categories" on public.categories;
 drop policy if exists "Users can insert their own categories" on public.categories;
@@ -135,5 +148,5 @@ select
   rowsecurity as rls_enabled
 from pg_tables
 where schemaname = 'public'
-  and tablename in ('budgets', 'kop', 'categories', 'subscriptions', 'goals', 'savings_accounts', 'profile')
+  and tablename in ('budgets', 'kop', 'transactions', 'categories', 'subscriptions', 'goals', 'savings_accounts', 'profile')
 order by tablename;
