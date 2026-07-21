@@ -2,6 +2,7 @@
 
 import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import packageInfo from "../../../package.json";
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
   ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
@@ -670,6 +671,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authMessage, setAuthMessage] = useState("");
   const [layoutTheme, setLayoutTheme] = useState<LayoutTheme>("blue");
+  const [lastLocalSave, setLastLocalSave] = useState<string | null>(null);
   const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
   const userThemeStorageKey = user ? `${themeStorageKey}-${user.id}` : themeStorageKey;
   const displayName = getUserDisplayName(user);
@@ -723,6 +725,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         travelBudgets: parsed.travelBudgets ?? defaultData.travelBudgets,
         categories: Array.from(new Set([...defaultData.categories, ...(parsed.categories ?? [])])),
       });
+      setLastLocalSave(window.localStorage.getItem(`${userStorageKey}-saved-at`));
     }
   }, [authLoading, user, userStorageKey, userThemeStorageKey]);
 
@@ -836,7 +839,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   useEffect(() => {
     if (authLoading || !user) return;
 
+    const savedAt = new Date().toISOString();
     window.localStorage.setItem(userStorageKey, JSON.stringify(data));
+    window.localStorage.setItem(`${userStorageKey}-saved-at`, savedAt);
+    setLastLocalSave(savedAt);
   }, [authLoading, data, user, userStorageKey]);
 
   useEffect(() => {
@@ -1762,6 +1768,47 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     goalProgress >= 100 ? "Sparmålen är nådda. Dags för nästa mål!" : `Du är ${goalProgress}% på väg mot dina mål. Sparkonton: ${kr(savingsTotal)}.`,
   ];
 
+  const betaChecks = [
+    {
+      title: "Inloggning",
+      status: user ? "ok" : "warning",
+      value: user ? "Aktiv" : "Inte inloggad",
+      detail: user ? `Privat konto: ${user.email ?? displayName}` : "Logga in för att datan ska vara privat.",
+    },
+    {
+      title: "Supabase-synk",
+      status: remoteReady ? "ok" : "warning",
+      value: remoteReady ? "Aktiv" : "Lokal fallback",
+      detail: remoteReady ? "Appen kan läsa och skriva mot Supabase." : "Kör release-setup.sql eller kontrollera anslutningen.",
+    },
+    {
+      title: "Lokal cache",
+      status: lastLocalSave ? "ok" : "warning",
+      value: lastLocalSave ? "Sparad" : "Väntar",
+      detail: lastLocalSave ? `Senast ${new Date(lastLocalSave).toLocaleString("sv-SE")}` : "Ingen lokal sparning registrerad än.",
+    },
+    {
+      title: "Resebudget",
+      status: remoteReady && data.travelBudgets.every((travel) => Boolean(toRemoteId(travel.id))) ? "ok" : "info",
+      value: `${data.travelBudgets.length} resor`,
+      detail: remoteReady ? "Nya resebudgetar sparas i Supabase." : "Sparar lokalt tills Supabase-tabellerna är redo.",
+    },
+    {
+      title: "Fasta utgifter",
+      status: data.subscriptions.some((subscription) => (subscription.frequency ?? "monthly") !== "monthly") ? "ok" : "info",
+      value: `${data.subscriptions.length} st`,
+      detail: "Stöd för månad, kvartal, halvår, år och eget intervall.",
+    },
+    {
+      title: "Appversion",
+      status: "ok",
+      value: `v${packageInfo.version}`,
+      detail: "Redo för beta-test och Vercel-deploy.",
+    },
+  ];
+  const betaReadyCount = betaChecks.filter((check) => check.status === "ok").length;
+  const betaReadiness = Math.round((betaReadyCount / betaChecks.length) * 100);
+
   function openStat(title: string) {
     if (title === "Totalt saldo") {
       onNavigate("reports");
@@ -2274,6 +2321,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "settings" && (
         <SectionPanel title="Inställningar" description="Hantera testdata och kontoinställningar.">
+          <BetaStatusPanel checks={betaChecks} readiness={betaReadiness} remoteReady={remoteReady} />
           <ThemePicker selectedTheme={layoutTheme} onSelect={setLayoutTheme} />
           <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
           <div className="settings-status"><span>Profil</span><b>{displayName}</b></div>
@@ -2289,6 +2337,41 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
 function SectionPanel({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return <section className="panel section-panel"><div className="section-heading"><h2>{title}</h2><p>{description}</p></div>{children}</section>;
+}
+
+function BetaStatusPanel({
+  checks,
+  readiness,
+  remoteReady,
+}: {
+  checks: { title: string; status: string; value: string; detail: string }[];
+  readiness: number;
+  remoteReady: boolean;
+}) {
+  return (
+    <article className="beta-status-panel">
+      <div className="beta-status-hero">
+        <div>
+          <span>Beta-status</span>
+          <b>{remoteReady ? "Redo för fler testare" : "Nästan redo"}</b>
+          <small>{remoteReady ? "Synken är aktiv och appen sparar mot Supabase." : "Appen fungerar, men väntar på full Supabase-synk."}</small>
+        </div>
+        <strong>{readiness}%</strong>
+      </div>
+      <div className="beta-check-grid">
+        {checks.map((check) => (
+          <div className={`beta-check beta-check-${check.status}`} key={check.title}>
+            <i />
+            <span>
+              <b>{check.title}</b>
+              <small>{check.detail}</small>
+            </span>
+            <strong>{check.value}</strong>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
 }
 
 function ThemePicker({
