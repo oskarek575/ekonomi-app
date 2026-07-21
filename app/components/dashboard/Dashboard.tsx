@@ -1564,15 +1564,28 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     if (editingTravelId) {
       const remoteId = toRemoteId(editingTravelId);
-      if (remoteReady && remoteId) {
+      let syncedId: string | null = null;
+
+      if (remoteReady) {
         try {
-          await updateRemoteTravelBudget(remoteId, {
-            name: travelForm.name.trim(),
-            budget,
-            start_date: travelForm.startDate,
-            end_date: travelForm.endDate,
-            separate_from_free_money: travelForm.separateFromFreeMoney,
-          });
+          if (remoteId) {
+            await updateRemoteTravelBudget(remoteId, {
+              name: travelForm.name.trim(),
+              budget,
+              start_date: travelForm.startDate,
+              end_date: travelForm.endDate,
+              separate_from_free_money: travelForm.separateFromFreeMoney,
+            });
+          } else {
+            const created = await addRemoteTravelBudget({
+              name: travelForm.name.trim(),
+              budget,
+              start_date: travelForm.startDate,
+              end_date: travelForm.endDate,
+              separate_from_free_money: travelForm.separateFromFreeMoney,
+            }) as RemoteTravelBudget;
+            syncedId = String(created.id);
+          }
         } catch (error) {
           console.error(error);
           setRemoteReady(false);
@@ -1583,10 +1596,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ...current,
         travelBudgets: current.travelBudgets.map((travel) =>
           travel.id === editingTravelId
-            ? { ...travel, name: travelForm.name.trim(), budget, startDate: travelForm.startDate, endDate: travelForm.endDate, separateFromFreeMoney: travelForm.separateFromFreeMoney }
+            ? { ...travel, id: syncedId ?? travel.id, name: travelForm.name.trim(), budget, startDate: travelForm.startDate, endDate: travelForm.endDate, separateFromFreeMoney: travelForm.separateFromFreeMoney }
             : travel
         ),
       }));
+      if (syncedId) {
+        setActiveTravelId(syncedId);
+      }
       setEditingTravelId(null);
       show("Resebudgeten är uppdaterad.");
     } else {
