@@ -40,6 +40,7 @@ import type { AppSection } from "../Sidebar";
 
 type TransactionType = "income" | "expense";
 type PurchaseSource = "budget" | "free";
+type SubscriptionFrequency = "monthly" | "quarterly" | "semiannual" | "yearly" | "custom";
 
 type Transaction = {
   id: string;
@@ -64,6 +65,9 @@ type Subscription = {
   amount: number;
   day: number;
   active: boolean;
+  frequency?: SubscriptionFrequency;
+  intervalMonths?: number;
+  startDate?: string;
 };
 
 type Goal = {
@@ -143,6 +147,9 @@ type RemoteSubscription = {
   category: string;
   day_of_month: number;
   active: boolean;
+  frequency?: SubscriptionFrequency | null;
+  interval_months?: number | null;
+  start_date?: string | null;
 };
 
 type RemoteGoal = {
@@ -179,6 +186,22 @@ const layoutThemes: { id: LayoutTheme; label: string; description: string }[] = 
   { id: "rose", label: "Rosa", description: "Varmare ton" },
   { id: "orange", label: "Orange", description: "Mer energi" },
 ];
+
+const subscriptionFrequencies: { id: SubscriptionFrequency; label: string; months: number }[] = [
+  { id: "monthly", label: "Varje månad", months: 1 },
+  { id: "quarterly", label: "Varje kvartal", months: 3 },
+  { id: "semiannual", label: "Varje halvår", months: 6 },
+  { id: "yearly", label: "Varje år", months: 12 },
+  { id: "custom", label: "Eget intervall", months: 1 },
+];
+
+const subscriptionFrequencyLabels: Record<SubscriptionFrequency, string> = {
+  monthly: "Varje månad",
+  quarterly: "Varje kvartal",
+  semiannual: "Varje halvår",
+  yearly: "Varje år",
+  custom: "Eget intervall",
+};
 
 const categoryColors: Record<string, string> = {
   "Bostad": "#8b45f5",
@@ -274,6 +297,18 @@ function defaultTravelForm() {
   };
 }
 
+function defaultSubscriptionForm() {
+  return {
+    name: "",
+    plan: "",
+    amount: "",
+    day: "1",
+    frequency: "monthly" as SubscriptionFrequency,
+    intervalMonths: "2",
+    startDate: formatDateInput(new Date()),
+  };
+}
+
 function currentMonthValue(date = new Date()) {
   const budgetMonth = new Date(date);
 
@@ -306,6 +341,75 @@ function dateForPeriodDay(month: string, day: number) {
   const targetMonthIndex = day >= salaryDay ? monthNumber - 2 : monthNumber - 1;
 
   return formatDateInput(new Date(year, targetMonthIndex, day));
+}
+
+function clampPaymentDay(day: number) {
+  if (!Number.isFinite(day)) return 1;
+
+  return Math.min(28, Math.max(1, Math.round(day)));
+}
+
+function getSubscriptionIntervalMonths(subscription: Pick<Subscription, "frequency" | "intervalMonths">) {
+  if (subscription.frequency === "custom") {
+    return Math.max(1, Math.round(subscription.intervalMonths ?? 1));
+  }
+
+  return subscriptionFrequencies.find((frequency) => frequency.id === (subscription.frequency ?? "monthly"))?.months ?? 1;
+}
+
+function getSubscriptionStartDate(subscription: Pick<Subscription, "startDate" | "day">, month: string) {
+  return subscription.startDate ?? dateForPeriodDay(month, clampPaymentDay(subscription.day));
+}
+
+function monthsBetween(start: Date, end: Date) {
+  return (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth();
+}
+
+function subscriptionOccurrenceDate(start: Date, monthOffset: number, day: number) {
+  return new Date(start.getFullYear(), start.getMonth() + monthOffset, clampPaymentDay(day), 12, 0, 0, 0);
+}
+
+function getSubscriptionDueDateInPeriod(subscription: Subscription, month: string) {
+  if (!subscription.active) return null;
+
+  const period = getFinancialPeriod(month);
+  const intervalMonths = getSubscriptionIntervalMonths(subscription);
+  const startDate = new Date(`${getSubscriptionStartDate(subscription, month)}T12:00:00`);
+  const firstOccurrence = subscriptionOccurrenceDate(startDate, 0, subscription.day);
+  const firstPossibleOffset = Math.max(0, Math.floor(monthsBetween(firstOccurrence, period.start) / intervalMonths) * intervalMonths);
+
+  for (let offset = firstPossibleOffset; offset <= firstPossibleOffset + intervalMonths + 24; offset += intervalMonths) {
+    const occurrence = subscriptionOccurrenceDate(firstOccurrence, offset, subscription.day);
+
+    if (occurrence >= period.end) return null;
+    if (occurrence >= period.start) return formatDateInput(occurrence);
+  }
+
+  return null;
+}
+
+function getNextSubscriptionDueDate(subscription: Subscription, fromDate = new Date()) {
+  if (!subscription.active) return null;
+
+  const intervalMonths = getSubscriptionIntervalMonths(subscription);
+  const startDate = new Date(`${subscription.startDate ?? formatDateInput(fromDate)}T12:00:00`);
+  const firstOccurrence = subscriptionOccurrenceDate(startDate, 0, subscription.day);
+  const today = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 12, 0, 0, 0);
+
+  for (let offset = 0; offset <= 240; offset += intervalMonths) {
+    const occurrence = subscriptionOccurrenceDate(firstOccurrence, offset, subscription.day);
+    if (occurrence >= today) return formatDateInput(occurrence);
+  }
+
+  return null;
+}
+
+function getSubscriptionScheduleLabel(subscription: Subscription) {
+  if (subscription.frequency === "custom") {
+    return `Var ${getSubscriptionIntervalMonths(subscription)}:e månad`;
+  }
+
+  return subscriptionFrequencyLabels[subscription.frequency ?? "monthly"];
 }
 
 function defaultDateForPeriod(month: string) {
@@ -514,7 +618,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     date: defaultDateForPeriod(currentMonthValue()),
   });
   const [budgetForm, setBudgetForm] = useState({ category: "Mat & Livsmedel", limit: "" });
-  const [subscriptionForm, setSubscriptionForm] = useState({ name: "", plan: "", amount: "", day: "1" });
+  const [subscriptionForm, setSubscriptionForm] = useState(defaultSubscriptionForm);
   const [categoryName, setCategoryName] = useState("");
   const [goalForm, setGoalForm] = useState({ title: "", saved: "", target: "" });
   const [savingsForm, setSavingsForm] = useState({ name: "", amount: "" });
@@ -648,14 +752,22 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             limit: Number(budget.monthly_budget),
           })),
           categories: Array.from(new Set([...defaultData.categories, ...current.categories, ...categoryRows.map((category) => category.name)])),
-          subscriptions: subscriptionRows.map((subscription) => ({
-            id: String(subscription.id),
-            name: subscription.name,
-            plan: subscription.category,
-            amount: Number(subscription.amount),
-            day: Number(subscription.day_of_month),
-            active: subscription.active,
-          })),
+          subscriptions: subscriptionRows.map((subscription) => {
+            const id = String(subscription.id);
+            const cached = current.subscriptions.find((item) => item.id === id);
+
+            return {
+              id,
+              name: subscription.name,
+              plan: subscription.category,
+              amount: Number(subscription.amount),
+              day: Number(subscription.day_of_month),
+              active: subscription.active,
+              frequency: subscription.frequency ?? cached?.frequency ?? "monthly",
+              intervalMonths: Number(subscription.interval_months ?? cached?.intervalMonths ?? 1),
+              startDate: subscription.start_date ?? cached?.startDate ?? dateForPeriodDay(month, Number(subscription.day_of_month)),
+            };
+          }),
           goals: goalRows.length ? goalRows.map((goal) => ({
             id: String(goal.id),
             title: goal.title,
@@ -729,8 +841,20 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     .reduce((sum, item) => sum + item.amount, 0);
   const actualBalance = income - expenses;
   const reservedBudgetTotal = data.budgets.reduce((sum, budget) => sum + budget.limit, 0);
-  const fixedExpenseTotal = data.subscriptions
-    .filter((subscription) => subscription.active)
+  const scheduledSubscriptions = data.subscriptions.map((subscription) => {
+    const dueDate = getSubscriptionDueDateInPeriod(subscription, month);
+    const nextDueDate = getNextSubscriptionDueDate(subscription);
+
+    return {
+      ...subscription,
+      dueDate,
+      nextDueDate,
+      scheduleLabel: getSubscriptionScheduleLabel(subscription),
+      isDueThisPeriod: Boolean(dueDate),
+    };
+  });
+  const fixedExpenseTotal = scheduledSubscriptions
+    .filter((subscription) => subscription.isDueThisPeriod)
     .reduce((sum, subscription) => sum + subscription.amount, 0);
   const reservedTotal = reservedBudgetTotal + fixedExpenseTotal;
   const travelSpentAffectingFreeMoney = data.travelBudgets
@@ -789,9 +913,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const latestPurchase = monthTransactions
     .filter((item) => item.type === "expense")
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-  const nextActiveSubscription = data.subscriptions
-    .filter((subscription) => subscription.active)
-    .sort((a, b) => a.day - b.day)[0];
+  const nextActiveSubscription = scheduledSubscriptions
+    .filter((subscription) => subscription.active && subscription.nextDueDate)
+    .sort((a, b) => new Date(`${a.nextDueDate}T12:00:00`).getTime() - new Date(`${b.nextDueDate}T12:00:00`).getTime())[0];
   const activeTravelBudget = data.travelBudgets.find((travel) => travel.id === activeTravelId)
     ?? data.travelBudgets.find(isTravelActive)
     ?? data.travelBudgets[0];
@@ -1010,14 +1134,22 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function addSubscription(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const amount = Number(subscriptionForm.amount);
+    const amount = parseMoney(subscriptionForm.amount);
+    const day = clampPaymentDay(Number(subscriptionForm.day));
+    const intervalMonths = subscriptionForm.frequency === "custom"
+      ? Math.max(1, Math.round(Number(subscriptionForm.intervalMonths)))
+      : getSubscriptionIntervalMonths({ frequency: subscriptionForm.frequency });
+
     if (!subscriptionForm.name.trim() || amount <= 0) return;
 
     const nextSubscription = {
       name: subscriptionForm.name.trim(),
       plan: subscriptionForm.plan.trim() || "Månadsplan",
       amount,
-      day: Number(subscriptionForm.day),
+      day,
+      frequency: subscriptionForm.frequency,
+      intervalMonths,
+      startDate: subscriptionForm.startDate || formatDateInput(new Date()),
     };
 
     if (editingSubscriptionId) {
@@ -1068,7 +1200,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       show("Den fasta utgiften är tillagd och fria pengar räknades om.");
     }
 
-    setSubscriptionForm({ name: "", plan: "", amount: "", day: "1" });
+    setSubscriptionForm(defaultSubscriptionForm());
   }
 
   function editSubscription(subscription: Subscription) {
@@ -1078,13 +1210,16 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       plan: subscription.plan,
       amount: String(subscription.amount),
       day: String(subscription.day),
+      frequency: subscription.frequency ?? "monthly",
+      intervalMonths: String(subscription.intervalMonths ?? 2),
+      startDate: subscription.startDate ?? formatDateInput(new Date()),
     });
     show("Redigerar fast utgift.");
   }
 
   function cancelSubscriptionEdit() {
     setEditingSubscriptionId(null);
-    setSubscriptionForm({ name: "", plan: "", amount: "", day: "1" });
+    setSubscriptionForm(defaultSubscriptionForm());
     show("Redigering avbruten.");
   }
 
@@ -1120,15 +1255,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setData((current) => ({ ...current, subscriptions: current.subscriptions.filter((subscription) => subscription.id !== id) }));
     if (editingSubscriptionId === id) {
       setEditingSubscriptionId(null);
-      setSubscriptionForm({ name: "", plan: "", amount: "", day: "1" });
+      setSubscriptionForm(defaultSubscriptionForm());
     }
     show("Fast utgift togs bort och fria pengar räknades om.");
   }
 
   async function createSubscriptionExpenses() {
-    const existingNames = new Set(monthTransactions.filter((item) => item.category === "Prenumerationer").map((item) => item.title));
-    const newTransactions = data.subscriptions
-      .filter((subscription) => subscription.active && !existingNames.has(subscription.name))
+    const existingKeys = new Set(monthTransactions.filter((item) => item.category === "Prenumerationer").map((item) => `${item.title}-${item.date}`));
+    const newTransactions = scheduledSubscriptions
+      .filter((subscription) => subscription.active && subscription.dueDate && !existingKeys.has(`${subscription.name}-${subscription.dueDate}`))
       .map<Transaction>((subscription) => ({
         id: crypto.randomUUID(),
         title: subscription.name,
@@ -1136,7 +1271,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         amount: subscription.amount,
         type: "expense",
         source: "budget",
-        date: dateForPeriodDay(month, subscription.day),
+        date: subscription.dueDate ?? dateForPeriodDay(month, subscription.day),
       }));
 
     const savedTransactions = remoteReady
@@ -1455,6 +1590,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   function resetDemo() {
     setData(defaultData);
+    setSubscriptionForm(defaultSubscriptionForm());
     setGoalForm({ title: "", saved: "", target: "" });
     setSavingsForm({ name: "", amount: "" });
     setTravelForm(defaultTravelForm());
@@ -1480,7 +1616,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   const topInsights = [
     freeMoney < 0 ? "Du har använt mer fria pengar än perioden tillåter." : `Du har ${kr(freeMoney)} kvar i fria pengar.`,
-    data.subscriptions.length ? `Fasta utgifter är ${kr(fixedExpenseTotal)} och budgetar reserverar ${kr(reservedBudgetTotal)}.` : "Lägg in fasta utgifter för att räkna fria pengar bättre.",
+    data.subscriptions.length ? `Fasta utgifter denna period är ${kr(fixedExpenseTotal)} och budgetar reserverar ${kr(reservedBudgetTotal)}.` : "Lägg in fasta utgifter för att räkna fria pengar bättre.",
     goalProgress >= 100 ? "Sparmålen är nådda. Dags för nästa mål!" : `Du är ${goalProgress}% på väg mot dina mål. Sparkonton: ${kr(savingsTotal)}.`,
   ];
 
@@ -1753,7 +1889,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <button onClick={() => onNavigate("subscriptions")} type="button">
               <Logo title={nextActiveSubscription?.name ?? "Fast"} tone={nextActiveSubscription?.name === "Netflix" ? "black" : "blue"} />
               <span><small>Nästa fasta utgift:</small><b>{nextActiveSubscription?.name ?? "Ingen aktiv"}</b></span>
-              <strong>{nextActiveSubscription ? `${kr(nextActiveSubscription.amount)}, dag ${nextActiveSubscription.day}` : "0 kr"}</strong>
+              <strong>{nextActiveSubscription ? `${kr(nextActiveSubscription.amount)}, ${nextActiveSubscription.nextDueDate ? new Date(`${nextActiveSubscription.nextDueDate}T12:00:00`).toLocaleDateString("sv-SE") : `dag ${nextActiveSubscription.day}`}` : "0 kr"}</strong>
               <ChevronRight size={18}/>
             </button>
           </section>
@@ -1785,7 +1921,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
             <div className="right-stack">
               <InsightsPanel insights={topInsights} onNavigate={onNavigate} affordabilityForm={affordabilityForm} onAffordabilityChange={setAffordabilityForm} affordabilityResult={affordabilityResult} />
-              <SubscriptionsPanel subscriptions={data.subscriptions} onNavigate={onNavigate} onGenerate={createSubscriptionExpenses} onEdit={editSubscription} onToggle={toggleSubscription} onRemove={removeSubscription} />
+              <SubscriptionsPanel subscriptions={scheduledSubscriptions} onNavigate={onNavigate} onGenerate={createSubscriptionExpenses} onEdit={editSubscription} onToggle={toggleSubscription} onRemove={removeSubscription} />
             </div>
           </section>
 
@@ -1956,9 +2092,33 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "subscriptions" && (
         <SectionPanel title="Fasta utgifter" description="Hyra, försäkring, lån, abonnemang och andra återkommande kostnader.">
-          <form className="management-form subscription-form" onSubmit={addSubscription}><input placeholder="Namn" value={subscriptionForm.name} onChange={(event) => setSubscriptionForm((form) => ({ ...form, name: event.target.value }))}/><input placeholder="Typ / plan" value={subscriptionForm.plan} onChange={(event) => setSubscriptionForm((form) => ({ ...form, plan: event.target.value }))}/><input inputMode="numeric" placeholder="Belopp" value={subscriptionForm.amount} onChange={(event) => setSubscriptionForm((form) => ({ ...form, amount: event.target.value }))}/><input inputMode="numeric" min="1" max="28" value={subscriptionForm.day} onChange={(event) => setSubscriptionForm((form) => ({ ...form, day: event.target.value }))}/><button type="submit"><Plus size={16}/> {editingSubscriptionId ? "Spara ändring" : "Skapa ny utgift"}</button>{editingSubscriptionId && <button className="secondary-action" onClick={cancelSubscriptionEdit} type="button">Avbryt</button>}</form>
+          <form className="management-form subscription-form scheduled-subscription-form" onSubmit={addSubscription}>
+            <input placeholder="Namn" value={subscriptionForm.name} onChange={(event) => setSubscriptionForm((form) => ({ ...form, name: event.target.value }))}/>
+            <input placeholder="Typ / plan" value={subscriptionForm.plan} onChange={(event) => setSubscriptionForm((form) => ({ ...form, plan: event.target.value }))}/>
+            <input inputMode="decimal" placeholder="Belopp" value={subscriptionForm.amount} onChange={(event) => setSubscriptionForm((form) => ({ ...form, amount: event.target.value }))}/>
+            <label className="form-field">
+              <span>Dragdatum</span>
+              <input type="date" value={subscriptionForm.startDate} onChange={(event) => {
+                const nextDate = event.target.value;
+                const nextDay = nextDate ? String(new Date(`${nextDate}T12:00:00`).getDate()) : subscriptionForm.day;
+                setSubscriptionForm((form) => ({ ...form, startDate: nextDate, day: nextDay }));
+              }}/>
+            </label>
+            <label className="form-field">
+              <span>Dag i månaden</span>
+              <input inputMode="numeric" min="1" max="28" value={subscriptionForm.day} onChange={(event) => setSubscriptionForm((form) => ({ ...form, day: event.target.value }))}/>
+            </label>
+            <select value={subscriptionForm.frequency} onChange={(event) => setSubscriptionForm((form) => ({ ...form, frequency: event.target.value as SubscriptionFrequency }))}>
+              {subscriptionFrequencies.map((frequency) => <option key={frequency.id} value={frequency.id}>{frequency.label}</option>)}
+            </select>
+            {subscriptionForm.frequency === "custom" && (
+              <input inputMode="numeric" min="1" placeholder="Var X:e månad" value={subscriptionForm.intervalMonths} onChange={(event) => setSubscriptionForm((form) => ({ ...form, intervalMonths: event.target.value }))}/>
+            )}
+            <button type="submit"><Plus size={16}/> {editingSubscriptionId ? "Spara ändring" : "Skapa ny utgift"}</button>
+            {editingSubscriptionId && <button className="secondary-action" onClick={cancelSubscriptionEdit} type="button">Avbryt</button>}
+          </form>
           <button className="wide-button action-wide" onClick={createSubscriptionExpenses} type="button">Skapa månadens fasta utgifter som transaktioner <ArrowRight size={15}/></button>
-          <SubscriptionsPanel subscriptions={data.subscriptions} onNavigate={onNavigate} onGenerate={createSubscriptionExpenses} onEdit={editSubscription} onToggle={toggleSubscription} onRemove={removeSubscription} showAll />
+          <SubscriptionsPanel subscriptions={scheduledSubscriptions} onNavigate={onNavigate} onGenerate={createSubscriptionExpenses} onEdit={editSubscription} onToggle={toggleSubscription} onRemove={removeSubscription} showAll />
         </SectionPanel>
       )}
 
@@ -2101,7 +2261,7 @@ function SubscriptionsPanel({
   onRemove,
   showAll = false,
 }: {
-  subscriptions: Subscription[];
+  subscriptions: (Subscription & { dueDate?: string | null; nextDueDate?: string | null; scheduleLabel?: string; isDueThisPeriod?: boolean })[];
   onNavigate: (section: AppSection) => void;
   onGenerate: () => void;
   onEdit: (subscription: Subscription) => void;
@@ -2114,7 +2274,18 @@ function SubscriptionsPanel({
   return (
     <article className="panel list-panel subscription-panel">
       <CardTitle link={showAll ? undefined : "Visa alla"} onClick={() => onNavigate("subscriptions")}>Fasta utgifter</CardTitle>
-      <div>{visibleSubscriptions.map((item) => <div className={`list-row subscription-row ${item.active ? "" : "inactive"}`} key={item.id}><Logo title={item.name} tone={item.name === "Spotify" ? "spotify" : item.name === "Netflix" ? "black" : "white"} /><span className="row-copy"><b>{item.name}</b><small>{item.plan} · dag {item.day}</small></span><span className="row-value"><b>{kr(item.amount)}</b><small>{item.active ? "Aktiv" : "Pausad"}</small></span><span className="row-actions"><button onClick={() => onEdit(item)} type="button">Redigera</button><button onClick={() => onToggle(item.id)} type="button">{item.active ? "Pausa" : "Aktivera"}</button><button onClick={() => onRemove(item.id)} type="button"><Trash2 size={14}/></button></span></div>)}</div>
+      <div>{visibleSubscriptions.map((item) => (
+        <div className={`list-row subscription-row ${item.active ? "" : "inactive"} ${item.isDueThisPeriod ? "due-now" : ""}`} key={item.id}>
+          <Logo title={item.name} tone={item.name === "Spotify" ? "spotify" : item.name === "Netflix" ? "black" : "white"} />
+          <span className="row-copy">
+            <b>{item.name}</b>
+            <small>{item.plan} · {item.scheduleLabel ?? "Varje månad"} · dag {item.day}</small>
+            <small>{item.isDueThisPeriod && item.dueDate ? `Dras denna period: ${new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : item.nextDueDate ? `Nästa dragning: ${new Date(`${item.nextDueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : "Ingen aktiv dragning"}</small>
+          </span>
+          <span className="row-value"><b>{kr(item.amount)}</b><small>{item.active ? (item.isDueThisPeriod ? "Räknas nu" : "Kommande") : "Pausad"}</small></span>
+          <span className="row-actions"><button onClick={() => onEdit(item)} type="button">Redigera</button><button onClick={() => onToggle(item.id)} type="button">{item.active ? "Pausa" : "Aktivera"}</button><button onClick={() => onRemove(item.id)} type="button"><Trash2 size={14}/></button></span>
+        </div>
+      ))}</div>
       <button className="wide-button" onClick={onGenerate} type="button">Skapa utgifter <ArrowRight size={15}/></button>
     </article>
   );
