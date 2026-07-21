@@ -6,7 +6,7 @@ import packageInfo from "../../../package.json";
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
   ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
-  PiggyBank, Plane, Plus, Search, Sparkles, Trash2, WalletCards,
+  Download, PiggyBank, Plane, Plus, Search, ShieldCheck, Sparkles, Trash2, WalletCards,
 } from "lucide-react";
 import {
   addBudget as addRemoteBudget,
@@ -22,6 +22,7 @@ import {
   deletePurchase as deleteRemotePurchase,
   deleteSavingsAccount as deleteRemoteSavingsAccount,
   deleteSubscription as deleteRemoteSubscription,
+  deleteCurrentUserData,
   deleteTravelBudget as deleteRemoteTravelBudget,
   deleteTravelPurchase as deleteRemoteTravelPurchase,
   getCurrentUser,
@@ -201,6 +202,7 @@ type LayoutTheme = "blue" | "green" | "purple" | "rose" | "orange";
 
 const storageKey = "oskars-ekonomi-v2";
 const themeStorageKey = "oskars-ekonomi-theme";
+const onboardingStorageKey = "oskars-ekonomi-onboarding";
 const salaryDay = 25;
 const monthFormatter = new Intl.DateTimeFormat("sv-SE", { month: "long", year: "numeric" });
 const dateFormatter = new Intl.DateTimeFormat("sv-SE", { day: "numeric", month: "short" });
@@ -672,8 +674,19 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [authMessage, setAuthMessage] = useState("");
   const [layoutTheme, setLayoutTheme] = useState<LayoutTheme>("blue");
   const [lastLocalSave, setLastLocalSave] = useState<string | null>(null);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [onboardingForm, setOnboardingForm] = useState({
+    income: "",
+    fixedName: "",
+    fixedAmount: "",
+    fixedDay: "1",
+    budgetCategory: "Mat & Livsmedel",
+    budgetAmount: "",
+  });
+  const [dangerConfirm, setDangerConfirm] = useState("");
   const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
   const userThemeStorageKey = user ? `${themeStorageKey}-${user.id}` : themeStorageKey;
+  const userOnboardingStorageKey = user ? `${onboardingStorageKey}-${user.id}` : onboardingStorageKey;
   const displayName = getUserDisplayName(user);
   const greeting = getTimeGreeting();
   const initials = getInitials(displayName);
@@ -713,6 +726,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       setLayoutTheme(savedTheme);
     }
 
+    setOnboardingDismissed(window.localStorage.getItem(userOnboardingStorageKey) === "done");
+
     const saved = window.localStorage.getItem(userStorageKey);
     if (saved) {
       const parsed = JSON.parse(saved) as Partial<FinanceData> & { goal?: Omit<Goal, "id"> };
@@ -727,7 +742,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       });
       setLastLocalSave(window.localStorage.getItem(`${userStorageKey}-saved-at`));
     }
-  }, [authLoading, user, userStorageKey, userThemeStorageKey]);
+  }, [authLoading, user, userOnboardingStorageKey, userStorageKey, userThemeStorageKey]);
 
   useEffect(() => {
     document.documentElement.dataset.layoutTheme = layoutTheme;
@@ -1808,6 +1823,156 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   ];
   const betaReadyCount = betaChecks.filter((check) => check.status === "ok").length;
   const betaReadiness = Math.round((betaReadyCount / betaChecks.length) * 100);
+  const needsOnboarding = Boolean(user && !onboardingDismissed && !income && !data.subscriptions.length && !data.budgets.length);
+
+  function completeOnboarding() {
+    window.localStorage.setItem(userOnboardingStorageKey, "done");
+    setOnboardingDismissed(true);
+  }
+
+  function skipOnboarding() {
+    completeOnboarding();
+    show("Startguiden är avstängd. Du kan alltid lägga in allt manuellt.");
+  }
+
+  async function finishOnboarding(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const incomeAmount = parseMoney(onboardingForm.income);
+    const fixedAmount = parseMoney(onboardingForm.fixedAmount);
+    const budgetAmount = parseMoney(onboardingForm.budgetAmount);
+    const nextTransactions: Transaction[] = [];
+    const nextSubscriptions: Subscription[] = [];
+    const nextBudgets: Budget[] = [];
+
+    if (Number.isFinite(incomeAmount) && incomeAmount > 0) {
+      const transaction = {
+        title: "Lön",
+        amount: incomeAmount,
+        category: "Lön",
+        type: "income" as TransactionType,
+        date: dateForPeriodDay(month, salaryDay),
+      };
+      let id = crypto.randomUUID();
+
+      if (remoteReady) {
+        try {
+          const created = await addRemotePurchase(transaction.title, transaction.amount, transaction.category, undefined, toDateTime(transaction.date)) as RemotePurchase;
+          id = String(created.id);
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      nextTransactions.push({ id, ...transaction });
+    }
+
+    if (onboardingForm.fixedName.trim() && Number.isFinite(fixedAmount) && fixedAmount > 0) {
+      const day = clampPaymentDay(Number(onboardingForm.fixedDay));
+      let id = crypto.randomUUID();
+      const subscription = {
+        name: onboardingForm.fixedName.trim(),
+        plan: "Fast utgift",
+        amount: fixedAmount,
+        day,
+        active: true,
+        frequency: "monthly" as SubscriptionFrequency,
+        intervalMonths: 1,
+        startDate: dateForPeriodDay(month, day),
+      };
+
+      if (remoteReady) {
+        try {
+          const created = await addRemoteSubscription(subscription.name, subscription.amount, subscription.plan, subscription.day, {
+            frequency: subscription.frequency,
+            interval_months: subscription.intervalMonths,
+            start_date: subscription.startDate,
+          }) as RemoteSubscription;
+          id = String(created.id);
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      nextSubscriptions.push({ id, ...subscription });
+    }
+
+    if (Number.isFinite(budgetAmount) && budgetAmount > 0) {
+      let id = crypto.randomUUID();
+      const budget = { category: onboardingForm.budgetCategory, limit: budgetAmount };
+
+      if (remoteReady) {
+        try {
+          const created = await addRemoteBudget(budget.category, budget.limit) as RemoteBudget;
+          id = String(created.id);
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      nextBudgets.push({ id, ...budget });
+    }
+
+    setData((current) => ({
+      ...current,
+      transactions: [...nextTransactions, ...current.transactions],
+      subscriptions: [...current.subscriptions, ...nextSubscriptions],
+      budgets: [...current.budgets.filter((budget) => !nextBudgets.some((nextBudget) => nextBudget.category === budget.category)), ...nextBudgets],
+    }));
+    setOnboardingForm({ income: "", fixedName: "", fixedAmount: "", fixedDay: "1", budgetCategory: "Mat & Livsmedel", budgetAmount: "" });
+    completeOnboarding();
+    show("Startguiden är klar. Din första ekonomiplan är skapad.");
+  }
+
+  function exportUserData() {
+    const exportPayload = {
+      app: "Oskars Ekonomi",
+      version: packageInfo.version,
+      exportedAt: new Date().toISOString(),
+      user: {
+        id: user?.id,
+        email: user?.email,
+        name: displayName,
+      },
+      month,
+      data,
+    };
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `oskars-ekonomi-export-${formatDateInput(new Date())}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    show("Exporten är nedladdad.");
+  }
+
+  async function deleteAllUserData() {
+    if (dangerConfirm.trim().toUpperCase() !== "RADERA") {
+      show("Skriv RADERA i rutan för att bekräfta.");
+      return;
+    }
+
+    if (remoteReady) {
+      try {
+        await deleteCurrentUserData();
+      } catch (error) {
+        console.error(error);
+        show("Kunde inte radera i Supabase. Försök igen innan du lämnar sidan.");
+        return;
+      }
+    }
+
+    window.localStorage.removeItem(userStorageKey);
+    window.localStorage.removeItem(`${userStorageKey}-saved-at`);
+    window.localStorage.removeItem(userOnboardingStorageKey);
+    setData({ ...defaultData, transactions: [], budgets: [], subscriptions: [], goals: [], savings: [], travelBudgets: [] });
+    setDangerConfirm("");
+    setOnboardingDismissed(false);
+    show("Din appdata är raderad för den här användaren.");
+  }
 
   function openStat(title: string) {
     if (title === "Totalt saldo") {
@@ -1986,6 +2151,16 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       </div>
 
       <div className="notice-bar">{notice}</div>
+
+      {needsOnboarding && (
+        <OnboardingPanel
+          categories={data.categories}
+          form={onboardingForm}
+          onChange={setOnboardingForm}
+          onSubmit={finishOnboarding}
+          onSkip={skipOnboarding}
+        />
+      )}
 
       {activeSection === "overview" && (
         <>
@@ -2323,6 +2498,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         <SectionPanel title="Inställningar" description="Hantera testdata och kontoinställningar.">
           <BetaStatusPanel checks={betaChecks} readiness={betaReadiness} remoteReady={remoteReady} />
           <ThemePicker selectedTheme={layoutTheme} onSelect={setLayoutTheme} />
+          <DataControlPanel
+            confirmValue={dangerConfirm}
+            onConfirmChange={setDangerConfirm}
+            onDelete={deleteAllUserData}
+            onExport={exportUserData}
+            remoteReady={remoteReady}
+          />
           <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
           <div className="settings-status"><span>Profil</span><b>{displayName}</b></div>
           <div className="settings-status"><span>Inloggad som</span><b>{user.email ?? "Ditt konto"}</b></div>
@@ -2337,6 +2519,75 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
 function SectionPanel({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return <section className="panel section-panel"><div className="section-heading"><h2>{title}</h2><p>{description}</p></div>{children}</section>;
+}
+
+function OnboardingPanel({
+  categories,
+  form,
+  onChange,
+  onSubmit,
+  onSkip,
+}: {
+  categories: string[];
+  form: { income: string; fixedName: string; fixedAmount: string; fixedDay: string; budgetCategory: string; budgetAmount: string };
+  onChange: (form: { income: string; fixedName: string; fixedAmount: string; fixedDay: string; budgetCategory: string; budgetAmount: string }) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSkip: () => void;
+}) {
+  const budgetCategories = categories.filter((category) => !["Lön", "Fria köp", "Prenumerationer"].includes(category));
+
+  return (
+    <section className="onboarding-panel">
+      <div className="onboarding-copy">
+        <span>Startguide</span>
+        <h2>Bygg din första ekonomiplan på 30 sekunder</h2>
+        <p>Lägg in lön, en fast utgift och en första budget så räknar appen ut fria pengar direkt.</p>
+      </div>
+      <form className="onboarding-form" onSubmit={onSubmit}>
+        <label><span>Månadslön</span><input inputMode="decimal" placeholder="25000" value={form.income} onChange={(event) => onChange({ ...form, income: event.target.value })}/></label>
+        <label><span>Fast utgift</span><input placeholder="Hyra" value={form.fixedName} onChange={(event) => onChange({ ...form, fixedName: event.target.value })}/></label>
+        <label><span>Belopp</span><input inputMode="decimal" placeholder="8500" value={form.fixedAmount} onChange={(event) => onChange({ ...form, fixedAmount: event.target.value })}/></label>
+        <label><span>Dras dag</span><input inputMode="numeric" min="1" max="28" value={form.fixedDay} onChange={(event) => onChange({ ...form, fixedDay: event.target.value })}/></label>
+        <label><span>Budget</span><select value={form.budgetCategory} onChange={(event) => onChange({ ...form, budgetCategory: event.target.value })}>{budgetCategories.map((category) => <option key={category}>{category}</option>)}</select></label>
+        <label><span>Budgetbelopp</span><input inputMode="decimal" placeholder="4000" value={form.budgetAmount} onChange={(event) => onChange({ ...form, budgetAmount: event.target.value })}/></label>
+        <button type="submit"><ShieldCheck size={16}/> Skapa min plan</button>
+        <button className="secondary-action" onClick={onSkip} type="button">Hoppa över</button>
+      </form>
+    </section>
+  );
+}
+
+function DataControlPanel({
+  confirmValue,
+  onConfirmChange,
+  onDelete,
+  onExport,
+  remoteReady,
+}: {
+  confirmValue: string;
+  onConfirmChange: (value: string) => void;
+  onDelete: () => void;
+  onExport: () => void;
+  remoteReady: boolean;
+}) {
+  return (
+    <article className="data-control-panel">
+      <div>
+        <span>Data & backup</span>
+        <b>Exportera eller radera testdata</b>
+        <small>Exporten laddar ner en JSON-fil med din nuvarande appdata. Radera kräver bekräftelsen RADERA.</small>
+      </div>
+      <div className="data-control-actions">
+        <button onClick={onExport} type="button"><Download size={16}/> Exportera min data</button>
+        <label>
+          <span>Skriv RADERA</span>
+          <input value={confirmValue} onChange={(event) => onConfirmChange(event.target.value)} placeholder="RADERA" />
+        </label>
+        <button className="danger-action" onClick={onDelete} type="button"><Trash2 size={16}/> Radera min data</button>
+      </div>
+      <p>{remoteReady ? "Supabase-raderingen använder RLS och tar bara bort din användares rader." : "Just nu raderas lokal cache. Supabase är inte aktiv i appen."}</p>
+    </article>
+  );
 }
 
 function BetaStatusPanel({

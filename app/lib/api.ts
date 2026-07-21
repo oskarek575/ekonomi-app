@@ -688,6 +688,32 @@ export async function deleteTravelPurchase(id: number) {
 
   if (error) throw error;
 }
+
+export async function deleteCurrentUserData() {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Du behöver vara inloggad för att radera din data.");
+
+  const tables = [
+    "travel_purchases",
+    "travel_budgets",
+    "kop",
+    "budgets",
+    "categories",
+    "subscriptions",
+    "goals",
+    "savings_accounts",
+    "profile",
+  ];
+
+  for (const table of tables) {
+    const { error } = await supabase
+      .from(table)
+      .delete()
+      .eq("user_id", user.id);
+
+    if (error) throw error;
+  }
+}
 export async function generateSubscriptionsForCurrentMonth() {
   const { data: subscriptions, error } = await supabase
     .from("subscriptions")
