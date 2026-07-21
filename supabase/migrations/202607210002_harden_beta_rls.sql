@@ -8,6 +8,12 @@ alter table if exists public.profile enable row level security;
 alter table if exists public.travel_budgets enable row level security;
 alter table if exists public.travel_purchases enable row level security;
 
+alter table if exists public.kop
+  add column if not exists created_at timestamptz not null default now();
+
+alter table if exists public.goals
+  add column if not exists created_at timestamptz not null default now();
+
 create index if not exists budgets_user_id_idx on public.budgets (user_id);
 create index if not exists kop_user_created_idx on public.kop (user_id, created_at desc);
 create index if not exists categories_user_name_idx on public.categories (user_id, lower(name));
