@@ -14,11 +14,15 @@ import {
   addPurchase as addRemotePurchase,
   addSavingsAccount as addRemoteSavingsAccount,
   addSubscription as addRemoteSubscription,
+  addTravelBudget as addRemoteTravelBudget,
+  addTravelPurchase as addRemoteTravelPurchase,
   deleteBudget as deleteRemoteBudget,
   deleteGoal as deleteRemoteGoal,
   deletePurchase as deleteRemotePurchase,
   deleteSavingsAccount as deleteRemoteSavingsAccount,
   deleteSubscription as deleteRemoteSubscription,
+  deleteTravelBudget as deleteRemoteTravelBudget,
+  deleteTravelPurchase as deleteRemoteTravelPurchase,
   getCurrentUser,
   getBudgets,
   getCategories,
@@ -26,6 +30,7 @@ import {
   getPurchasesByDateRange,
   getSavingsAccounts,
   getSubscriptions,
+  getTravelBudgets,
   onAuthChange,
   signInWithEmail,
   signOut,
@@ -35,6 +40,7 @@ import {
   updatePurchase as updateRemotePurchase,
   updateSavingsAccount as updateRemoteSavingsAccount,
   updateSubscription as updateRemoteSubscription,
+  updateTravelBudget as updateRemoteTravelBudget,
 } from "../../lib/api";
 import type { AppSection } from "../Sidebar";
 
@@ -163,6 +169,25 @@ type RemoteSavingsAccount = {
   id: number;
   name: string;
   amount: number;
+};
+
+type RemoteTravelPurchase = {
+  id: number;
+  travel_budget_id: number;
+  title: string;
+  amount: number;
+  category: string;
+  purchase_date: string;
+};
+
+type RemoteTravelBudget = {
+  id: number;
+  name: string;
+  budget: number;
+  start_date: string;
+  end_date: string;
+  separate_from_free_money: boolean;
+  travel_purchases?: RemoteTravelPurchase[];
 };
 
 type DashboardProps = {
@@ -721,13 +746,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       try {
         const periodRange = getFinancialPeriod(month);
-        const [purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows] = await Promise.all([
+        const [purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, travelRows] = await Promise.all([
           getPurchasesByDateRange(periodRange.start, periodRange.end) as Promise<RemotePurchase[]>,
           getBudgets() as Promise<RemoteBudget[]>,
           getCategories() as Promise<RemoteCategory[]>,
           getSubscriptions() as Promise<RemoteSubscription[]>,
           getGoals().catch(() => []) as Promise<RemoteGoal[]>,
           getSavingsAccounts().catch(() => []) as Promise<RemoteSavingsAccount[]>,
+          getTravelBudgets().catch(() => []) as Promise<RemoteTravelBudget[]>,
         ]);
 
         setData((current) => ({
@@ -779,6 +805,21 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             name: saving.name,
             amount: Number(saving.amount),
           })) : current.savings,
+          travelBudgets: travelRows.length ? travelRows.map((travel) => ({
+            id: String(travel.id),
+            name: travel.name,
+            budget: Number(travel.budget),
+            startDate: travel.start_date,
+            endDate: travel.end_date,
+            separateFromFreeMoney: travel.separate_from_free_money,
+            purchases: (travel.travel_purchases ?? []).map((purchase) => ({
+              id: String(purchase.id),
+              title: purchase.title,
+              amount: Number(purchase.amount),
+              category: purchase.category,
+              date: purchase.purchase_date,
+            })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+          })) : current.travelBudgets,
         }));
         setRemoteReady(true);
         setNotice("Synkad med Supabase.");
@@ -1162,7 +1203,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           nextSubscription.amount,
           nextSubscription.plan,
           nextSubscription.day,
-          existing?.active ?? true
+          existing?.active ?? true,
+          {
+            frequency: nextSubscription.frequency,
+            interval_months: nextSubscription.intervalMonths,
+            start_date: nextSubscription.startDate,
+          }
         );
       }
       setData((current) => ({
@@ -1181,7 +1227,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           nextSubscription.name,
           nextSubscription.amount,
           nextSubscription.plan,
-          nextSubscription.day
+          nextSubscription.day,
+          {
+            frequency: nextSubscription.frequency,
+            interval_months: nextSubscription.intervalMonths,
+            start_date: nextSubscription.startDate,
+          }
         ) as RemoteSubscription;
         id = String(created.id);
       }
@@ -1233,7 +1284,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         subscription.amount,
         subscription.plan,
         subscription.day,
-        !subscription.active
+        !subscription.active,
+        {
+          frequency: subscription.frequency ?? "monthly",
+          interval_months: subscription.intervalMonths ?? 1,
+          start_date: subscription.startDate ?? formatDateInput(new Date()),
+        }
       );
     }
 
@@ -1487,7 +1543,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Sparkontot togs bort.");
   }
 
-  function saveTravelBudget(event: FormEvent<HTMLFormElement>) {
+  async function saveTravelBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const budget = parseMoney(travelForm.budget);
 
@@ -1507,6 +1563,22 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
 
     if (editingTravelId) {
+      const remoteId = toRemoteId(editingTravelId);
+      if (remoteReady && remoteId) {
+        try {
+          await updateRemoteTravelBudget(remoteId, {
+            name: travelForm.name.trim(),
+            budget,
+            start_date: travelForm.startDate,
+            end_date: travelForm.endDate,
+            separate_from_free_money: travelForm.separateFromFreeMoney,
+          });
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
       setData((current) => ({
         ...current,
         travelBudgets: current.travelBudgets.map((travel) =>
@@ -1518,7 +1590,24 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       setEditingTravelId(null);
       show("Resebudgeten är uppdaterad.");
     } else {
-      const id = crypto.randomUUID();
+      let id = crypto.randomUUID();
+
+      if (remoteReady) {
+        try {
+          const created = await addRemoteTravelBudget({
+            name: travelForm.name.trim(),
+            budget,
+            start_date: travelForm.startDate,
+            end_date: travelForm.endDate,
+            separate_from_free_money: travelForm.separateFromFreeMoney,
+          }) as RemoteTravelBudget;
+          id = String(created.id);
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
       setData((current) => ({
         ...current,
         travelBudgets: [{ id, name: travelForm.name.trim(), budget, startDate: travelForm.startDate, endDate: travelForm.endDate, separateFromFreeMoney: travelForm.separateFromFreeMoney, purchases: [] }, ...current.travelBudgets],
@@ -1543,7 +1632,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Redigering av resebudget avbruten.");
   }
 
-  function removeTravelBudget(id: string) {
+  async function removeTravelBudget(id: string) {
+    const remoteId = toRemoteId(id);
+    if (remoteReady && remoteId) {
+      try {
+        await deleteRemoteTravelBudget(remoteId);
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
     setData((current) => ({ ...current, travelBudgets: current.travelBudgets.filter((travel) => travel.id !== id) }));
     if (editingTravelId === id) {
       cancelTravelEdit();
@@ -1551,7 +1650,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Resebudgeten togs bort.");
   }
 
-  function addTravelPurchase(event: FormEvent<HTMLFormElement>) {
+  async function addTravelPurchase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!activeTravelBudget) {
@@ -1570,7 +1669,24 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
-    const purchase: TravelPurchase = { id: crypto.randomUUID(), title: travelPurchaseForm.title.trim(), amount, category: travelPurchaseForm.category, date: travelPurchaseForm.date };
+    let purchase: TravelPurchase = { id: crypto.randomUUID(), title: travelPurchaseForm.title.trim(), amount, category: travelPurchaseForm.category, date: travelPurchaseForm.date };
+    const remoteTravelId = toRemoteId(activeTravelBudget.id);
+
+    if (remoteReady && remoteTravelId) {
+      try {
+        const created = await addRemoteTravelPurchase({
+          travel_budget_id: remoteTravelId,
+          title: purchase.title,
+          amount: purchase.amount,
+          category: purchase.category,
+          purchase_date: purchase.date,
+        }) as RemoteTravelPurchase;
+        purchase = { ...purchase, id: String(created.id) };
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
 
     setData((current) => ({
       ...current,
@@ -1580,7 +1696,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show(activeTravelBudget.separateFromFreeMoney ? "Reseköpet sparades i resebudgeten." : "Reseköpet sparades och påverkar fria pengar.");
   }
 
-  function removeTravelPurchase(travelId: string, purchaseId: string) {
+  async function removeTravelPurchase(travelId: string, purchaseId: string) {
+    const remoteId = toRemoteId(purchaseId);
+    if (remoteReady && remoteId) {
+      try {
+        await deleteRemoteTravelPurchase(remoteId);
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
     setData((current) => ({
       ...current,
       travelBudgets: current.travelBudgets.map((travel) => travel.id === travelId ? { ...travel, purchases: travel.purchases.filter((purchase) => purchase.id !== purchaseId) } : travel),

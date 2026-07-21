@@ -2,6 +2,29 @@ import { supabase } from "./supabase";
 import type { User } from "@supabase/supabase-js";
 
 export type PurchaseSource = "budget" | "free";
+export type SubscriptionFrequency = "monthly" | "quarterly" | "semiannual" | "yearly" | "custom";
+
+export type SubscriptionScheduleInput = {
+  frequency: SubscriptionFrequency;
+  interval_months: number;
+  start_date: string;
+};
+
+export type TravelBudgetInput = {
+  name: string;
+  budget: number;
+  start_date: string;
+  end_date: string;
+  separate_from_free_money: boolean;
+};
+
+export type TravelPurchaseInput = {
+  travel_budget_id: number;
+  title: string;
+  amount: number;
+  category: string;
+  purchase_date: string;
+};
 
 export async function getCurrentUser() {
   const { data, error } = await supabase.auth.getUser();
@@ -528,20 +551,30 @@ export async function addSubscription(
   name: string,
   amount: number,
   category: string,
-  day_of_month: number
+  day_of_month: number,
+  schedule?: SubscriptionScheduleInput
 ) {
-  const { data, error } = await supabase
+  const payload = {
+    name,
+    amount,
+    category,
+    day_of_month,
+    ...(schedule ?? {}),
+  };
+
+  let { data, error } = await supabase
     .from("subscriptions")
-    .insert([
-      {
-        name,
-        amount,
-        category,
-        day_of_month,
-      },
-    ])
+    .insert([payload])
     .select()
     .single();
+
+  if (error && schedule) {
+    ({ data, error } = await supabase
+      .from("subscriptions")
+      .insert([{ name, amount, category, day_of_month }])
+      .select()
+      .single());
+  }
 
   if (error) throw error;
 
@@ -554,9 +587,10 @@ export async function updateSubscription(
   amount: number,
   category: string,
   day_of_month: number,
-  active: boolean
+  active: boolean,
+  schedule?: SubscriptionScheduleInput
 ) {
-  const { error } = await supabase
+  let { error } = await supabase
     .from("subscriptions")
     .update({
       name,
@@ -564,8 +598,22 @@ export async function updateSubscription(
       category,
       day_of_month,
       active,
+      ...(schedule ?? {}),
     })
     .eq("id", id);
+
+  if (error && schedule) {
+    ({ error } = await supabase
+      .from("subscriptions")
+      .update({
+        name,
+        amount,
+        category,
+        day_of_month,
+        active,
+      })
+      .eq("id", id));
+  }
 
   if (error) throw error;
 }
@@ -573,6 +621,68 @@ export async function updateSubscription(
 export async function deleteSubscription(id: number) {
   const { error } = await supabase
     .from("subscriptions")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function getTravelBudgets() {
+  const { data, error } = await supabase
+    .from("travel_budgets")
+    .select("*, travel_purchases(*)")
+    .order("start_date", { ascending: false });
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function addTravelBudget(input: TravelBudgetInput) {
+  const { data, error } = await supabase
+    .from("travel_budgets")
+    .insert([input])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function updateTravelBudget(id: number, input: TravelBudgetInput) {
+  const { error } = await supabase
+    .from("travel_budgets")
+    .update(input)
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function deleteTravelBudget(id: number) {
+  const { error } = await supabase
+    .from("travel_budgets")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function addTravelPurchase(input: TravelPurchaseInput) {
+  const { data, error } = await supabase
+    .from("travel_purchases")
+    .insert([input])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function deleteTravelPurchase(id: number) {
+  const { error } = await supabase
+    .from("travel_purchases")
     .delete()
     .eq("id", id);
 
