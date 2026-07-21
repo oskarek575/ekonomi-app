@@ -5,7 +5,7 @@ import type { User } from "@supabase/supabase-js";
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
   ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
-  PiggyBank, Plus, Search, Sparkles, Trash2, WalletCards,
+  PiggyBank, Plane, Plus, Search, Sparkles, Trash2, WalletCards,
 } from "lucide-react";
 import {
   addBudget as addRemoteBudget,
@@ -79,6 +79,24 @@ type SavingsAccount = {
   amount: number;
 };
 
+type TravelPurchase = {
+  id: string;
+  title: string;
+  amount: number;
+  category: string;
+  date: string;
+};
+
+type TravelBudget = {
+  id: string;
+  name: string;
+  budget: number;
+  startDate: string;
+  endDate: string;
+  separateFromFreeMoney: boolean;
+  purchases: TravelPurchase[];
+};
+
 type AffordabilityResult = {
   answer: "Ja" | "Nej" | "Ja, men tajt";
   tone: "good" | "warning" | "bad";
@@ -93,6 +111,7 @@ type FinanceData = {
   categories: string[];
   goals: Goal[];
   savings: SavingsAccount[];
+  travelBudgets: TravelBudget[];
 };
 
 type RemotePurchase = {
@@ -205,6 +224,17 @@ const defaultData: FinanceData = {
   savings: [
     { id: "sv1", name: "Resekonto", amount: 0 },
   ],
+  travelBudgets: [
+    {
+      id: "tr1",
+      name: "Sommarresa",
+      budget: 12000,
+      startDate: "2026-07-21",
+      endDate: "2026-07-27",
+      separateFromFreeMoney: true,
+      purchases: [],
+    },
+  ],
 };
 
 function kr(value: number) {
@@ -228,6 +258,20 @@ function formatMonthInput(date: Date) {
 
 function formatDateInput(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function defaultTravelForm() {
+  const start = new Date();
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+
+  return {
+    name: "",
+    budget: "",
+    startDate: formatDateInput(start),
+    endDate: formatDateInput(end),
+    separateFromFreeMoney: true,
+  };
 }
 
 function currentMonthValue(date = new Date()) {
@@ -294,6 +338,31 @@ function daysLeftInPeriod(period: { start: Date; end: Date }) {
   }
 
   return Math.max(1, Math.ceil((period.end.getTime() - todayAtNoon.getTime()) / oneDay));
+}
+
+function daysLeftInTravel(startDate: string, endDate: string) {
+  const oneDay = 86400000;
+  const today = new Date();
+  const todayAtNoon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
+  const start = new Date(`${startDate}T12:00:00`);
+  const end = new Date(`${endDate}T12:00:00`);
+  const lastTravelDayEnd = new Date(end.getTime() + oneDay);
+
+  if (todayAtNoon < start) {
+    return Math.max(1, Math.ceil((lastTravelDayEnd.getTime() - start.getTime()) / oneDay));
+  }
+
+  if (todayAtNoon > lastTravelDayEnd) {
+    return 1;
+  }
+
+  return Math.max(1, Math.ceil((lastTravelDayEnd.getTime() - todayAtNoon.getTime()) / oneDay));
+}
+
+function isTravelActive(travel: TravelBudget) {
+  const today = formatDateInput(new Date());
+
+  return today >= travel.startDate && today <= travel.endDate;
 }
 
 function isFreePurchase(item: Pick<Transaction, "type" | "source" | "category">) {
@@ -449,6 +518,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [categoryName, setCategoryName] = useState("");
   const [goalForm, setGoalForm] = useState({ title: "", saved: "", target: "" });
   const [savingsForm, setSavingsForm] = useState({ name: "", amount: "" });
+  const [travelForm, setTravelForm] = useState(defaultTravelForm);
+  const [travelPurchaseForm, setTravelPurchaseForm] = useState({
+    title: "",
+    amount: "",
+    category: "Mat",
+    date: formatDateInput(new Date()),
+  });
   const [affordabilityForm, setAffordabilityForm] = useState({ title: "", amount: "" });
   const [proActive, setProActive] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
@@ -456,6 +532,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [editingSubscriptionId, setEditingSubscriptionId] = useState<string | null>(null);
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
+  const [editingTravelId, setEditingTravelId] = useState<string | null>(null);
+  const [activeTravelId, setActiveTravelId] = useState<string | null>(null);
   const [remoteReady, setRemoteReady] = useState(false);
   const [user, setUser] = useState<AuthUser>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -513,6 +591,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ...parsed,
         goals: savedGoals,
         savings: parsed.savings ?? [],
+        travelBudgets: parsed.travelBudgets ?? defaultData.travelBudgets,
         categories: Array.from(new Set([...defaultData.categories, ...(parsed.categories ?? [])])),
       });
     }
@@ -608,6 +687,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }, [authLoading, data, user, userStorageKey]);
 
   useEffect(() => {
+    if (!data.travelBudgets.length) {
+      setActiveTravelId(null);
+      return;
+    }
+
+    if (!activeTravelId || !data.travelBudgets.some((travel) => travel.id === activeTravelId)) {
+      setActiveTravelId(data.travelBudgets.find(isTravelActive)?.id ?? data.travelBudgets[0].id);
+    }
+  }, [activeTravelId, data.travelBudgets]);
+
+  useEffect(() => {
     setTransactionForm((form) => ({ ...form, date: defaultDateForPeriod(month) }));
   }, [month]);
 
@@ -643,7 +733,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     .filter((subscription) => subscription.active)
     .reduce((sum, subscription) => sum + subscription.amount, 0);
   const reservedTotal = reservedBudgetTotal + fixedExpenseTotal;
-  const freeMoney = income - reservedTotal - freePurchaseSpent;
+  const travelSpentAffectingFreeMoney = data.travelBudgets
+    .filter((travel) => !travel.separateFromFreeMoney)
+    .flatMap((travel) => travel.purchases)
+    .reduce((sum, purchase) => sum + purchase.amount, 0);
+  const freeMoney = income - reservedTotal - freePurchaseSpent - travelSpentAffectingFreeMoney;
   const freeMoneyBase = Math.max(income - reservedTotal, 1);
   const freeMoneyProgress = Math.max(0, Math.min(100, Math.round((Math.max(freeMoney, 0) / freeMoneyBase) * 100)));
   const freeMoneyStyle = { "--free-progress": `${freeMoneyProgress}%` } as CSSProperties;
@@ -698,6 +792,26 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const nextActiveSubscription = data.subscriptions
     .filter((subscription) => subscription.active)
     .sort((a, b) => a.day - b.day)[0];
+  const activeTravelBudget = data.travelBudgets.find((travel) => travel.id === activeTravelId)
+    ?? data.travelBudgets.find(isTravelActive)
+    ?? data.travelBudgets[0];
+  const activeTravelSpent = activeTravelBudget?.purchases.reduce((sum, purchase) => sum + purchase.amount, 0) ?? 0;
+  const activeTravelRemaining = activeTravelBudget ? Math.max(activeTravelBudget.budget - activeTravelSpent, 0) : 0;
+  const activeTravelDaysLeft = activeTravelBudget ? daysLeftInTravel(activeTravelBudget.startDate, activeTravelBudget.endDate) : 1;
+  const activeTravelPerDay = Math.floor(activeTravelRemaining / Math.max(activeTravelDaysLeft, 1));
+  const activeTravelProgress = activeTravelBudget?.budget ? Math.min(100, Math.round((activeTravelSpent / activeTravelBudget.budget) * 100)) : 0;
+  const activeTravelStyle = { "--travel-progress": `${activeTravelProgress}%` } as CSSProperties;
+  const activeTravelTodaySpent = activeTravelBudget?.purchases
+    .filter((purchase) => purchase.date === formatDateInput(new Date()))
+    .reduce((sum, purchase) => sum + purchase.amount, 0) ?? 0;
+  const activeTravelCategoryRows = activeTravelBudget
+    ? ["Mat", "Aktiviteter", "Transport", "Shopping", "Boende", "Övrigt"].map((category) => ({
+        category,
+        sum: activeTravelBudget.purchases
+          .filter((purchase) => purchase.category === category)
+          .reduce((total, purchase) => total + purchase.amount, 0),
+      })).filter((row) => row.sum > 0)
+    : [];
 
   const budgetRows = data.budgets.map((budget) => {
     const used = monthTransactions
@@ -1238,12 +1352,117 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Sparkontot togs bort.");
   }
 
+  function saveTravelBudget(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const budget = parseMoney(travelForm.budget);
+
+    if (!travelForm.name.trim()) {
+      show("Skriv ett namn på resan först.");
+      return;
+    }
+
+    if (!Number.isFinite(budget) || budget <= 0) {
+      show("Skriv en giltig resebudget.");
+      return;
+    }
+
+    if (travelForm.endDate < travelForm.startDate) {
+      show("Slutdatum behöver vara efter startdatum.");
+      return;
+    }
+
+    if (editingTravelId) {
+      setData((current) => ({
+        ...current,
+        travelBudgets: current.travelBudgets.map((travel) =>
+          travel.id === editingTravelId
+            ? { ...travel, name: travelForm.name.trim(), budget, startDate: travelForm.startDate, endDate: travelForm.endDate, separateFromFreeMoney: travelForm.separateFromFreeMoney }
+            : travel
+        ),
+      }));
+      setEditingTravelId(null);
+      show("Resebudgeten är uppdaterad.");
+    } else {
+      const id = crypto.randomUUID();
+      setData((current) => ({
+        ...current,
+        travelBudgets: [{ id, name: travelForm.name.trim(), budget, startDate: travelForm.startDate, endDate: travelForm.endDate, separateFromFreeMoney: travelForm.separateFromFreeMoney, purchases: [] }, ...current.travelBudgets],
+      }));
+      setActiveTravelId(id);
+      show("Resebudgeten är skapad.");
+    }
+
+    setTravelForm(defaultTravelForm());
+  }
+
+  function editTravelBudget(travel: TravelBudget) {
+    setEditingTravelId(travel.id);
+    setActiveTravelId(travel.id);
+    setTravelForm({ name: travel.name, budget: String(travel.budget), startDate: travel.startDate, endDate: travel.endDate, separateFromFreeMoney: travel.separateFromFreeMoney });
+    show("Redigerar resebudget.");
+  }
+
+  function cancelTravelEdit() {
+    setEditingTravelId(null);
+    setTravelForm(defaultTravelForm());
+    show("Redigering av resebudget avbruten.");
+  }
+
+  function removeTravelBudget(id: string) {
+    setData((current) => ({ ...current, travelBudgets: current.travelBudgets.filter((travel) => travel.id !== id) }));
+    if (editingTravelId === id) {
+      cancelTravelEdit();
+    }
+    show("Resebudgeten togs bort.");
+  }
+
+  function addTravelPurchase(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!activeTravelBudget) {
+      show("Skapa en resebudget först.");
+      return;
+    }
+
+    const amount = parseMoney(travelPurchaseForm.amount);
+    if (!travelPurchaseForm.title.trim()) {
+      show("Skriv vad reseköpet gäller.");
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      show("Skriv ett giltigt belopp för reseköpet.");
+      return;
+    }
+
+    const purchase: TravelPurchase = { id: crypto.randomUUID(), title: travelPurchaseForm.title.trim(), amount, category: travelPurchaseForm.category, date: travelPurchaseForm.date };
+
+    setData((current) => ({
+      ...current,
+      travelBudgets: current.travelBudgets.map((travel) => travel.id === activeTravelBudget.id ? { ...travel, purchases: [purchase, ...travel.purchases] } : travel),
+    }));
+    setTravelPurchaseForm((form) => ({ ...form, title: "", amount: "" }));
+    show(activeTravelBudget.separateFromFreeMoney ? "Reseköpet sparades i resebudgeten." : "Reseköpet sparades och påverkar fria pengar.");
+  }
+
+  function removeTravelPurchase(travelId: string, purchaseId: string) {
+    setData((current) => ({
+      ...current,
+      travelBudgets: current.travelBudgets.map((travel) => travel.id === travelId ? { ...travel, purchases: travel.purchases.filter((purchase) => purchase.id !== purchaseId) } : travel),
+    }));
+    show("Reseköpet togs bort.");
+  }
+
   function resetDemo() {
     setData(defaultData);
     setGoalForm({ title: "", saved: "", target: "" });
     setSavingsForm({ name: "", amount: "" });
+    setTravelForm(defaultTravelForm());
+    setTravelPurchaseForm({ title: "", amount: "", category: "Mat", date: formatDateInput(new Date()) });
     setEditingGoalId(null);
     setEditingSavingsId(null);
+    setEditingTravelId(null);
+    setActiveTravelId(defaultData.travelBudgets[0]?.id ?? null);
     show("Demodata är återställd.");
   }
 
@@ -1647,6 +1866,91 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             {editingSavingsId && <button className="secondary-action" onClick={cancelSavingsEdit} type="button">Avbryt</button>}
           </form>
           <GoalPanel goals={data.goals} savings={data.savings} savingsTotal={savingsTotal} manualGoalsSaved={manualGoalsSaved} goalsTargetTotal={goalsTargetTotal} goalSavedTotal={goalSavedTotal} goalProgress={goalProgress} onNavigate={onNavigate} onEditGoal={editGoal} onRemoveGoal={removeGoal} onEditSavings={editSavings} onRemoveSavings={removeSavings} showSavingsDetails />
+        </SectionPanel>
+      )}
+
+      {activeSection === "travel" && (
+        <SectionPanel title="Resebudget" description="Håll koll på vad du faktiskt kan spendera när du är iväg.">
+          {activeTravelBudget ? (
+            <article className="travel-hero" style={activeTravelStyle}>
+              <div>
+                <span>Aktiv resa</span>
+                <h3>{activeTravelBudget.name}</h3>
+                <strong>{kr(activeTravelRemaining)}</strong>
+                <p>{kr(activeTravelPerDay)} per dag · {activeTravelDaysLeft} dagar kvar</p>
+              </div>
+              <div className="travel-ring"><Plane size={38}/></div>
+              <div className="travel-mini-stats">
+                <span><b>{kr(activeTravelBudget.budget)}</b><small>Total budget</small></span>
+                <span><b>{kr(activeTravelSpent)}</b><small>Spenderat</small></span>
+                <span><b>{kr(activeTravelTodaySpent)}</b><small>Idag</small></span>
+              </div>
+            </article>
+          ) : (
+            <EmptyState text="Skapa din första resebudget för att komma igång." />
+          )}
+
+          <div className="travel-layout">
+            <form className="management-form travel-form" onSubmit={saveTravelBudget}>
+              <input placeholder="Resa, t.ex. Mallorca 2026" value={travelForm.name} onChange={(event) => setTravelForm((form) => ({ ...form, name: event.target.value }))}/>
+              <input inputMode="decimal" placeholder="Total resebudget" value={travelForm.budget} onChange={(event) => setTravelForm((form) => ({ ...form, budget: event.target.value }))}/>
+              <input type="date" value={travelForm.startDate} onChange={(event) => setTravelForm((form) => ({ ...form, startDate: event.target.value }))}/>
+              <input type="date" value={travelForm.endDate} onChange={(event) => setTravelForm((form) => ({ ...form, endDate: event.target.value }))}/>
+              <label className="toggle-row"><input checked={travelForm.separateFromFreeMoney} type="checkbox" onChange={(event) => setTravelForm((form) => ({ ...form, separateFromFreeMoney: event.target.checked }))}/><span>Resan är redan avsatt</span></label>
+              <button type="submit"><Plus size={16}/> {editingTravelId ? "Spara resa" : "Skapa resa"}</button>
+              {editingTravelId && <button className="secondary-action" onClick={cancelTravelEdit} type="button">Avbryt</button>}
+            </form>
+
+            {activeTravelBudget && (
+              <form className="management-form travel-purchase-form" onSubmit={addTravelPurchase}>
+                <input placeholder="Ex. lunch, taxi, museum" value={travelPurchaseForm.title} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, title: event.target.value }))}/>
+                <input inputMode="decimal" placeholder="Belopp" value={travelPurchaseForm.amount} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, amount: event.target.value }))}/>
+                <select value={travelPurchaseForm.category} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, category: event.target.value }))}>
+                  {["Mat", "Aktiviteter", "Transport", "Shopping", "Boende", "Övrigt"].map((category) => <option key={category}>{category}</option>)}
+                </select>
+                <input type="date" value={travelPurchaseForm.date} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, date: event.target.value }))}/>
+                <button type="submit"><Plus size={16}/> Lägg till reseköp</button>
+              </form>
+            )}
+          </div>
+
+          <div className="travel-content-grid">
+            <article className="panel travel-list-panel">
+              <CardTitle>Resor</CardTitle>
+              <div className="data-table">
+                {data.travelBudgets.map((travel) => {
+                  const spent = travel.purchases.reduce((sum, purchase) => sum + purchase.amount, 0);
+                  const remaining = Math.max(travel.budget - spent, 0);
+                  return (
+                    <div className={`table-row travel-table-row ${travel.id === activeTravelBudget?.id ? "active" : ""}`} key={travel.id}>
+                      <span><b>{travel.name}</b><small>{travel.startDate} – {travel.endDate} · {travel.separateFromFreeMoney ? "separat från fria pengar" : "påverkar fria pengar"}</small></span>
+                      <strong>{kr(remaining)} kvar</strong>
+                      <span className="row-actions"><button onClick={() => setActiveTravelId(travel.id)} type="button">Visa</button><button onClick={() => editTravelBudget(travel)} type="button">Redigera</button><button onClick={() => removeTravelBudget(travel.id)} type="button"><Trash2 size={14}/></button></span>
+                    </div>
+                  );
+                })}
+              </div>
+            </article>
+
+            <article className="panel travel-list-panel">
+              <CardTitle>Reseköp</CardTitle>
+              <div className="data-table">
+                {activeTravelBudget?.purchases.length ? activeTravelBudget.purchases.map((purchase) => (
+                  <div className="table-row transaction-table-row" key={purchase.id}>
+                    <span><b>{purchase.title}</b><small>{purchase.category} · {new Date(purchase.date).toLocaleDateString("sv-SE")}</small></span>
+                    <strong className="minus">-{kr(purchase.amount)}</strong>
+                    <span className="row-actions"><button onClick={() => removeTravelPurchase(activeTravelBudget.id, purchase.id)} type="button"><Trash2 size={14}/></button></span>
+                  </div>
+                )) : <EmptyState text="Inga reseköp ännu." />}
+              </div>
+            </article>
+          </div>
+
+          {activeTravelCategoryRows.length > 0 && (
+            <div className="travel-category-row">
+              {activeTravelCategoryRows.map((row) => <span key={row.category}><b>{row.category}</b><small>{kr(row.sum)}</small></span>)}
+            </div>
+          )}
         </SectionPanel>
       )}
 
