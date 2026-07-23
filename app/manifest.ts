@@ -12,6 +12,12 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#0c131b",
     icons: [
       {
+        src: "/pwa-icon.png",
+        sizes: "1024x1024",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
         src: "/pwa-icon-192.png",
         sizes: "192x192",
         type: "image/png",
@@ -27,18 +33,6 @@ export default function manifest(): MetadataRoute.Manifest {
         src: "/pwa-icon-512.png",
         sizes: "512x512",
         type: "image/png",
-        purpose: "maskable",
-      },
-      {
-        src: "/pwa-icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
-        purpose: "any",
-      },
-      {
-        src: "/pwa-icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
         purpose: "maskable",
       },
       {
