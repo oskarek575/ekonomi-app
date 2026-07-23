@@ -26,6 +26,13 @@ export type TravelPurchaseInput = {
   purchase_date: string;
 };
 
+export type FeedbackInput = {
+  type: "bug" | "idea" | "other";
+  message: string;
+  page?: string;
+  app_version?: string;
+};
+
 export async function getCurrentUser() {
   const { data, error } = await supabase.auth.getUser();
 
@@ -719,6 +726,7 @@ export async function deleteCurrentUserData() {
   if (!user) throw new Error("Du behöver vara inloggad för att radera din data.");
 
   const tables = [
+    "feedback",
     "travel_purchases",
     "travel_budgets",
     "kop",
@@ -738,6 +746,18 @@ export async function deleteCurrentUserData() {
 
     if (error) throw error;
   }
+}
+
+export async function addFeedback(input: FeedbackInput) {
+  const { data, error } = await supabase
+    .from("feedback")
+    .insert([input])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return data;
 }
 export async function generateSubscriptionsForCurrentMonth() {
   const { data: subscriptions, error } = await supabase

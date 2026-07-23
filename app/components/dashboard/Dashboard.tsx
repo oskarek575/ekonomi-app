@@ -11,6 +11,7 @@ import {
 import {
   addBudget as addRemoteBudget,
   addCategory as addRemoteCategory,
+  addFeedback as addRemoteFeedback,
   addGoal as addRemoteGoal,
   addPurchase as addRemotePurchase,
   addSavingsAccount as addRemoteSavingsAccount,
@@ -699,6 +700,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     date: formatDateInput(new Date()),
   });
   const [affordabilityForm, setAffordabilityForm] = useState({ title: "", amount: "" });
+  const [feedbackForm, setFeedbackForm] = useState({ type: "bug" as "bug" | "idea" | "other", message: "" });
   const [proActive, setProActive] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
@@ -1899,8 +1901,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     },
     {
       title: "Feedbackflöde",
-      status: "warning",
-      detail: "Nästa steg: lägg till rapportera problem/föreslå förbättring.",
+      status: "ok",
+      detail: "Testare kan rapportera problem och föreslå förbättringar direkt i appen.",
     },
     {
       title: "Senaste build",
@@ -2166,6 +2168,33 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     } catch (error) {
       console.error(error);
       show(`Kunde inte uppdatera namn: ${getReadableError(error)}`);
+    }
+  }
+
+  async function submitFeedback(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const message = feedbackForm.message.trim();
+
+    if (message.length < 5) {
+      show("Skriv lite mer feedback först.");
+      return;
+    }
+
+    try {
+      await addRemoteFeedback({
+        type: feedbackForm.type,
+        message,
+        page: activeSection,
+        app_version: packageInfo.version,
+      });
+      setFeedbackForm({ type: "bug", message: "" });
+      show("Tack! Feedbacken är sparad.");
+    } catch (error) {
+      console.error(error);
+      const subject = encodeURIComponent(`Oskars Ekonomi feedback: ${feedbackForm.type}`);
+      const body = encodeURIComponent(`${message}\n\nSida: ${activeSection}\nVersion: ${packageInfo.version}\nAnvändare: ${user?.email ?? "okänd"}`);
+      window.location.href = `mailto:oskarek575@gmail.com?subject=${subject}&body=${body}`;
+      show("Feedback-tabellen kunde inte nås, så jag öppnade mail som fallback.");
     }
   }
 
@@ -2639,6 +2668,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <input value={profileNameForm} onChange={(event) => setProfileNameForm(event.target.value)} placeholder="Ditt namn" />
             <button type="submit"><Edit3 size={16}/> Spara namn</button>
           </form>
+          <FeedbackPanel form={feedbackForm} onChange={setFeedbackForm} onSubmit={submitFeedback} />
+          <PrivacyInfoPanel />
           <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
           <div className="settings-status"><span>Profil</span><b>{displayName}</b></div>
           <div className="settings-status"><span>Inloggad som</span><b>{user.email ?? "Ditt konto"}</b></div>
@@ -2720,6 +2751,55 @@ function DataControlPanel({
         <button className="danger-action" onClick={onDelete} type="button"><Trash2 size={16}/> Radera min data</button>
       </div>
       <p>{remoteReady ? "Supabase-raderingen använder RLS och tar bara bort din användares rader." : "Just nu raderas lokal cache. Supabase är inte aktiv i appen."}</p>
+    </article>
+  );
+}
+
+function FeedbackPanel({
+  form,
+  onChange,
+  onSubmit,
+}: {
+  form: { type: "bug" | "idea" | "other"; message: string };
+  onChange: (form: { type: "bug" | "idea" | "other"; message: string }) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form className="feedback-panel" onSubmit={onSubmit}>
+      <div>
+        <span>Beta-feedback</span>
+        <b>Rapportera problem eller idé</b>
+        <small>Det hjälper oss prioritera rätt under betan.</small>
+      </div>
+      <select value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as "bug" | "idea" | "other" })}>
+        <option value="bug">Problem / bugg</option>
+        <option value="idea">Förbättringsidé</option>
+        <option value="other">Annat</option>
+      </select>
+      <textarea
+        placeholder="Skriv vad som hände eller vad du saknar..."
+        value={form.message}
+        onChange={(event) => onChange({ ...form, message: event.target.value })}
+      />
+      <button type="submit">Skicka feedback</button>
+    </form>
+  );
+}
+
+function PrivacyInfoPanel() {
+  return (
+    <article className="privacy-panel">
+      <div>
+        <span>Integritet & villkor</span>
+        <b>Beta-version, inte finansiell rådgivning</b>
+        <small>Den här appen hjälper dig planera din privata ekonomi, men ersätter inte professionell ekonomisk rådgivning.</small>
+      </div>
+      <div className="privacy-grid">
+        <span><b>Data som sparas</b><small>Köp, budgetar, fasta utgifter, mål, resebudgetar, feedback och profilnamn.</small></span>
+        <span><b>Var data sparas</b><small>I Supabase på ditt inloggade konto, med RLS så användare bara ser sin egen data.</small></span>
+        <span><b>Din kontroll</b><small>Du kan exportera din data och radera appdata från Inställningar.</small></span>
+        <span><b>Beta</b><small>Funktioner kan ändras under testperioden när vi förbättrar appen.</small></span>
+      </div>
     </article>
   );
 }
