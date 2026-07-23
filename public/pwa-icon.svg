@@ -1,6 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#081018"/>
-  <circle cx="256" cy="256" r="158" fill="#40d9a9"/>
-  <circle cx="256" cy="256" r="116" fill="#0c131b"/>
-  <path fill="#40d9a9" d="M269 357h-30v-35c-32-5-56-24-66-53l38-16c8 22 25 34 51 34 24 0 39-10 39-26 0-17-15-22-48-29-43-9-72-24-72-66 0-34 23-58 58-65V66h30v34c28 5 49 21 61 48l-36 17c-8-18-22-27-43-27-21 0-35 10-35 25 0 16 14 22 47 29 44 10 74 25 74 67 0 36-26 61-68 66v32Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Oskars Ekonomi">
+  <defs>
+    <linearGradient id="bg" x1="72" y1="40" x2="440" y2="472" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#16345a"/>
+      <stop offset=".5" stop-color="#0b1828"/>
+      <stop offset="1" stop-color="#06101c"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="137" y1="116" x2="382" y2="394" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67e8f9"/>
+      <stop offset=".46" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#2dd4bf"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.18 0 0 0 0 0.78 0 0 0 0 0.95 0 0 0 .55 0"/>
+      <feBlend in="SourceGraphic"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="392" cy="104" r="88" fill="#38bdf8" opacity=".12"/>
+  <circle cx="112" cy="408" r="120" fill="#2dd4bf" opacity=".1"/>
+  <rect x="105" y="105" width="302" height="302" rx="88" fill="#071522" stroke="#23445f" stroke-width="8"/>
+  <circle cx="256" cy="256" r="112" fill="url(#accent)" filter="url(#glow)"/>
+  <circle cx="256" cy="256" r="82" fill="#071522"/>
+  <path d="M215 183h82c31 0 56 25 56 56v34c0 31-25 56-56 56h-82c-31 0-56-25-56-56v-34c0-31 25-56 56-56Z" fill="none" stroke="url(#accent)" stroke-width="20"/>
+  <path d="M199 256h114" stroke="#e6fbff" stroke-width="22" stroke-linecap="round"/>
+  <path d="M256 199v114" stroke="#e6fbff" stroke-width="22" stroke-linecap="round" opacity=".88"/>
+  <text x="256" y="385" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="58" font-weight="900" letter-spacing="2" fill="#e6fbff">OE</text>
 </svg>

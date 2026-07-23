@@ -22,8 +22,11 @@ export const metadata: Metadata = {
     title: "Oskars Ekonomi",
   },
   icons: {
-    icon: "/pwa-icon.svg",
-    apple: "/pwa-icon.svg",
+    icon: [
+      { url: "/pwa-icon.svg", type: "image/svg+xml" },
+      { url: "/pwa-icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
   },
 };
 
