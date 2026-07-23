@@ -204,6 +204,8 @@ type LayoutTheme = "blue" | "green" | "purple" | "rose" | "orange";
 const storageKey = "oskars-ekonomi-v2";
 const themeStorageKey = "oskars-ekonomi-theme";
 const onboardingStorageKey = "oskars-ekonomi-onboarding";
+const adminStorageKey = "oskars-ekonomi-admin";
+const fallbackAdminEmails = ["oskarek575@gmail.com", "oskarcool1337@gmail.com"];
 const salaryDay = 25;
 const monthFormatter = new Intl.DateTimeFormat("sv-SE", { month: "long", year: "numeric" });
 const dateFormatter = new Intl.DateTimeFormat("sv-SE", { day: "numeric", month: "short" });
@@ -646,6 +648,20 @@ function getTimeGreeting(date = new Date()) {
   return "God kväll";
 }
 
+function getAdminEmails() {
+  const configuredEmails = process.env.NEXT_PUBLIC_BETA_ADMIN_EMAILS?.split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+
+  return configuredEmails?.length ? configuredEmails : fallbackAdminEmails;
+}
+
+function isAdminUser(user: AuthUser) {
+  const email = user?.email?.toLowerCase();
+
+  return Boolean(email && getAdminEmails().includes(email));
+}
+
 function getReadableError(error: unknown) {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "object" && error && "message" in error) {
@@ -700,6 +716,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [profileNameForm, setProfileNameForm] = useState("");
   const [layoutTheme, setLayoutTheme] = useState<LayoutTheme>("blue");
   const [lastLocalSave, setLastLocalSave] = useState<string | null>(null);
+  const [localAdminEnabled, setLocalAdminEnabled] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [onboardingForm, setOnboardingForm] = useState({
     income: "",
@@ -716,6 +733,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const displayName = getUserDisplayName(user);
   const greeting = getTimeGreeting();
   const initials = getInitials(displayName);
+  const showAdminPanels = isAdminUser(user) || localAdminEnabled;
 
   useEffect(() => {
     let active = true;
@@ -747,6 +765,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   useEffect(() => {
     if (authLoading || !user) return;
 
+    setLocalAdminEnabled(window.localStorage.getItem(adminStorageKey) === "true");
     setProfileNameForm(getUserDisplayName(user));
 
     const savedTheme = window.localStorage.getItem(userThemeStorageKey) as LayoutTheme | null;
@@ -1852,6 +1871,45 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const betaReadyCount = betaChecks.filter((check) => check.status === "ok").length;
   const betaReadiness = Math.round((betaReadyCount / betaChecks.length) * 100);
   const needsOnboarding = Boolean(user && !onboardingDismissed && !income && !data.subscriptions.length && !data.budgets.length);
+  const launchChecks = [
+    {
+      title: "Supabase & privat data",
+      status: remoteReady ? "ok" : "warning",
+      detail: remoteReady ? "Synk och RLS är aktivt i appen." : "Kontrollera Supabase eller kör release-setup.sql.",
+    },
+    {
+      title: "Onboarding",
+      status: onboardingDismissed || !needsOnboarding ? "ok" : "warning",
+      detail: "Nya användare får startguide för lön, fast utgift och budget.",
+    },
+    {
+      title: "Export/radera data",
+      status: "ok",
+      detail: "Användaren kan exportera JSON och radera sin appdata.",
+    },
+    {
+      title: "Mobil/PWA",
+      status: "info",
+      detail: "Fortsätt testa på iPhone/Android under betan.",
+    },
+    {
+      title: "Juridik",
+      status: "warning",
+      detail: "Privacy policy, villkor och supportkontakt behöver skrivas innan publik lansering.",
+    },
+    {
+      title: "Feedbackflöde",
+      status: "warning",
+      detail: "Nästa steg: lägg till rapportera problem/föreslå förbättring.",
+    },
+    {
+      title: "Senaste build",
+      status: "ok",
+      detail: `Version ${packageInfo.version}. Lint/build körs innan push.`,
+    },
+  ];
+  const launchReadyCount = launchChecks.filter((check) => check.status === "ok").length;
+  const launchReadiness = Math.round((launchReadyCount / launchChecks.length) * 100);
 
   function completeOnboarding() {
     window.localStorage.setItem(userOnboardingStorageKey, "done");
@@ -2562,7 +2620,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "settings" && (
         <SectionPanel title="Inställningar" description="Hantera testdata och kontoinställningar.">
-          <BetaStatusPanel checks={betaChecks} readiness={betaReadiness} remoteReady={remoteReady} />
+          {showAdminPanels && (
+            <>
+              <BetaStatusPanel checks={betaChecks} readiness={betaReadiness} remoteReady={remoteReady} />
+              <LaunchChecklistPanel checks={launchChecks} readiness={launchReadiness} />
+            </>
+          )}
           <ThemePicker selectedTheme={layoutTheme} onSelect={setLayoutTheme} />
           <DataControlPanel
             confirmValue={dangerConfirm}
@@ -2689,6 +2752,38 @@ function BetaStatusPanel({
               <small>{check.detail}</small>
             </span>
             <strong>{check.value}</strong>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function LaunchChecklistPanel({
+  checks,
+  readiness,
+}: {
+  checks: { title: string; status: string; detail: string }[];
+  readiness: number;
+}) {
+  return (
+    <article className="launch-check-panel">
+      <div className="launch-check-heading">
+        <div>
+          <span>Intern lanseringscheck</span>
+          <b>{readiness}% klart för publik lansering</b>
+          <small>Den här panelen visas bara för admin/betaägare, inte för vanliga användare.</small>
+        </div>
+        <strong>{readiness}%</strong>
+      </div>
+      <div className="launch-check-list">
+        {checks.map((check) => (
+          <div className={`launch-check-row launch-check-${check.status}`} key={check.title}>
+            <i />
+            <span>
+              <b>{check.title}</b>
+              <small>{check.detail}</small>
+            </span>
           </div>
         ))}
       </div>
