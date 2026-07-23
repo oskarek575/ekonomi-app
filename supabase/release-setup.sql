@@ -279,7 +279,7 @@ create table if not exists public.feedback (
   app_version text,
   status text not null default 'new',
   created_at timestamptz not null default now(),
-  constraint feedback_type_check check (type in ('bug', 'idea', 'other')),
+  constraint feedback_type_check check (type in ('bug', 'idea', 'question', 'other')),
   constraint feedback_status_check check (status in ('new', 'reviewed', 'planned', 'done', 'closed'))
 );
 
@@ -300,3 +300,22 @@ create policy "Users can select their own feedback" on public.feedback for selec
 create policy "Users can insert their own feedback" on public.feedback for insert with check (auth.uid() = user_id);
 create policy "Users can update their own feedback" on public.feedback for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "Users can delete their own feedback" on public.feedback for delete using (auth.uid() = user_id);
+
+alter table if exists public.feedback
+  drop constraint if exists feedback_type_check;
+
+alter table if exists public.feedback
+  add constraint feedback_type_check check (type in ('bug', 'idea', 'question', 'other'));
+
+drop policy if exists "Admins can select all feedback" on public.feedback;
+drop policy if exists "Admins can update all feedback" on public.feedback;
+
+create policy "Admins can select all feedback" on public.feedback for select using (
+  lower(auth.jwt() ->> 'email') in ('oskarek575@gmail.com', 'oskarcool1337@gmail.com')
+);
+
+create policy "Admins can update all feedback" on public.feedback for update using (
+  lower(auth.jwt() ->> 'email') in ('oskarek575@gmail.com', 'oskarcool1337@gmail.com')
+) with check (
+  lower(auth.jwt() ->> 'email') in ('oskarek575@gmail.com', 'oskarcool1337@gmail.com')
+);

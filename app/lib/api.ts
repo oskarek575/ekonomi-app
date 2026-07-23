@@ -27,7 +27,7 @@ export type TravelPurchaseInput = {
 };
 
 export type FeedbackInput = {
-  type: "bug" | "idea" | "other";
+  type: "bug" | "idea" | "question" | "other";
   message: string;
   page?: string;
   app_version?: string;
@@ -758,6 +758,26 @@ export async function addFeedback(input: FeedbackInput) {
   if (error) throw error;
 
   return data;
+}
+
+export async function getFeedbackTickets() {
+  const { data, error } = await supabase
+    .from("feedback")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function updateFeedbackStatus(id: number, status: string) {
+  const { error } = await supabase
+    .from("feedback")
+    .update({ status })
+    .eq("id", id);
+
+  if (error) throw error;
 }
 export async function generateSubscriptionsForCurrentMonth() {
   const { data: subscriptions, error } = await supabase

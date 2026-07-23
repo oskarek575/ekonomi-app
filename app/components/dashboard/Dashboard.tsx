@@ -31,6 +31,7 @@ import {
   getCategories,
   getGoals,
   getPurchasesByDateRange,
+  getFeedbackTickets,
   getSavingsAccounts,
   getSubscriptions,
   getTravelBudgets,
@@ -43,6 +44,7 @@ import {
   updatePurchase as updateRemotePurchase,
   updateSavingsAccount as updateRemoteSavingsAccount,
   updateProfileName,
+  updateFeedbackStatus,
   updateSubscription as updateRemoteSubscription,
   updateTravelBudget as updateRemoteTravelBudget,
 } from "../../lib/api";
@@ -173,6 +175,17 @@ type RemoteSavingsAccount = {
   id: number;
   name: string;
   amount: number;
+};
+
+type SupportTicket = {
+  id: number;
+  user_id?: string | null;
+  type: "bug" | "idea" | "question" | "other";
+  message: string;
+  page?: string | null;
+  app_version?: string | null;
+  status: "new" | "reviewed" | "planned" | "done" | "closed";
+  created_at: string;
 };
 
 type RemoteTravelPurchase = {
@@ -700,7 +713,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     date: formatDateInput(new Date()),
   });
   const [affordabilityForm, setAffordabilityForm] = useState({ title: "", amount: "" });
-  const [feedbackForm, setFeedbackForm] = useState({ type: "bug" as "bug" | "idea" | "other", message: "" });
+  const [feedbackForm, setFeedbackForm] = useState({ type: "bug" as "bug" | "idea" | "question" | "other", message: "" });
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [proActive, setProActive] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
@@ -919,6 +933,20 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       setActiveTravelId(data.travelBudgets.find(isTravelActive)?.id ?? data.travelBudgets[0].id);
     }
   }, [activeTravelId, data.travelBudgets]);
+
+  useEffect(() => {
+    if (!user) {
+      setSupportTickets([]);
+      return;
+    }
+
+    getFeedbackTickets()
+      .then((tickets) => setSupportTickets(tickets as SupportTicket[]))
+      .catch((error) => {
+        console.error(error);
+        setSupportTickets([]);
+      });
+  }, [user, showAdminPanels]);
 
   useEffect(() => {
     setTransactionForm((form) => ({ ...form, date: defaultDateForPeriod(month) }));
@@ -2181,20 +2209,32 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
 
     try {
-      await addRemoteFeedback({
+      const created = await addRemoteFeedback({
         type: feedbackForm.type,
         message,
         page: activeSection,
         app_version: packageInfo.version,
-      });
+      }) as SupportTicket;
       setFeedbackForm({ type: "bug", message: "" });
-      show("Tack! Feedbacken är sparad.");
+      setSupportTickets((tickets) => [created, ...tickets]);
+      show(`Tack! Supportärende #${created.id} är mottaget.`);
     } catch (error) {
       console.error(error);
       const subject = encodeURIComponent(`Oskars Ekonomi feedback: ${feedbackForm.type}`);
       const body = encodeURIComponent(`${message}\n\nSida: ${activeSection}\nVersion: ${packageInfo.version}\nAnvändare: ${user?.email ?? "okänd"}`);
       window.location.href = `mailto:oskarek575@gmail.com?subject=${subject}&body=${body}`;
       show("Feedback-tabellen kunde inte nås, så jag öppnade mail som fallback.");
+    }
+  }
+
+  async function changeTicketStatus(id: number, status: SupportTicket["status"]) {
+    try {
+      await updateFeedbackStatus(id, status);
+      setSupportTickets((tickets) => tickets.map((ticket) => ticket.id === id ? { ...ticket, status } : ticket));
+      show(`Supportärende #${id} är uppdaterat.`);
+    } catch (error) {
+      console.error(error);
+      show(`Kunde inte uppdatera supportärende: ${getReadableError(error)}`);
     }
   }
 
@@ -2668,7 +2708,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <input value={profileNameForm} onChange={(event) => setProfileNameForm(event.target.value)} placeholder="Ditt namn" />
             <button type="submit"><Edit3 size={16}/> Spara namn</button>
           </form>
-          <FeedbackPanel form={feedbackForm} onChange={setFeedbackForm} onSubmit={submitFeedback} />
+          <FeedbackPanel form={feedbackForm} tickets={supportTickets} onChange={setFeedbackForm} onSubmit={submitFeedback} />
+          {showAdminPanels && <SupportAdminPanel tickets={supportTickets} onStatusChange={changeTicketStatus} />}
           <PrivacyInfoPanel />
           <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
           <div className="settings-status"><span>Profil</span><b>{displayName}</b></div>
@@ -2757,33 +2798,109 @@ function DataControlPanel({
 
 function FeedbackPanel({
   form,
+  tickets,
   onChange,
   onSubmit,
 }: {
-  form: { type: "bug" | "idea" | "other"; message: string };
-  onChange: (form: { type: "bug" | "idea" | "other"; message: string }) => void;
+  form: { type: "bug" | "idea" | "question" | "other"; message: string };
+  tickets: SupportTicket[];
+  onChange: (form: { type: "bug" | "idea" | "question" | "other"; message: string }) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const visibleTickets = tickets.slice(0, 5);
+
   return (
-    <form className="feedback-panel" onSubmit={onSubmit}>
-      <div>
-        <span>Beta-feedback</span>
-        <b>Rapportera problem eller idé</b>
-        <small>Det hjälper oss prioritera rätt under betan.</small>
+    <article className="feedback-panel support-center-panel">
+      <form className="support-form" onSubmit={onSubmit}>
+        <div>
+          <span>Support & feedback</span>
+          <b>Kontakta support</b>
+          <small>Skicka problem, frågor eller förbättringar. Du får ett ärendenummer direkt.</small>
+        </div>
+        <select value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as "bug" | "idea" | "question" | "other" })}>
+          <option value="bug">Problem / bugg</option>
+          <option value="question">Fråga / support</option>
+          <option value="idea">Förbättringsidé</option>
+          <option value="other">Annat</option>
+        </select>
+        <textarea
+          placeholder="Skriv vad du behöver hjälp med..."
+          value={form.message}
+          onChange={(event) => onChange({ ...form, message: event.target.value })}
+        />
+        <button type="submit">Skicka ärende</button>
+      </form>
+      <div className="support-ticket-list">
+        <h3>Mina ärenden</h3>
+        {visibleTickets.length ? visibleTickets.map((ticket) => <SupportTicketRow key={ticket.id} ticket={ticket} />) : <EmptyState text="Inga supportärenden ännu." />}
       </div>
-      <select value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as "bug" | "idea" | "other" })}>
-        <option value="bug">Problem / bugg</option>
-        <option value="idea">Förbättringsidé</option>
-        <option value="other">Annat</option>
-      </select>
-      <textarea
-        placeholder="Skriv vad som hände eller vad du saknar..."
-        value={form.message}
-        onChange={(event) => onChange({ ...form, message: event.target.value })}
-      />
-      <button type="submit">Skicka feedback</button>
-    </form>
+    </article>
   );
+}
+
+function SupportTicketRow({ ticket }: { ticket: SupportTicket }) {
+  return (
+    <div className={`support-ticket-row support-${ticket.status}`}>
+      <span>
+        <b>#{ticket.id} · {supportTypeLabel(ticket.type)}</b>
+        <small>{ticket.message}</small>
+        <small>{new Date(ticket.created_at).toLocaleString("sv-SE")} · {ticket.page ?? "Inställningar"}</small>
+      </span>
+      <strong>{supportStatusLabel(ticket.status)}</strong>
+    </div>
+  );
+}
+
+function SupportAdminPanel({
+  tickets,
+  onStatusChange,
+}: {
+  tickets: SupportTicket[];
+  onStatusChange: (id: number, status: SupportTicket["status"]) => void;
+}) {
+  return (
+    <article className="support-admin-panel">
+      <div>
+        <span>Adminsupport</span>
+        <b>Alla supportärenden</b>
+        <small>Syns bara för admin. Här kan du följa upp och ändra status.</small>
+      </div>
+      <div className="support-admin-list">
+        {tickets.length ? tickets.map((ticket) => (
+          <div className="support-admin-row" key={ticket.id}>
+            <SupportTicketRow ticket={ticket} />
+            <select value={ticket.status} onChange={(event) => onStatusChange(ticket.id, event.target.value as SupportTicket["status"])}>
+              <option value="new">Ny</option>
+              <option value="reviewed">Läst</option>
+              <option value="planned">Planerad</option>
+              <option value="done">Klar</option>
+              <option value="closed">Stängd</option>
+            </select>
+          </div>
+        )) : <EmptyState text="Inga supportärenden att visa." />}
+      </div>
+    </article>
+  );
+}
+
+function supportTypeLabel(type: SupportTicket["type"]) {
+  if (type === "bug") return "Problem";
+  if (type === "idea") return "Idé";
+  if (type === "question") return "Fråga";
+
+  return "Annat";
+}
+
+function supportStatusLabel(status: SupportTicket["status"]) {
+  const labels: Record<SupportTicket["status"], string> = {
+    new: "Ny",
+    reviewed: "Läst",
+    planned: "Planerad",
+    done: "Klar",
+    closed: "Stängd",
+  };
+
+  return labels[status];
 }
 
 function PrivacyInfoPanel() {
