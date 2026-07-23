@@ -41,6 +41,7 @@ import {
   updateGoal as updateRemoteGoal,
   updatePurchase as updateRemotePurchase,
   updateSavingsAccount as updateRemoteSavingsAccount,
+  updateProfileName,
   updateSubscription as updateRemoteSubscription,
   updateTravelBudget as updateRemoteTravelBudget,
 } from "../../lib/api";
@@ -590,6 +591,30 @@ function Logo({ title, tone = "white" }: { title: string; tone?: string }) {
   return <span className={`logo ${tone}`}>{letter}</span>;
 }
 
+const merchantIcons = [
+  { match: ["ica", "kvantum", "maxi"], label: "ICA", tone: "ica" },
+  { match: ["coop"], label: "Coop", tone: "coop" },
+  { match: ["willys"], label: "W", tone: "willys" },
+  { match: ["lidl"], label: "L", tone: "lidl" },
+  { match: ["spotify"], label: "◎", tone: "spotify" },
+  { match: ["netflix"], label: "N", tone: "netflix" },
+  { match: ["bensin", "circle", "okq8", "preem", "shell"], label: "⛽", tone: "fuel" },
+  { match: ["lön", "lon", "salary"], label: "↓", tone: "income" },
+  { match: ["hyra", "bostad"], label: "⌂", tone: "home" },
+  { match: ["gym"], label: "GYM", tone: "gym" },
+  { match: ["adobe"], label: "A", tone: "adobe" },
+  { match: ["youtube"], label: "▶", tone: "youtube" },
+];
+
+function TransactionIcon({ title, category, type }: { title: string; category: string; type: TransactionType }) {
+  const text = `${title} ${category}`.toLowerCase();
+  const match = merchantIcons.find((icon) => icon.match.some((word) => text.includes(word)));
+  const label = match?.label ?? (type === "income" ? "↓" : category.slice(0, 2).toUpperCase());
+  const tone = match?.tone ?? (type === "income" ? "income" : "default");
+
+  return <span className={`merchant-logo ${tone}`}>{label}</span>;
+}
+
 function EmptyState({ text }: { text: string }) {
   return <div className="empty-state">{text}</div>;
 }
@@ -672,6 +697,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authMessage, setAuthMessage] = useState("");
+  const [profileNameForm, setProfileNameForm] = useState("");
   const [layoutTheme, setLayoutTheme] = useState<LayoutTheme>("blue");
   const [lastLocalSave, setLastLocalSave] = useState<string | null>(null);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
@@ -720,6 +746,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   useEffect(() => {
     if (authLoading || !user) return;
+
+    setProfileNameForm(getUserDisplayName(user));
 
     const savedTheme = window.localStorage.getItem(userThemeStorageKey) as LayoutTheme | null;
     if (savedTheme && layoutThemes.some((theme) => theme.id === savedTheme)) {
@@ -2063,6 +2091,26 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
   }
 
+  async function saveProfileName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextName = profileNameForm.trim();
+
+    if (!nextName) {
+      show("Skriv ett namn först.");
+      return;
+    }
+
+    try {
+      const updatedUser = await updateProfileName(nextName);
+      setUser(updatedUser);
+      setProfileNameForm(nextName);
+      show("Namnet är uppdaterat.");
+    } catch (error) {
+      console.error(error);
+      show(`Kunde inte uppdatera namn: ${getReadableError(error)}`);
+    }
+  }
+
   if (authLoading && !user) {
     return (
       <div className="dashboard-shell auth-shell">
@@ -2310,7 +2358,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
           </form>
           <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök transaktion..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option>Alla</option>{data.categories.map((category) => <option key={category}>{category}</option>)}</select></div>
-          <div className="data-table">{filteredTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span><b>{item.title}</b><small>{item.category} · {new Date(item.date).toLocaleDateString("sv-SE")}</small></span><strong className={item.type === "income" ? "plus" : "minus"}>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <div className="data-table">{filteredTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type}/><span><b>{item.title}</b><small>{item.category} · {new Date(item.date).toLocaleDateString("sv-SE")}</small></span></span><strong className={item.type === "income" ? "plus" : "minus"}>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
@@ -2328,7 +2376,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
           </form>
           <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök fria köp..." value={search} onChange={(event) => setSearch(event.target.value)} /></label></div>
-          <div className="data-table">{freePurchaseTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span><b>{item.title}</b><small>Fria pengar · {new Date(item.date).toLocaleDateString("sv-SE")}</small></span><strong className="minus">-{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <div className="data-table">{freePurchaseTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type}/><span><b>{item.title}</b><small>Fria pengar · {new Date(item.date).toLocaleDateString("sv-SE")}</small></span></span><strong className="minus">-{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
@@ -2491,6 +2539,24 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       {activeSection === "reports" && (
         <SectionPanel title="Rapporter" description={`Sammanfattning för ${monthFormatter.format(monthDate)}.`}>
           <div className="report-grid"><div><span>Inkomster</span><b>{kr(income)}</b></div><div><span>Reserverat</span><b>{kr(reservedTotal)}</b></div><div><span>Fria pengar</span><b>{kr(freeMoney)}</b></div><div><span>Faktiskt saldo</span><b>{kr(actualBalance)}</b></div></div>
+          <article className="report-category-panel">
+            <CardTitle>Utgifter per kategori</CardTitle>
+            {expensesByCategory.length ? (
+              <div className="report-category-body">
+                <div className="donut" style={{ background: donutGradient }}><div><strong>{kr(expenses)}</strong><span>Totala utgifter</span></div></div>
+                <div className="category-list">
+                  {expensesByCategory.map((item) => (
+                    <button className="category-item" key={item.category} onClick={() => { setCategoryFilter(item.category); onNavigate("transactions"); }} type="button">
+                      <i style={{background: item.color}}/>
+                      <span>{item.category}</span>
+                      <b>{kr(item.sum)}</b>
+                      <small>{item.pct}%</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : <EmptyState text="Inga utgifter att visa i cirkeldiagrammet ännu." />}
+          </article>
         </SectionPanel>
       )}
 
@@ -2505,6 +2571,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             onExport={exportUserData}
             remoteReady={remoteReady}
           />
+          <form className="profile-settings-panel" onSubmit={saveProfileName}>
+            <div><span>Profilnamn</span><b>Vad ska appen kalla dig?</b><small>Detta styr hälsningen på startsidan.</small></div>
+            <input value={profileNameForm} onChange={(event) => setProfileNameForm(event.target.value)} placeholder="Ditt namn" />
+            <button type="submit"><Edit3 size={16}/> Spara namn</button>
+          </form>
           <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
           <div className="settings-status"><span>Profil</span><b>{displayName}</b></div>
           <div className="settings-status"><span>Inloggad som</span><b>{user.email ?? "Ditt konto"}</b></div>

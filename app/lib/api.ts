@@ -393,6 +393,31 @@ export async function updateProfile(
 
   if (error) throw error;
 }
+
+export async function updateProfileName(full_name: string) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Du behöver vara inloggad för att ändra namn.");
+
+  await ensureProfileForUser(user, full_name);
+
+  const { error: profileError } = await supabase
+    .from("profile")
+    .update({ full_name })
+    .eq("user_id", user.id);
+
+  if (profileError) throw profileError;
+
+  const { data, error: authError } = await supabase.auth.updateUser({
+    data: {
+      full_name,
+      name: full_name,
+    },
+  });
+
+  if (authError) throw authError;
+
+  return data.user;
+}
 export async function updatePurchase(
   id: number,
   beskrivning: string,
