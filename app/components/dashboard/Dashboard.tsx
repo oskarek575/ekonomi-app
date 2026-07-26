@@ -1083,7 +1083,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const untrackedSavingsTotal = Math.max(0, savingsCreatedThisPeriod - savingsTransactionTotal);
   const actualExpenses = expenses + missingPostedFixedExpenses + travelSpentForActualBalance + untrackedSavingsTotal;
   const actualBalance = income - actualExpenses;
-  const actualBalanceAdjustments = missingPostedFixedExpenses + travelSpentForActualBalance + untrackedSavingsTotal;
   const freeMoney = income - reservedTotal - freePurchaseSpent - travelSpentAffectingFreeMoney;
   const freeMoneyBase = Math.max(income - reservedTotal, 1);
   const freeMoneyProgress = Math.max(0, Math.min(100, Math.round((Math.max(freeMoney, 0) / freeMoneyBase) * 100)));
@@ -2794,15 +2793,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       {activeSection === "reports" && (
         <SectionPanel title="Rapporter" description={`Sammanfattning för ${monthFormatter.format(monthDate)}.`}>
           <div className="report-grid"><div><span>Inkomster</span><b>{kr(income)}</b></div><div><span>Reserverat</span><b>{kr(reservedTotal)}</b></div><div><span>Fria pengar</span><b>{kr(freeMoney)}</b></div><div><span>Faktiskt saldo</span><b>{kr(actualBalance)}</b></div></div>
-          <div className="settings-status">
-            <span>Faktiskt saldo räknas som inkomster minus bankpåverkande utgifter.</span>
-            <b>{kr(income)} − {kr(actualExpenses)} = {kr(actualBalance)}</b>
-            {actualBalanceAdjustments > 0 && (
-              <small>
-                Extra avstämt: {kr(missingPostedFixedExpenses)} förfallna fasta utgifter, {kr(travelSpentForActualBalance)} resebudgetköp och {kr(untrackedSavingsTotal)} sparande som saknade transaktion.
-              </small>
-            )}
-          </div>
           <article className="report-category-panel">
             <CardTitle>Utgifter per kategori</CardTitle>
             {expensesByCategory.length ? (
