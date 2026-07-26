@@ -93,6 +93,7 @@ type SavingsAccount = {
   id: string;
   name: string;
   amount: number;
+  createdAt?: string;
 };
 
 type TravelPurchase = {
@@ -175,6 +176,7 @@ type RemoteSavingsAccount = {
   id: number;
   name: string;
   amount: number;
+  created_at?: string;
 };
 
 type SupportTicket = {
@@ -381,6 +383,14 @@ function isInFinancialPeriod(date: string, month: string) {
   return transactionDate >= start && transactionDate < end;
 }
 
+function isOnOrBeforeToday(date: string) {
+  const today = new Date();
+  const todayAtNoon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
+  const target = new Date(`${date}T12:00:00`);
+
+  return target <= todayAtNoon;
+}
+
 function dateForPeriodDay(month: string, day: number) {
   const [year, monthNumber] = month.split("-").map(Number);
   const targetMonthIndex = day >= salaryDay ? monthNumber - 2 : monthNumber - 1;
@@ -540,6 +550,18 @@ function sourceFromRemotePurchase(
   return purchase.kategori === "Fria köp" || (budgetCategorySet && !budgetCategorySet.has(normalizeCategory(purchase.kategori)))
     ? "free"
     : "budget";
+}
+
+function hasMatchingTransaction(
+  transactions: Transaction[],
+  match: { title: string; amount: number; date: string }
+) {
+  return transactions.some((transaction) =>
+    transaction.type === "expense"
+    && transaction.date === match.date
+    && transaction.title.trim().toLowerCase() === match.title.trim().toLowerCase()
+    && Math.round(transaction.amount) === Math.round(match.amount)
+  );
 }
 
 function getAffordabilityResult({
@@ -905,6 +927,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             id: String(saving.id),
             name: saving.name,
             amount: Number(saving.amount),
+            createdAt: saving.created_at?.slice(0, 10),
           })) : current.savings,
           travelBudgets: travelRows.length ? travelRows.map((travel) => ({
             id: String(travel.id),
@@ -1007,7 +1030,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const todayFreePurchaseSpent = monthTransactions
     .filter((item) => isFreePurchase(item, budgetCategorySet) && item.date === formatDateInput(new Date()))
     .reduce((sum, item) => sum + item.amount, 0);
-  const actualBalance = income - expenses;
   const reservedBudgetTotal = data.budgets.reduce((sum, budget) => sum + budget.limit, 0);
   const scheduledSubscriptions = data.subscriptions.map((subscription) => {
     const dueDate = getSubscriptionDueDateInPeriod(subscription, month);
@@ -1024,17 +1046,49 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const fixedExpenseTotal = scheduledSubscriptions
     .filter((subscription) => subscription.isDueThisPeriod)
     .reduce((sum, subscription) => sum + subscription.amount, 0);
+  const missingPostedFixedExpenses = scheduledSubscriptions
+    .filter((subscription) => subscription.active && subscription.dueDate && isOnOrBeforeToday(subscription.dueDate))
+    .filter((subscription) => !hasMatchingTransaction(monthTransactions, {
+      title: subscription.name,
+      amount: subscription.amount,
+      date: subscription.dueDate ?? "",
+    }))
+    .reduce((sum, subscription) => sum + subscription.amount, 0);
   const reservedTotal = reservedBudgetTotal + fixedExpenseTotal;
+  const travelPurchasesInPeriod = data.travelBudgets
+    .flatMap((travel) => travel.purchases)
+    .filter((purchase) => isInFinancialPeriod(purchase.date, month));
+  const travelSpentForActualBalance = travelPurchasesInPeriod
+    .filter((purchase) => !hasMatchingTransaction(monthTransactions, {
+      title: purchase.title,
+      amount: purchase.amount,
+      date: purchase.date,
+    }))
+    .reduce((sum, purchase) => sum + purchase.amount, 0);
   const travelSpentAffectingFreeMoney = data.travelBudgets
     .filter((travel) => !travel.separateFromFreeMoney)
     .flatMap((travel) => travel.purchases)
+    .filter((purchase) => isInFinancialPeriod(purchase.date, month))
     .reduce((sum, purchase) => sum + purchase.amount, 0);
+  const savingsTotal = data.savings.reduce((sum, saving) => sum + saving.amount, 0);
+  const savingsTransactionTotal = monthTransactions
+    .filter((transaction) =>
+      transaction.type === "expense"
+      && data.savings.some((saving) => normalizeCategory(saving.name) === normalizeCategory(transaction.category))
+    )
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const savingsCreatedThisPeriod = data.savings
+    .filter((saving) => saving.createdAt && isInFinancialPeriod(saving.createdAt, month))
+    .reduce((sum, saving) => sum + saving.amount, 0);
+  const untrackedSavingsTotal = Math.max(0, savingsCreatedThisPeriod - savingsTransactionTotal);
+  const actualExpenses = expenses + missingPostedFixedExpenses + travelSpentForActualBalance + untrackedSavingsTotal;
+  const actualBalance = income - actualExpenses;
+  const actualBalanceAdjustments = missingPostedFixedExpenses + travelSpentForActualBalance + untrackedSavingsTotal;
   const freeMoney = income - reservedTotal - freePurchaseSpent - travelSpentAffectingFreeMoney;
   const freeMoneyBase = Math.max(income - reservedTotal, 1);
   const freeMoneyProgress = Math.max(0, Math.min(100, Math.round((Math.max(freeMoney, 0) / freeMoneyBase) * 100)));
   const freeMoneyStyle = { "--free-progress": `${freeMoneyProgress}%` } as CSSProperties;
   const freeMoneyPerDay = Math.max(0, Math.floor(freeMoney / Math.max(remainingDays, 1)));
-  const savingsTotal = data.savings.reduce((sum, saving) => sum + saving.amount, 0);
   const manualGoalsSaved = data.goals.reduce((sum, goal) => sum + goal.saved, 0);
   const goalsTargetTotal = data.goals.reduce((sum, goal) => sum + goal.target, 0);
   const goalSavedTotal = manualGoalsSaved + savingsTotal;
@@ -1600,6 +1654,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
 
     let newRemoteId: string | null = null;
+    const savingsDate = defaultDateForPeriod(month);
 
     if (remoteReady) {
       try {
@@ -1628,7 +1683,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     if (!editingSavingsId) {
       const savingsSource: PurchaseSource = budgetCategorySet.has(normalizeCategory(name)) ? "budget" : "free";
-      const savingsDate = defaultDateForPeriod(month);
       const savingsTitle = `Sparande till ${name}`;
       let transactionId = crypto.randomUUID();
 
@@ -1670,7 +1724,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           ? current.savings.map((saving) =>
               saving.id === existing.id ? { ...saving, amount: saving.amount + amount } : saving
             )
-          : [...current.savings, { id: newRemoteId ?? crypto.randomUUID(), name, amount }];
+          : [...current.savings, { id: newRemoteId ?? crypto.randomUUID(), name, amount, createdAt: savingsDate }];
 
       return {
         ...current,
@@ -2740,6 +2794,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       {activeSection === "reports" && (
         <SectionPanel title="Rapporter" description={`Sammanfattning för ${monthFormatter.format(monthDate)}.`}>
           <div className="report-grid"><div><span>Inkomster</span><b>{kr(income)}</b></div><div><span>Reserverat</span><b>{kr(reservedTotal)}</b></div><div><span>Fria pengar</span><b>{kr(freeMoney)}</b></div><div><span>Faktiskt saldo</span><b>{kr(actualBalance)}</b></div></div>
+          <div className="settings-status">
+            <span>Faktiskt saldo räknas som inkomster minus bankpåverkande utgifter.</span>
+            <b>{kr(income)} − {kr(actualExpenses)} = {kr(actualBalance)}</b>
+            {actualBalanceAdjustments > 0 && (
+              <small>
+                Extra avstämt: {kr(missingPostedFixedExpenses)} förfallna fasta utgifter, {kr(travelSpentForActualBalance)} resebudgetköp och {kr(untrackedSavingsTotal)} sparande som saknade transaktion.
+              </small>
+            )}
+          </div>
           <article className="report-category-panel">
             <CardTitle>Utgifter per kategori</CardTitle>
             {expensesByCategory.length ? (
