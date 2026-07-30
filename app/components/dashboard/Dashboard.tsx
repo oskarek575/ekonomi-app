@@ -1092,6 +1092,19 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const goalsTargetTotal = data.goals.reduce((sum, goal) => sum + goal.target, 0);
   const goalSavedTotal = manualGoalsSaved + savingsTotal;
   const goalProgress = goalsTargetTotal ? Math.min(100, Math.round((goalSavedTotal / goalsTargetTotal) * 100)) : 0;
+  const goalsRemainingTotal = Math.max(goalsTargetTotal - goalSavedTotal, 0);
+  const strongestGoal = data.goals.length
+    ? [...data.goals].sort((a, b) => (b.target ? b.saved / b.target : 0) - (a.target ? a.saved / a.target : 0))[0]
+    : null;
+  const strongestGoalProgress = strongestGoal?.target
+    ? Math.min(100, Math.round((strongestGoal.saved / strongestGoal.target) * 100))
+    : 0;
+  const savingsThisPeriod = monthTransactions
+    .filter((transaction) =>
+      transaction.type === "expense"
+      && data.savings.some((saving) => normalizeCategory(saving.name) === normalizeCategory(transaction.category))
+    )
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
   const affordabilityAmount = parseMoney(affordabilityForm.amount);
   const affordabilityResult = getAffordabilityResult({
     title: affordabilityForm.title,
@@ -2653,21 +2666,92 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       )}
 
       {activeSection === "goals" && (
-        <SectionPanel title="Mål" description="Skapa flera mål, uppdatera dem och håll koll på sparkonton.">
-          <form className="management-form goal-editor" onSubmit={saveGoal}>
-            <input placeholder="Mål, t.ex. Resa 2027" value={goalForm.title} onChange={(event) => setGoalForm((goal) => ({ ...goal, title: event.target.value }))}/>
-            <input inputMode="decimal" placeholder="Sparat nu" value={goalForm.saved} onChange={(event) => setGoalForm((goal) => ({ ...goal, saved: event.target.value }))}/>
-            <input inputMode="decimal" placeholder="Målsumma" value={goalForm.target} onChange={(event) => setGoalForm((goal) => ({ ...goal, target: event.target.value }))}/>
-            <button type="submit"><Edit3 size={16}/> {editingGoalId ? "Spara mål" : "Skapa mål"}</button>
-            {editingGoalId && <button className="secondary-action" onClick={cancelGoalEdit} type="button">Avbryt</button>}
-          </form>
-          <form className="management-form savings-form" onSubmit={addSavings}>
-            <input placeholder="Sparkonto, t.ex. Resa 2027" value={savingsForm.name} onChange={(event) => setSavingsForm((form) => ({ ...form, name: event.target.value }))}/>
-            <input inputMode="decimal" placeholder={editingSavingsId ? "Totalt belopp" : "Belopp att lägga till"} value={savingsForm.amount} onChange={(event) => setSavingsForm((form) => ({ ...form, amount: event.target.value }))}/>
-            <button type="submit"><Plus size={16}/> {editingSavingsId ? "Spara sparkonto" : "Lägg till sparande"}</button>
-            {editingSavingsId && <button className="secondary-action" onClick={cancelSavingsEdit} type="button">Avbryt</button>}
-          </form>
-          <GoalPanel goals={data.goals} savings={data.savings} savingsTotal={savingsTotal} manualGoalsSaved={manualGoalsSaved} goalsTargetTotal={goalsTargetTotal} goalSavedTotal={goalSavedTotal} goalProgress={goalProgress} onNavigate={onNavigate} onEditGoal={editGoal} onRemoveGoal={removeGoal} onEditSavings={editSavings} onRemoveSavings={removeSavings} showSavingsDetails />
+        <SectionPanel title="Mål & sparande" description="Följ dina mål, sparkonton och hur nära du är nästa milstolpe.">
+          <section className="savings-portfolio-hero panel" style={{ "--goal-progress": `${goalProgress}%` } as CSSProperties}>
+            <div className="savings-hero-copy">
+              <span>Sparportfölj</span>
+              <h2>{kr(goalSavedTotal)}</h2>
+              <p>{goalsTargetTotal ? `${goalProgress}% mot dina mål · ${kr(goalsRemainingTotal)} kvar` : "Skapa ditt första mål och börja bygga något."}</p>
+              <div className="savings-hero-actions">
+                <button onClick={() => setGoalForm((goal) => ({ ...goal, title: goal.title || "Resa 2027" }))} type="button"><Crosshair size={16}/> Nytt mål</button>
+                <button onClick={() => setSavingsForm((form) => ({ ...form, name: form.name || "Sparkonto" }))} type="button"><PiggyBank size={16}/> Lägg till sparande</button>
+              </div>
+            </div>
+            <div className="savings-hero-ring" aria-hidden="true">
+              <strong>{goalProgress}%</strong>
+              <small>klart</small>
+            </div>
+          </section>
+
+          <section className="savings-metric-grid">
+            <div><span>Totalt sparat</span><b>{kr(goalSavedTotal)}</b><small>Mål + sparkonton</small></div>
+            <div><span>Kvar till mål</span><b>{kr(goalsRemainingTotal)}</b><small>{data.goals.length} aktiva mål</small></div>
+            <div><span>Sparat denna period</span><b>{kr(savingsThisPeriod)}</b><small>Registrerade spartransaktioner</small></div>
+            <div><span>Närmast klart</span><b>{strongestGoal ? `${strongestGoalProgress}%` : "0%"}</b><small>{strongestGoal?.title ?? "Inget mål ännu"}</small></div>
+          </section>
+
+          <section className="premium-savings-layout">
+            <article className="premium-savings-panel">
+              <CardTitle>Dina mål</CardTitle>
+              <div className="premium-goal-grid">
+                {data.goals.length ? data.goals.map((goal) => {
+                  const progress = goal.target ? Math.min(100, Math.round((goal.saved / goal.target) * 100)) : 0;
+                  const remaining = Math.max(goal.target - goal.saved, 0);
+
+                  return (
+                    <div className="premium-goal-card" key={goal.id}>
+                      <div className="premium-goal-top">
+                        <span><Crosshair size={18}/></span>
+                        <small>{progress >= 100 ? "Mål nått" : `${kr(remaining)} kvar`}</small>
+                      </div>
+                      <h3>{goal.title}</h3>
+                      <strong>{kr(goal.saved)}</strong>
+                      <p>av {kr(goal.target)}</p>
+                      <div className="premium-progress"><i style={{ width: `${progress}%` }}/></div>
+                      <div className="premium-card-actions">
+                        <button onClick={() => editGoal(goal)} type="button">Redigera</button>
+                        <button onClick={() => removeGoal(goal.id)} type="button"><Trash2 size={14}/></button>
+                      </div>
+                    </div>
+                  );
+                }) : <EmptyState text="Skapa ditt första mål och låt appen visa hur nära du är." />}
+              </div>
+            </article>
+
+            <article className="premium-savings-panel">
+              <CardTitle>Sparkonton</CardTitle>
+              <div className="premium-account-list">
+                {data.savings.length ? data.savings.map((saving) => (
+                  <div className="premium-account-card" key={saving.id}>
+                    <span><PiggyBank size={18}/></span>
+                    <div><b>{saving.name}</b><small>Räknas med i totalt sparat</small></div>
+                    <strong>{kr(saving.amount)}</strong>
+                    <button onClick={() => editSavings(saving)} type="button">Redigera</button>
+                    <button onClick={() => removeSavings(saving.id)} type="button"><Trash2 size={14}/></button>
+                  </div>
+                )) : <EmptyState text="Lägg till ett sparkonto för att följa pengar du flyttar undan." />}
+              </div>
+            </article>
+          </section>
+
+          <section className="premium-editor-grid">
+            <form className="premium-editor-card" onSubmit={saveGoal}>
+              <div><span>Mål</span><b>{editingGoalId ? "Redigera mål" : "Skapa nytt mål"}</b></div>
+              <input placeholder="Mål, t.ex. Resa 2027" value={goalForm.title} onChange={(event) => setGoalForm((goal) => ({ ...goal, title: event.target.value }))}/>
+              <input inputMode="decimal" placeholder="Sparat nu" value={goalForm.saved} onChange={(event) => setGoalForm((goal) => ({ ...goal, saved: event.target.value }))}/>
+              <input inputMode="decimal" placeholder="Målsumma" value={goalForm.target} onChange={(event) => setGoalForm((goal) => ({ ...goal, target: event.target.value }))}/>
+              <button type="submit"><Edit3 size={16}/> {editingGoalId ? "Spara mål" : "Skapa mål"}</button>
+              {editingGoalId && <button className="secondary-action" onClick={cancelGoalEdit} type="button">Avbryt</button>}
+            </form>
+
+            <form className="premium-editor-card" onSubmit={addSavings}>
+              <div><span>Sparande</span><b>{editingSavingsId ? "Redigera sparkonto" : "Lägg till sparande"}</b></div>
+              <input placeholder="Sparkonto, t.ex. Resa 2027" value={savingsForm.name} onChange={(event) => setSavingsForm((form) => ({ ...form, name: event.target.value }))}/>
+              <input inputMode="decimal" placeholder={editingSavingsId ? "Totalt belopp" : "Belopp att lägga till"} value={savingsForm.amount} onChange={(event) => setSavingsForm((form) => ({ ...form, amount: event.target.value }))}/>
+              <button type="submit"><Plus size={16}/> {editingSavingsId ? "Spara sparkonto" : "Lägg till sparande"}</button>
+              {editingSavingsId && <button className="secondary-action" onClick={cancelSavingsEdit} type="button">Avbryt</button>}
+            </form>
+          </section>
         </SectionPanel>
       )}
 
