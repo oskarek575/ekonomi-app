@@ -6,13 +6,14 @@ import packageInfo from "../../../package.json";
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
   ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
-  Download, PiggyBank, Plane, Plus, Search, ShieldCheck, Sparkles, Trash2, WalletCards,
+  Download, LineChart, PiggyBank, Plane, Plus, Search, ShieldCheck, Sparkles, Trash2, WalletCards,
 } from "lucide-react";
 import {
   addBudget as addRemoteBudget,
   addCategory as addRemoteCategory,
   addFeedback as addRemoteFeedback,
   addGoal as addRemoteGoal,
+  addInvestment as addRemoteInvestment,
   addPurchase as addRemotePurchase,
   addSavingsAccount as addRemoteSavingsAccount,
   addSubscription as addRemoteSubscription,
@@ -20,6 +21,7 @@ import {
   addTravelPurchase as addRemoteTravelPurchase,
   deleteBudget as deleteRemoteBudget,
   deleteGoal as deleteRemoteGoal,
+  deleteInvestment as deleteRemoteInvestment,
   deletePurchase as deleteRemotePurchase,
   deleteSavingsAccount as deleteRemoteSavingsAccount,
   deleteSubscription as deleteRemoteSubscription,
@@ -30,6 +32,7 @@ import {
   getBudgets,
   getCategories,
   getGoals,
+  getInvestments,
   getPurchasesByDateRange,
   getFeedbackTickets,
   getSavingsAccounts,
@@ -41,6 +44,7 @@ import {
   signUpWithEmail,
   updateBudget as updateRemoteBudget,
   updateGoal as updateRemoteGoal,
+  updateInvestment as updateRemoteInvestment,
   updatePurchase as updateRemotePurchase,
   updateSavingsAccount as updateRemoteSavingsAccount,
   updateProfileName,
@@ -96,6 +100,20 @@ type SavingsAccount = {
   createdAt?: string;
 };
 
+type InvestmentType = "stock" | "fund" | "crypto" | "other";
+
+type Investment = {
+  id: string;
+  name: string;
+  symbol: string;
+  type: InvestmentType;
+  quantity: number;
+  averagePrice: number;
+  currentPrice: number;
+  currency: string;
+  priceUpdatedAt?: string | null;
+};
+
 type TravelPurchase = {
   id: string;
   title: string;
@@ -128,6 +146,7 @@ type FinanceData = {
   categories: string[];
   goals: Goal[];
   savings: SavingsAccount[];
+  investments: Investment[];
   travelBudgets: TravelBudget[];
 };
 
@@ -177,6 +196,18 @@ type RemoteSavingsAccount = {
   name: string;
   amount: number;
   created_at?: string;
+};
+
+type RemoteInvestment = {
+  id: number;
+  name: string;
+  symbol: string;
+  type: InvestmentType;
+  quantity: number;
+  average_price: number;
+  current_price: number;
+  currency: string;
+  price_updated_at?: string | null;
 };
 
 type SupportTicket = {
@@ -294,6 +325,7 @@ const defaultData: FinanceData = {
   savings: [
     { id: "sv1", name: "Resekonto", amount: 0 },
   ],
+  investments: [],
   travelBudgets: [
     {
       id: "tr1",
@@ -743,6 +775,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [categoryName, setCategoryName] = useState("");
   const [goalForm, setGoalForm] = useState({ title: "", saved: "", target: "" });
   const [savingsForm, setSavingsForm] = useState({ name: "", amount: "" });
+  const [investmentForm, setInvestmentForm] = useState({
+    name: "",
+    symbol: "",
+    type: "stock" as InvestmentType,
+    quantity: "",
+    averagePrice: "",
+    currentPrice: "",
+    currency: "SEK",
+  });
   const [travelForm, setTravelForm] = useState(defaultTravelForm);
   const [travelPurchaseForm, setTravelPurchaseForm] = useState({
     title: "",
@@ -759,6 +800,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [editingSubscriptionId, setEditingSubscriptionId] = useState<string | null>(null);
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
+  const [editingInvestmentId, setEditingInvestmentId] = useState<string | null>(null);
   const [editingTravelId, setEditingTravelId] = useState<string | null>(null);
   const [activeTravelId, setActiveTravelId] = useState<string | null>(null);
   const [remoteReady, setRemoteReady] = useState(false);
@@ -838,6 +880,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ...parsed,
         goals: savedGoals,
         savings: parsed.savings ?? [],
+        investments: parsed.investments ?? [],
         travelBudgets: parsed.travelBudgets ?? defaultData.travelBudgets,
         categories: Array.from(new Set([...defaultData.categories, ...(parsed.categories ?? [])])),
       });
@@ -865,13 +908,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       try {
         const periodRange = getFinancialPeriod(month);
-        const [purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, travelRows] = await Promise.all([
+        const [purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, investmentRows, travelRows] = await Promise.all([
           getPurchasesByDateRange(periodRange.start, periodRange.end) as Promise<RemotePurchase[]>,
           getBudgets() as Promise<RemoteBudget[]>,
           getCategories() as Promise<RemoteCategory[]>,
           getSubscriptions() as Promise<RemoteSubscription[]>,
           getGoals().catch(() => []) as Promise<RemoteGoal[]>,
           getSavingsAccounts().catch(() => []) as Promise<RemoteSavingsAccount[]>,
+          getInvestments().catch(() => []) as Promise<RemoteInvestment[]>,
           getTravelBudgets().catch(() => []) as Promise<RemoteTravelBudget[]>,
         ]);
 
@@ -929,6 +973,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             amount: Number(saving.amount),
             createdAt: saving.created_at?.slice(0, 10),
           })) : current.savings,
+          investments: investmentRows.length ? investmentRows.map((investment) => ({
+            id: String(investment.id),
+            name: investment.name,
+            symbol: investment.symbol,
+            type: investment.type,
+            quantity: Number(investment.quantity),
+            averagePrice: Number(investment.average_price),
+            currentPrice: Number(investment.current_price),
+            currency: investment.currency,
+            priceUpdatedAt: investment.price_updated_at,
+          })) : current.investments,
           travelBudgets: travelRows.length ? travelRows.map((travel) => ({
             id: String(travel.id),
             name: travel.name,
@@ -1105,6 +1160,36 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       && data.savings.some((saving) => normalizeCategory(saving.name) === normalizeCategory(transaction.category))
     )
     .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const investmentRows = data.investments.map((investment) => {
+    const invested = investment.quantity * investment.averagePrice;
+    const value = investment.quantity * investment.currentPrice;
+    const profit = value - invested;
+    const profitPct = invested ? (profit / invested) * 100 : 0;
+
+    return { ...investment, invested, value, profit, profitPct };
+  });
+  const portfolioValue = investmentRows.reduce((sum, investment) => sum + investment.value, 0);
+  const portfolioInvested = investmentRows.reduce((sum, investment) => sum + investment.invested, 0);
+  const portfolioProfit = portfolioValue - portfolioInvested;
+  const portfolioProfitPct = portfolioInvested ? (portfolioProfit / portfolioInvested) * 100 : 0;
+  const portfolioBest = investmentRows.length
+    ? [...investmentRows].sort((a, b) => b.profitPct - a.profitPct)[0]
+    : null;
+  const investmentDistribution = investmentRows
+    .map((investment) => ({
+      name: investment.name,
+      value: investment.value,
+      pct: portfolioValue ? Math.round((investment.value / portfolioValue) * 100) : 0,
+      color: categoryColors[investment.name] ?? categoryColors[investment.type] ?? "#38bdf8",
+    }))
+    .filter((item) => item.value > 0);
+  const investmentDonutGradient = investmentDistribution.length
+    ? investmentDistribution.reduce((parts, item, index) => {
+        const start = investmentDistribution.slice(0, index).reduce((sum, row) => sum + row.pct, 0);
+        const end = Math.min(100, start + item.pct);
+        return `${parts}${item.color} ${start}% ${end}%,`;
+      }, "conic-gradient(").replace(/,$/, ")")
+    : "conic-gradient(#26323e 0 100%)";
   const affordabilityAmount = parseMoney(affordabilityForm.amount);
   const affordabilityResult = getAffordabilityResult({
     title: affordabilityForm.title,
@@ -1781,6 +1866,193 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Sparkontot togs bort.");
   }
 
+  function resetInvestmentForm() {
+    setInvestmentForm({
+      name: "",
+      symbol: "",
+      type: "stock",
+      quantity: "",
+      averagePrice: "",
+      currentPrice: "",
+      currency: "SEK",
+    });
+    setEditingInvestmentId(null);
+  }
+
+  async function saveInvestment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = investmentForm.name.trim();
+    const symbol = investmentForm.symbol.trim();
+    const quantity = parseMoney(investmentForm.quantity);
+    const averagePrice = parseMoney(investmentForm.averagePrice);
+    const currentPrice = parseMoney(investmentForm.currentPrice);
+
+    if (!name || !symbol) {
+      show("Skriv namn och symbol för innehavet.");
+      return;
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(averagePrice) || averagePrice < 0 || !Number.isFinite(currentPrice) || currentPrice < 0) {
+      show("Skriv giltigt antal, inköpspris och aktuell kurs.");
+      return;
+    }
+
+    const input = {
+      name,
+      symbol,
+      type: investmentForm.type,
+      quantity,
+      average_price: averagePrice,
+      current_price: currentPrice,
+      currency: investmentForm.currency.trim() || "SEK",
+      price_updated_at: new Date().toISOString(),
+    };
+
+    if (editingInvestmentId) {
+      const remoteId = toRemoteId(editingInvestmentId);
+      if (remoteReady && remoteId) {
+        try {
+          await updateRemoteInvestment(remoteId, input);
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      setData((current) => ({
+        ...current,
+        investments: current.investments.map((investment) =>
+          investment.id === editingInvestmentId
+            ? {
+                ...investment,
+                name,
+                symbol,
+                type: investmentForm.type,
+                quantity,
+                averagePrice,
+                currentPrice,
+                currency: input.currency,
+                priceUpdatedAt: input.price_updated_at,
+              }
+            : investment
+        ),
+      }));
+      show("Investeringen är uppdaterad.");
+    } else {
+      let id = crypto.randomUUID();
+
+      if (remoteReady) {
+        try {
+          const created = await addRemoteInvestment(input) as RemoteInvestment;
+          id = String(created.id);
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      setData((current) => ({
+        ...current,
+        investments: [
+          ...current.investments,
+          {
+            id,
+            name,
+            symbol,
+            type: investmentForm.type,
+            quantity,
+            averagePrice,
+            currentPrice,
+            currency: input.currency,
+            priceUpdatedAt: input.price_updated_at,
+          },
+        ],
+      }));
+      show("Investeringen är tillagd.");
+    }
+
+    resetInvestmentForm();
+  }
+
+  function editInvestment(investment: Investment) {
+    setEditingInvestmentId(investment.id);
+    setInvestmentForm({
+      name: investment.name,
+      symbol: investment.symbol,
+      type: investment.type,
+      quantity: String(investment.quantity),
+      averagePrice: String(investment.averagePrice),
+      currentPrice: String(investment.currentPrice),
+      currency: investment.currency,
+    });
+    show("Redigerar investering.");
+  }
+
+  async function removeInvestment(id: string) {
+    const remoteId = toRemoteId(id);
+    if (remoteReady && remoteId) {
+      try {
+        await deleteRemoteInvestment(remoteId);
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
+    setData((current) => ({ ...current, investments: current.investments.filter((investment) => investment.id !== id) }));
+    if (editingInvestmentId === id) {
+      resetInvestmentForm();
+    }
+    show("Investeringen togs bort.");
+  }
+
+  async function refreshInvestmentPrice(investment: Investment) {
+    try {
+      const response = await fetch(`/api/market-quote?symbol=${encodeURIComponent(investment.symbol)}`);
+      const quote = await response.json() as { price?: number; currency?: string; updatedAt?: string; error?: string };
+
+      if (!response.ok || !quote.price) {
+        show(quote.error ?? "Kunde inte hämta kurs. Testa manuell kurs.");
+        return;
+      }
+
+      const updatedInvestment = {
+        ...investment,
+        currentPrice: quote.price,
+        currency: quote.currency ?? investment.currency,
+        priceUpdatedAt: quote.updatedAt ?? new Date().toISOString(),
+      };
+      const remoteId = toRemoteId(investment.id);
+
+      if (remoteReady && remoteId) {
+        try {
+          await updateRemoteInvestment(remoteId, {
+            name: updatedInvestment.name,
+            symbol: updatedInvestment.symbol,
+            type: updatedInvestment.type,
+            quantity: updatedInvestment.quantity,
+            average_price: updatedInvestment.averagePrice,
+            current_price: updatedInvestment.currentPrice,
+            currency: updatedInvestment.currency,
+            price_updated_at: updatedInvestment.priceUpdatedAt,
+          });
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      setData((current) => ({
+        ...current,
+        investments: current.investments.map((item) => item.id === investment.id ? updatedInvestment : item),
+      }));
+      show(`Kurs uppdaterad för ${investment.name}.`);
+    } catch (error) {
+      console.error(error);
+      show("Kursdata kunde inte hämtas just nu.");
+    }
+  }
+
   async function saveTravelBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const budget = parseMoney(travelForm.budget);
@@ -2224,7 +2496,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     window.localStorage.removeItem(userStorageKey);
     window.localStorage.removeItem(`${userStorageKey}-saved-at`);
     window.localStorage.removeItem(userOnboardingStorageKey);
-    setData({ ...defaultData, transactions: [], budgets: [], subscriptions: [], goals: [], savings: [], travelBudgets: [] });
+    setData({ ...defaultData, transactions: [], budgets: [], subscriptions: [], goals: [], savings: [], investments: [], travelBudgets: [] });
     setDangerConfirm("");
     setOnboardingDismissed(false);
     show("Din appdata är raderad för den här användaren.");
@@ -2752,6 +3024,90 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               {editingSavingsId && <button className="secondary-action" onClick={cancelSavingsEdit} type="button">Avbryt</button>}
             </form>
           </section>
+        </SectionPanel>
+      )}
+
+      {activeSection === "investments" && (
+        <SectionPanel title="Investeringar" description="Följ portföljen med fördröjd kursdata eller manuell kurs. Ingen köp- eller säljfunktion.">
+          <section className="investment-hero panel">
+            <div>
+              <span>Portföljvärde</span>
+              <h2>{kr(portfolioValue)}</h2>
+              <p>Investerat {kr(portfolioInvested)} · {portfolioProfit >= 0 ? "+" : ""}{kr(portfolioProfit)} ({portfolioProfitPct.toFixed(1).replace(".", ",")}%)</p>
+              <small>Kurser kan vara fördröjda och är endast för översikt, inte investeringsrådgivning.</small>
+            </div>
+            <div className="investment-donut" style={{ background: investmentDonutGradient }}>
+              <div><LineChart size={30}/><strong>{investmentRows.length}</strong><span>innehav</span></div>
+            </div>
+          </section>
+
+          <section className="investment-metric-grid">
+            <div><span>Värde</span><b>{kr(portfolioValue)}</b><small>Aktuell portfölj</small></div>
+            <div><span>Investerat</span><b>{kr(portfolioInvested)}</b><small>Totalt inköpsvärde</small></div>
+            <div><span>Resultat</span><b className={portfolioProfit >= 0 ? "plus" : "minus"}>{portfolioProfit >= 0 ? "+" : ""}{kr(portfolioProfit)}</b><small>{portfolioProfitPct.toFixed(1).replace(".", ",")}%</small></div>
+            <div><span>Bäst just nu</span><b>{portfolioBest?.name ?? "Inget ännu"}</b><small>{portfolioBest ? `${portfolioBest.profitPct.toFixed(1).replace(".", ",")}%` : "Lägg till innehav"}</small></div>
+          </section>
+
+          <section className="investment-layout">
+            <article className="investment-panel">
+              <CardTitle>Innehav</CardTitle>
+              <div className="investment-list">
+                {investmentRows.length ? investmentRows.map((investment) => (
+                  <div className="investment-row" key={investment.id}>
+                    <span className="investment-logo">{investment.symbol.slice(0, 3).toUpperCase()}</span>
+                    <div>
+                      <b>{investment.name}</b>
+                      <small>{investment.symbol} · {investment.type === "stock" ? "Aktie" : investment.type === "fund" ? "Fond" : investment.type === "crypto" ? "Krypto" : "Annat"}</small>
+                    </div>
+                    <span><b>{kr(investment.value)}</b><small>{investment.quantity.toLocaleString("sv-SE")} st · {kr(investment.currentPrice)}</small></span>
+                    <strong className={investment.profit >= 0 ? "plus" : "minus"}>{investment.profit >= 0 ? "+" : ""}{kr(investment.profit)}</strong>
+                    <span className="row-actions">
+                      <button onClick={() => refreshInvestmentPrice(investment)} type="button">Uppdatera kurs</button>
+                      <button onClick={() => editInvestment(investment)} type="button">Redigera</button>
+                      <button onClick={() => removeInvestment(investment.id)} type="button"><Trash2 size={14}/></button>
+                    </span>
+                  </div>
+                )) : <EmptyState text="Lägg till ditt första innehav. Exempel: Investor B med symbol inve-b.st." />}
+              </div>
+            </article>
+
+            <article className="investment-panel">
+              <CardTitle>Fördelning</CardTitle>
+              <div className="investment-allocation">
+                <div className="investment-donut small" style={{ background: investmentDonutGradient }}>
+                  <div><strong>{portfolioValue ? "100%" : "0%"}</strong><span>portfölj</span></div>
+                </div>
+                <div className="category-list">
+                  {investmentDistribution.length ? investmentDistribution.map((item) => (
+                    <button className="category-item" key={item.name} type="button">
+                      <i style={{ background: item.color }}/>
+                      <span>{item.name}</span>
+                      <b>{kr(item.value)}</b>
+                      <small>{item.pct}%</small>
+                    </button>
+                  )) : <EmptyState text="Fördelning visas när du lagt till innehav." />}
+                </div>
+              </div>
+            </article>
+          </section>
+
+          <form className="investment-form" onSubmit={saveInvestment}>
+            <div><span>Portfölj</span><b>{editingInvestmentId ? "Redigera innehav" : "Lägg till innehav"}</b></div>
+            <input placeholder="Namn, t.ex. Investor B" value={investmentForm.name} onChange={(event) => setInvestmentForm((form) => ({ ...form, name: event.target.value }))}/>
+            <input placeholder="Symbol, t.ex. inve-b.st" value={investmentForm.symbol} onChange={(event) => setInvestmentForm((form) => ({ ...form, symbol: event.target.value }))}/>
+            <select value={investmentForm.type} onChange={(event) => setInvestmentForm((form) => ({ ...form, type: event.target.value as InvestmentType }))}>
+              <option value="stock">Aktie</option>
+              <option value="fund">Fond</option>
+              <option value="crypto">Krypto</option>
+              <option value="other">Annat</option>
+            </select>
+            <input inputMode="decimal" placeholder="Antal" value={investmentForm.quantity} onChange={(event) => setInvestmentForm((form) => ({ ...form, quantity: event.target.value }))}/>
+            <input inputMode="decimal" placeholder="Inköpspris" value={investmentForm.averagePrice} onChange={(event) => setInvestmentForm((form) => ({ ...form, averagePrice: event.target.value }))}/>
+            <input inputMode="decimal" placeholder="Aktuell kurs" value={investmentForm.currentPrice} onChange={(event) => setInvestmentForm((form) => ({ ...form, currentPrice: event.target.value }))}/>
+            <input placeholder="Valuta" value={investmentForm.currency} onChange={(event) => setInvestmentForm((form) => ({ ...form, currency: event.target.value.toUpperCase() }))}/>
+            <button type="submit"><Plus size={16}/> {editingInvestmentId ? "Spara innehav" : "Lägg till"}</button>
+            {editingInvestmentId && <button className="secondary-action" onClick={resetInvestmentForm} type="button">Avbryt</button>}
+          </form>
         </SectionPanel>
       )}
 
