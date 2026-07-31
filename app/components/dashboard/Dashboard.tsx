@@ -1,12 +1,12 @@
 "use client";
 
-import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import packageInfo from "../../../package.json";
 import {
   ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
   ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
-  Download, LineChart, PiggyBank, Plane, Plus, Search, ShieldCheck, Sparkles, Trash2, WalletCards,
+  Download, LineChart, PiggyBank, Plane, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, WalletCards,
 } from "lucide-react";
 import {
   addBudget as addRemoteBudget,
@@ -211,6 +211,15 @@ type RemoteInvestment = {
   price_updated_at?: string | null;
 };
 
+type MarketQuote = {
+  price?: number;
+  currency?: string;
+  updatedAt?: string;
+  delayed?: boolean;
+  source?: string;
+  error?: string;
+};
+
 type SupportTicket = {
   id: number;
   user_id?: string | null;
@@ -343,6 +352,36 @@ const defaultData: FinanceData = {
 function kr(value: number) {
   if (!Number.isFinite(value)) return "0 kr";
   return `${Math.round(value).toLocaleString("sv-SE")} kr`;
+}
+
+const marketRefreshIntervalMs = 15 * 60 * 1000;
+
+function investmentPriceUpdatedAtMs(investment: Investment) {
+  if (!investment.priceUpdatedAt) return 0;
+  const timestamp = new Date(investment.priceUpdatedAt).getTime();
+
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function isInvestmentPriceStale(investment: Investment) {
+  const updatedAt = investmentPriceUpdatedAtMs(investment);
+
+  if (!updatedAt) return true;
+
+  return Date.now() - updatedAt >= marketRefreshIntervalMs;
+}
+
+function formatInvestmentUpdatedAt(investment: Investment) {
+  const updatedAt = investmentPriceUpdatedAtMs(investment);
+
+  if (!updatedAt) return "Kurs ej hämtad";
+
+  return `Uppdaterad ${new Date(updatedAt).toLocaleString("sv-SE", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
 }
 
 function parseMoney(value: string) {
@@ -831,6 +870,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
   const [editingInvestmentId, setEditingInvestmentId] = useState<string | null>(null);
+  const [refreshingInvestmentIds, setRefreshingInvestmentIds] = useState<string[]>([]);
+  const [refreshingAllInvestments, setRefreshingAllInvestments] = useState(false);
   const [editingTravelId, setEditingTravelId] = useState<string | null>(null);
   const [activeTravelId, setActiveTravelId] = useState<string | null>(null);
   const [remoteReady, setRemoteReady] = useState(false);
@@ -853,6 +894,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     budgetAmount: "",
   });
   const [dangerConfirm, setDangerConfirm] = useState("");
+  const investmentAutoRefreshKey = useRef("");
+  const refreshAllInvestmentPricesRef = useRef<(investments?: Investment[], options?: { onlyStale?: boolean; silent?: boolean; auto?: boolean }) => Promise<void>>(async () => {});
   const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
   const userThemeStorageKey = user ? `${themeStorageKey}-${user.id}` : themeStorageKey;
   const userOnboardingStorageKey = user ? `${onboardingStorageKey}-${user.id}` : onboardingStorageKey;
@@ -1205,6 +1248,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const portfolioBest = investmentRows.length
     ? [...investmentRows].sort((a, b) => b.profitPct - a.profitPct)[0]
     : null;
+  const staleInvestmentCount = data.investments.filter(isInvestmentPriceStale).length;
+  const latestInvestmentUpdate = data.investments
+    .map(investmentPriceUpdatedAtMs)
+    .filter((timestamp) => timestamp > 0)
+    .sort((a, b) => b - a)[0];
   const investmentDistribution = investmentRows
     .map((investment) => ({
       name: investment.name,
@@ -2068,14 +2116,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Investeringen togs bort.");
   }
 
-  async function refreshInvestmentPrice(investment: Investment) {
+  async function refreshInvestmentPrice(investment: Investment, options: { silent?: boolean } = {}) {
+    setRefreshingInvestmentIds((ids) => Array.from(new Set([...ids, investment.id])));
+
     try {
-      const response = await fetch(`/api/market-quote?symbol=${encodeURIComponent(investment.symbol)}`);
-      const quote = await response.json() as { price?: number; currency?: string; updatedAt?: string; error?: string };
+      const response = await fetch(`/api/market-quote?symbol=${encodeURIComponent(investment.symbol)}`, { cache: "no-store" });
+      const quote = await response.json() as MarketQuote;
 
       if (!response.ok || !quote.price) {
-        show(quote.error ?? "Kunde inte hämta kurs. Testa manuell kurs.");
-        return;
+        if (!options.silent) {
+          show(quote.error ?? "Kunde inte hämta kurs. Testa manuell kurs.");
+        }
+        return false;
       }
 
       const updatedInvestment = {
@@ -2108,12 +2160,67 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ...current,
         investments: current.investments.map((item) => item.id === investment.id ? updatedInvestment : item),
       }));
-      show(`Kurs uppdaterad för ${investment.name}.`);
+      if (!options.silent) {
+        show(`Kurs uppdaterad för ${investment.name}${quote.delayed ? " (ca 15 min fördröjd)." : "."}`);
+      }
+      return true;
     } catch (error) {
       console.error(error);
-      show("Kursdata kunde inte hämtas just nu.");
+      if (!options.silent) {
+        show("Kursdata kunde inte hämtas just nu.");
+      }
+      return false;
+    } finally {
+      setRefreshingInvestmentIds((ids) => ids.filter((id) => id !== investment.id));
     }
   }
+
+  async function refreshAllInvestmentPrices(investments = data.investments, options: { onlyStale?: boolean; silent?: boolean; auto?: boolean } = {}) {
+    const targets = options.onlyStale ? investments.filter(isInvestmentPriceStale) : investments;
+
+    if (!targets.length) {
+      if (!options.silent) {
+        show("Alla kurser är redan uppdaterade.");
+      }
+      return;
+    }
+
+    setRefreshingAllInvestments(true);
+    const results = await Promise.all(targets.map((investment) => refreshInvestmentPrice(investment, { silent: true })));
+    const successCount = results.filter(Boolean).length;
+    setRefreshingAllInvestments(false);
+
+    if (!options.silent) {
+      show(successCount
+        ? `${successCount} av ${targets.length} kurser uppdaterades. Kursdata kan vara ca 15 min fördröjd.`
+        : "Kunde inte uppdatera kurserna just nu.");
+    }
+
+    if (options.auto && successCount) {
+      show(`${successCount} kurser uppdaterades automatiskt.`);
+    }
+  }
+
+  useEffect(() => {
+    refreshAllInvestmentPricesRef.current = refreshAllInvestmentPrices;
+  });
+
+  useEffect(() => {
+    if (activeSection !== "investments" || !data.investments.length) return;
+
+    const staleInvestments = data.investments.filter(isInvestmentPriceStale);
+    if (!staleInvestments.length) return;
+
+    const autoRefreshKey = staleInvestments
+      .map((investment) => `${investment.id}:${investment.priceUpdatedAt ?? "never"}`)
+      .sort()
+      .join("|");
+
+    if (investmentAutoRefreshKey.current === autoRefreshKey) return;
+
+    investmentAutoRefreshKey.current = autoRefreshKey;
+    void refreshAllInvestmentPricesRef.current(staleInvestments, { auto: true, silent: true });
+  }, [activeSection, data.investments]);
 
   async function saveTravelBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3125,6 +3232,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <div><span>Bäst just nu</span><b>{portfolioBest?.name ?? "Inget ännu"}</b><small>{portfolioBest ? `${portfolioBest.profitPct.toFixed(1).replace(".", ",")}%` : "Lägg till innehav"}</small></div>
           </section>
 
+          <section className="investment-sync-bar panel">
+            <div>
+              <span>Kursdata</span>
+              <b>{staleInvestmentCount ? `${staleInvestmentCount} innehav behöver uppdateras` : "Alla kurser är uppdaterade"}</b>
+              <small>{latestInvestmentUpdate ? `Senaste hämtning ${new Date(latestInvestmentUpdate).toLocaleString("sv-SE", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. Kurser kan vara ca 15 minuter fördröjda.` : "Lägg till symboler som inve-b.st, aapl.us eller msft.us och hämta kurs automatiskt."}</small>
+            </div>
+            <button disabled={!data.investments.length || refreshingAllInvestments} onClick={() => refreshAllInvestmentPrices(data.investments)} type="button">
+              <RefreshCw className={refreshingAllInvestments ? "spin" : undefined} size={16}/> {refreshingAllInvestments ? "Uppdaterar..." : "Uppdatera alla"}
+            </button>
+          </section>
+
           <section className="investment-layout">
             <article className="investment-panel">
               <CardTitle>Innehav</CardTitle>
@@ -3136,10 +3254,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                       <b>{investment.name}</b>
                       <small>{investment.symbol} · {investment.type === "stock" ? "Aktie" : investment.type === "fund" ? "Fond" : investment.type === "crypto" ? "Krypto" : "Annat"}</small>
                     </div>
-                    <span><b>{kr(investment.value)}</b><small>{investment.quantity.toLocaleString("sv-SE")} st · {kr(investment.currentPrice)}</small></span>
+                    <span><b>{kr(investment.value)}</b><small>{investment.quantity.toLocaleString("sv-SE")} st · {kr(investment.currentPrice)}</small><small className={isInvestmentPriceStale(investment) ? "quote-stale" : "quote-fresh"}>{formatInvestmentUpdatedAt(investment)}</small></span>
                     <strong className={investment.profit >= 0 ? "plus" : "minus"}>{investment.profit >= 0 ? "+" : ""}{kr(investment.profit)}</strong>
                     <span className="row-actions">
-                      <button onClick={() => refreshInvestmentPrice(investment)} type="button">Uppdatera kurs</button>
+                      <button disabled={refreshingInvestmentIds.includes(investment.id)} onClick={() => refreshInvestmentPrice(investment)} type="button">{refreshingInvestmentIds.includes(investment.id) ? "Hämtar..." : "Uppdatera kurs"}</button>
                       <button onClick={() => editInvestment(investment)} type="button">Redigera</button>
                       <button onClick={() => removeInvestment(investment.id)} type="button"><Trash2 size={14}/></button>
                     </span>
