@@ -579,6 +579,15 @@ export async function deleteCategory(id: number) {
 
   if (error) throw error;
 }
+
+export async function deleteCategoryByName(name: string) {
+  const { error } = await supabase
+    .from("categories")
+    .delete()
+    .eq("name", name);
+
+  if (error) throw error;
+}
 export async function getSubscriptions() {
   const { data, error } = await supabase
     .from("subscriptions")

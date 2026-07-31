@@ -20,6 +20,7 @@ import {
   addTravelBudget as addRemoteTravelBudget,
   addTravelPurchase as addRemoteTravelPurchase,
   deleteBudget as deleteRemoteBudget,
+  deleteCategoryByName as deleteRemoteCategoryByName,
   deleteGoal as deleteRemoteGoal,
   deleteInvestment as deleteRemoteInvestment,
   deletePurchase as deleteRemotePurchase,
@@ -294,6 +295,8 @@ const categoryColors: Record<string, string> = {
   "Övrigt": "#637083",
 };
 
+const lockedCategories = ["Lön", "Fria köp", "Prenumerationer"] as const;
+
 const defaultData: FinanceData = {
   categories: ["Bostad", "Mat & Livsmedel", "Drivmedel", "Transport", "Nöjen", "Shopping", "Fria köp", "Prenumerationer", "Lön", "Övrigt"],
   transactions: [
@@ -321,10 +324,8 @@ const defaultData: FinanceData = {
     { id: "s4", name: "Adobe", plan: "Creative Cloud", amount: 239, day: 10, active: true },
     { id: "s5", name: "YouTube Premium", plan: "Familj", amount: 179, day: 15, active: true },
   ],
-  goals: [{ id: "g1", title: "Resa 2025", saved: 20400, target: 30000 }],
-  savings: [
-    { id: "sv1", name: "Resekonto", amount: 0 },
-  ],
+  goals: [],
+  savings: [],
   investments: [],
   travelBudgets: [
     {
@@ -1650,6 +1651,38 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Kategorin är tillagd.");
   }
 
+  async function removeCategory(name: string) {
+    if (lockedCategories.includes(name as (typeof lockedCategories)[number])) {
+      show("Den här kategorin behövs av appen och kan inte raderas.");
+      return;
+    }
+
+    const categoryIsUsed =
+      data.transactions.some((transaction) => transaction.category === name) ||
+      data.budgets.some((budget) => budget.category === name) ||
+      data.subscriptions.some((subscription) => subscription.plan === name) ||
+      data.savings.some((saving) => saving.name === name) ||
+      data.travelBudgets.some((travelBudget) => travelBudget.purchases.some((purchase) => purchase.category === name));
+
+    if (categoryIsUsed) {
+      show("Kategorin används redan. Ta bort eller flytta det som använder kategorin först.");
+      return;
+    }
+
+    if (remoteReady) {
+      await deleteRemoteCategoryByName(name);
+    }
+
+    setData((current) => ({
+      ...current,
+      categories: current.categories.filter((category) => category !== name),
+    }));
+    setTransactionForm((form) => ({ ...form, category: form.category === name ? "Fria köp" : form.category }));
+    setBudgetForm((form) => ({ ...form, category: form.category === name ? data.categories.find((category) => category !== name && !lockedCategories.includes(category as (typeof lockedCategories)[number])) ?? "" : form.category }));
+    setCategoryName("");
+    show("Kategorin togs bort.");
+  }
+
   async function saveGoal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const title = goalForm.title.trim();
@@ -2933,7 +2966,22 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       {activeSection === "categories" && (
         <SectionPanel title="Kategorier" description="Skapa och välj egna kategorier.">
           <form className="management-form" onSubmit={addCategory}><input placeholder="Ny kategori, t.ex. Hund" value={categoryName} onChange={(event) => setCategoryName(event.target.value)}/><button type="submit"><Plus size={16}/> Lägg till kategori</button></form>
-          <div className="chip-grid">{data.categories.map((category) => <button key={category} onClick={() => { setTransactionForm((form) => ({ ...form, category })); onNavigate("overview"); }} style={{ borderColor: categoryColors[category] ?? "#334155" }} type="button">{category}</button>)}</div>
+          <div className="chip-grid category-chip-grid">
+            {data.categories.map((category) => {
+              const isLocked = lockedCategories.includes(category as (typeof lockedCategories)[number]);
+
+              return (
+                <div className="category-chip" key={category} style={{ borderColor: categoryColors[category] ?? "#334155" }}>
+                  <button className="category-chip-main" onClick={() => { setTransactionForm((form) => ({ ...form, category })); onNavigate("overview"); }} type="button">{category}</button>
+                  {!isLocked && (
+                    <button className="category-chip-delete" aria-label={`Radera ${category}`} onClick={() => removeCategory(category)} type="button">
+                      <Trash2 size={14}/>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </SectionPanel>
       )}
 
@@ -3313,18 +3361,36 @@ function OnboardingPanel({
     <section className="onboarding-panel">
       <div className="onboarding-copy">
         <span>Startguide</span>
-        <h2>Bygg din första ekonomiplan på 30 sekunder</h2>
-        <p>Lägg in lön, en fast utgift och en första budget så räknar appen ut fria pengar direkt.</p>
+        <h2>Kom igång utan krångel</h2>
+        <p>Börja med lönen. Vill du kan du lägga till en fast utgift och en första budget direkt, annars går det lika bra senare.</p>
       </div>
       <form className="onboarding-form" onSubmit={onSubmit}>
-        <label><span>Månadslön</span><input inputMode="decimal" placeholder="25000" value={form.income} onChange={(event) => onChange({ ...form, income: event.target.value })}/></label>
-        <label><span>Fast utgift</span><input placeholder="Hyra" value={form.fixedName} onChange={(event) => onChange({ ...form, fixedName: event.target.value })}/></label>
-        <label><span>Belopp</span><input inputMode="decimal" placeholder="8500" value={form.fixedAmount} onChange={(event) => onChange({ ...form, fixedAmount: event.target.value })}/></label>
-        <label><span>Dras dag</span><input inputMode="numeric" min="1" max="28" value={form.fixedDay} onChange={(event) => onChange({ ...form, fixedDay: event.target.value })}/></label>
-        <label><span>Budget</span><select value={form.budgetCategory} onChange={(event) => onChange({ ...form, budgetCategory: event.target.value })}>{budgetCategories.map((category) => <option key={category}>{category}</option>)}</select></label>
-        <label><span>Budgetbelopp</span><input inputMode="decimal" placeholder="4000" value={form.budgetAmount} onChange={(event) => onChange({ ...form, budgetAmount: event.target.value })}/></label>
-        <button type="submit"><ShieldCheck size={16}/> Skapa min plan</button>
-        <button className="secondary-action" onClick={onSkip} type="button">Hoppa över</button>
+        <div className="onboarding-step onboarding-step-primary">
+          <div><b>1. Din lön</b><small>Det här räcker för att appen ska kunna visa fria pengar.</small></div>
+          <label><span>Månadslön</span><input inputMode="decimal" placeholder="25000" value={form.income} onChange={(event) => onChange({ ...form, income: event.target.value })}/></label>
+        </div>
+
+        <div className="onboarding-step">
+          <div><b>2. Valfritt: fast utgift</b><small>Exempelvis hyra, försäkring eller abonnemang.</small></div>
+          <div className="onboarding-step-grid">
+            <label><span>Namn</span><input placeholder="Hyra" value={form.fixedName} onChange={(event) => onChange({ ...form, fixedName: event.target.value })}/></label>
+            <label><span>Belopp</span><input inputMode="decimal" placeholder="8500" value={form.fixedAmount} onChange={(event) => onChange({ ...form, fixedAmount: event.target.value })}/></label>
+            <label><span>Dras dag</span><input inputMode="numeric" min="1" max="28" value={form.fixedDay} onChange={(event) => onChange({ ...form, fixedDay: event.target.value })}/></label>
+          </div>
+        </div>
+
+        <div className="onboarding-step">
+          <div><b>3. Valfritt: första budget</b><small>Perfekt för mat, drivmedel eller annat du vill reservera pengar till.</small></div>
+          <div className="onboarding-step-grid two-columns">
+            <label><span>Kategori</span><select value={form.budgetCategory} onChange={(event) => onChange({ ...form, budgetCategory: event.target.value })}>{budgetCategories.map((category) => <option key={category}>{category}</option>)}</select></label>
+            <label><span>Budgetbelopp</span><input inputMode="decimal" placeholder="4000" value={form.budgetAmount} onChange={(event) => onChange({ ...form, budgetAmount: event.target.value })}/></label>
+          </div>
+        </div>
+
+        <div className="onboarding-actions">
+          <button type="submit"><ShieldCheck size={16}/> Spara start</button>
+          <button className="secondary-action" onClick={onSkip} type="button">Hoppa över</button>
+        </div>
       </form>
     </section>
   );
