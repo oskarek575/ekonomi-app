@@ -220,6 +220,14 @@ type MarketQuote = {
   error?: string;
 };
 
+type KnownSecurity = {
+  name: string;
+  symbol: string;
+  type: InvestmentType;
+  currency: string;
+  aliases: string[];
+};
+
 type SupportTicket = {
   id: number;
   user_id?: string | null;
@@ -355,6 +363,46 @@ function kr(value: number) {
 }
 
 const marketRefreshIntervalMs = 15 * 60 * 1000;
+
+const knownSecurities: KnownSecurity[] = [
+  { name: "Investor B", symbol: "inve-b.st", type: "stock", currency: "SEK", aliases: ["investor", "investor b", "inve b", "inve-b"] },
+  { name: "Volvo B", symbol: "volv-b.st", type: "stock", currency: "SEK", aliases: ["volvo", "volvo b"] },
+  { name: "Industrivärden C", symbol: "indu-c.st", type: "stock", currency: "SEK", aliases: ["industrivärden", "industrivarden", "industrivärden c"] },
+  { name: "Evolution", symbol: "evo.st", type: "stock", currency: "SEK", aliases: ["evolution", "evolution gaming"] },
+  { name: "Atlas Copco B", symbol: "atco-b.st", type: "stock", currency: "SEK", aliases: ["atlas copco", "atlas copco b"] },
+  { name: "SEB A", symbol: "seb-a.st", type: "stock", currency: "SEK", aliases: ["seb", "seb a"] },
+  { name: "Swedbank A", symbol: "swed-a.st", type: "stock", currency: "SEK", aliases: ["swedbank", "swedbank a"] },
+  { name: "Apple", symbol: "aapl.us", type: "stock", currency: "USD", aliases: ["apple", "aapl"] },
+  { name: "Microsoft", symbol: "msft.us", type: "stock", currency: "USD", aliases: ["microsoft", "msft"] },
+  { name: "Tesla", symbol: "tsla.us", type: "stock", currency: "USD", aliases: ["tesla", "tsla"] },
+  { name: "Nvidia", symbol: "nvda.us", type: "stock", currency: "USD", aliases: ["nvidia", "nvda"] },
+  { name: "Alphabet A", symbol: "googl.us", type: "stock", currency: "USD", aliases: ["google", "alphabet", "alphabet a", "googl"] },
+  { name: "Amazon", symbol: "amzn.us", type: "stock", currency: "USD", aliases: ["amazon", "amzn"] },
+  { name: "Meta Platforms", symbol: "meta.us", type: "stock", currency: "USD", aliases: ["meta", "facebook"] },
+];
+
+function normalizeSecurityText(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function looksLikeMarketSymbol(value: string) {
+  const normalized = normalizeSecurityText(value);
+
+  return /^[a-z0-9-]{1,12}\.[a-z]{2,5}$/.test(normalized);
+}
+
+function findKnownSecurity(value: string) {
+  const normalized = normalizeSecurityText(value);
+  if (!normalized) return undefined;
+
+  return knownSecurities.find((security) =>
+    security.symbol === normalized ||
+    security.aliases.some((alias) => normalizeSecurityText(alias) === normalized)
+  ) ?? knownSecurities.find((security) =>
+    security.name.toLowerCase().includes(normalized) ||
+    security.aliases.some((alias) => normalizeSecurityText(alias).includes(normalized))
+  );
+}
 
 function investmentPriceUpdatedAtMs(investment: Investment) {
   if (!investment.priceUpdatedAt) return 0;
@@ -845,6 +893,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [goalForm, setGoalForm] = useState({ title: "", saved: "", target: "" });
   const [savingsForm, setSavingsForm] = useState({ name: "", amount: "" });
   const [investmentForm, setInvestmentForm] = useState({
+    assetSearch: "",
     name: "",
     symbol: "",
     type: "stock" as InvestmentType,
@@ -1978,6 +2027,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   function resetInvestmentForm() {
     setInvestmentForm({
+      assetSearch: "",
       name: "",
       symbol: "",
       type: "stock",
@@ -1989,32 +2039,61 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setEditingInvestmentId(null);
   }
 
+  function updateInvestmentSearch(value: string) {
+    const matchedSecurity = findKnownSecurity(value);
+    const symbol = looksLikeMarketSymbol(value) ? normalizeSecurityText(value) : matchedSecurity?.symbol;
+
+    setInvestmentForm((form) => ({
+      ...form,
+      assetSearch: value,
+      name: matchedSecurity?.name ?? form.name,
+      symbol: symbol ?? form.symbol,
+      type: matchedSecurity?.type ?? form.type,
+      currency: matchedSecurity?.currency ?? form.currency,
+    }));
+  }
+
   async function saveInvestment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const name = investmentForm.name.trim();
-    const symbol = investmentForm.symbol.trim();
+    const matchedSecurity = findKnownSecurity(investmentForm.assetSearch || investmentForm.name || investmentForm.symbol);
+    const manualSymbol = looksLikeMarketSymbol(investmentForm.assetSearch) ? normalizeSecurityText(investmentForm.assetSearch) : investmentForm.symbol.trim().toLowerCase();
+    const name = (investmentForm.name.trim() || matchedSecurity?.name || investmentForm.assetSearch.trim()).trim();
+    const symbol = (matchedSecurity?.symbol ?? manualSymbol).trim();
     const quantity = parseMoney(investmentForm.quantity);
     const averagePrice = parseMoney(investmentForm.averagePrice);
-    const currentPrice = parseMoney(investmentForm.currentPrice);
+    let currentPrice = investmentForm.currentPrice.trim() ? parseMoney(investmentForm.currentPrice) : NaN;
 
     if (!name || !symbol) {
-      show("Skriv namn och symbol för innehavet.");
+      show("Sök fram ett värdepapper eller skriv en giltig symbol, till exempel inve-b.st.");
       return;
     }
 
-    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(averagePrice) || averagePrice < 0 || !Number.isFinite(currentPrice) || currentPrice < 0) {
-      show("Skriv giltigt antal, inköpspris och aktuell kurs.");
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+      try {
+        const response = await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
+        const quote = await response.json() as MarketQuote;
+
+        if (response.ok && quote.price && quote.price > 0) {
+          currentPrice = quote.price;
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(averagePrice) || averagePrice < 0 || !Number.isFinite(currentPrice) || currentPrice <= 0) {
+      show("Skriv giltigt antal och inköpspris. Aktuell kurs kan hämtas automatiskt om symbolen hittas.");
       return;
     }
 
     const input = {
       name,
       symbol,
-      type: investmentForm.type,
+      type: matchedSecurity?.type ?? investmentForm.type,
       quantity,
       average_price: averagePrice,
       current_price: currentPrice,
-      currency: investmentForm.currency.trim() || "SEK",
+      currency: (matchedSecurity?.currency ?? investmentForm.currency.trim()) || "SEK",
       price_updated_at: new Date().toISOString(),
     };
 
@@ -2037,7 +2116,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 ...investment,
                 name,
                 symbol,
-                type: investmentForm.type,
+                type: input.type,
                 quantity,
                 averagePrice,
                 currentPrice,
@@ -2069,7 +2148,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             id,
             name,
             symbol,
-            type: investmentForm.type,
+            type: input.type,
             quantity,
             averagePrice,
             currentPrice,
@@ -2087,6 +2166,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   function editInvestment(investment: Investment) {
     setEditingInvestmentId(investment.id);
     setInvestmentForm({
+      assetSearch: `${investment.name} (${investment.symbol})`,
       name: investment.name,
       symbol: investment.symbol,
       type: investment.type,
@@ -3236,7 +3316,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <div>
               <span>Kursdata</span>
               <b>{staleInvestmentCount ? `${staleInvestmentCount} innehav behöver uppdateras` : "Alla kurser är uppdaterade"}</b>
-              <small>{latestInvestmentUpdate ? `Senaste hämtning ${new Date(latestInvestmentUpdate).toLocaleString("sv-SE", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. Kurser kan vara ca 15 minuter fördröjda.` : "Lägg till symboler som inve-b.st, aapl.us eller msft.us och hämta kurs automatiskt."}</small>
+              <small>{latestInvestmentUpdate ? `Senaste hämtning ${new Date(latestInvestmentUpdate).toLocaleString("sv-SE", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. Kurser kan vara ca 15 minuter fördröjda.` : "Sök efter t.ex. Investor, Apple eller Microsoft så fyller appen symbolen automatiskt."}</small>
             </div>
             <button disabled={!data.investments.length || refreshingAllInvestments} onClick={() => refreshAllInvestmentPrices(data.investments)} type="button">
               <RefreshCw className={refreshingAllInvestments ? "spin" : undefined} size={16}/> {refreshingAllInvestments ? "Uppdaterar..." : "Uppdatera alla"}
@@ -3262,7 +3342,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                       <button onClick={() => removeInvestment(investment.id)} type="button"><Trash2 size={14}/></button>
                     </span>
                   </div>
-                )) : <EmptyState text="Lägg till ditt första innehav. Exempel: Investor B med symbol inve-b.st." />}
+                )) : <EmptyState text="Lägg till ditt första innehav. Testa att söka på Investor, Apple eller Microsoft." />}
               </div>
             </article>
 
@@ -3288,8 +3368,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
           <form className="investment-form" onSubmit={saveInvestment}>
             <div><span>Portfölj</span><b>{editingInvestmentId ? "Redigera innehav" : "Lägg till innehav"}</b></div>
+            <label className="investment-search-field">
+              <span>Sök värdepapper</span>
+              <input list="known-securities" placeholder="Skriv t.ex. Investor, Apple eller Microsoft" value={investmentForm.assetSearch} onChange={(event) => updateInvestmentSearch(event.target.value)}/>
+              <small>{investmentForm.symbol ? `Vald symbol: ${investmentForm.symbol}` : "Hittar vi värdepappret fyller appen symbolen automatiskt."}</small>
+            </label>
+            <datalist id="known-securities">
+              {knownSecurities.map((security) => <option key={security.symbol} value={security.name}>{security.symbol}</option>)}
+            </datalist>
             <input placeholder="Namn, t.ex. Investor B" value={investmentForm.name} onChange={(event) => setInvestmentForm((form) => ({ ...form, name: event.target.value }))}/>
-            <input placeholder="Symbol, t.ex. inve-b.st" value={investmentForm.symbol} onChange={(event) => setInvestmentForm((form) => ({ ...form, symbol: event.target.value }))}/>
             <select value={investmentForm.type} onChange={(event) => setInvestmentForm((form) => ({ ...form, type: event.target.value as InvestmentType }))}>
               <option value="stock">Aktie</option>
               <option value="fund">Fond</option>
@@ -3298,7 +3385,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </select>
             <input inputMode="decimal" placeholder="Antal" value={investmentForm.quantity} onChange={(event) => setInvestmentForm((form) => ({ ...form, quantity: event.target.value }))}/>
             <input inputMode="decimal" placeholder="Inköpspris" value={investmentForm.averagePrice} onChange={(event) => setInvestmentForm((form) => ({ ...form, averagePrice: event.target.value }))}/>
-            <input inputMode="decimal" placeholder="Aktuell kurs" value={investmentForm.currentPrice} onChange={(event) => setInvestmentForm((form) => ({ ...form, currentPrice: event.target.value }))}/>
+            <input inputMode="decimal" placeholder="Aktuell kurs (kan hämtas automatiskt)" value={investmentForm.currentPrice} onChange={(event) => setInvestmentForm((form) => ({ ...form, currentPrice: event.target.value }))}/>
             <input placeholder="Valuta" value={investmentForm.currency} onChange={(event) => setInvestmentForm((form) => ({ ...form, currency: event.target.value.toUpperCase() }))}/>
             <button type="submit"><Plus size={16}/> {editingInvestmentId ? "Spara innehav" : "Lägg till"}</button>
             {editingInvestmentId && <button className="secondary-action" onClick={resetInvestmentForm} type="button">Avbryt</button>}
