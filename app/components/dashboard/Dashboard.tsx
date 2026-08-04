@@ -684,6 +684,34 @@ function hasMatchingTransaction(
   );
 }
 
+function getSavingsTransactionTitle(name: string) {
+  return `Sparande till ${name}`;
+}
+
+function isAppSavingsTransaction(transaction: Transaction) {
+  return transaction.type === "expense" && transaction.title.trim().toLowerCase().startsWith("sparande till ");
+}
+
+function findLinkedSavingsTransaction(saving: SavingsAccount, transactions: Transaction[]) {
+  const savingName = normalizeCategory(saving.name);
+  const exactTitle = normalizeCategory(getSavingsTransactionTitle(saving.name));
+  const candidates = transactions.filter((transaction) =>
+    isAppSavingsTransaction(transaction)
+    && (
+      normalizeCategory(transaction.title) === exactTitle
+      || normalizeCategory(transaction.category) === savingName
+    )
+  );
+
+  if (!candidates.length) return null;
+
+  const createdDateMatch = saving.createdAt
+    ? candidates.find((transaction) => transaction.date === saving.createdAt)
+    : undefined;
+
+  return createdDateMatch ?? candidates[0];
+}
+
 function getAffordabilityResult({
   title,
   amount,
@@ -1249,10 +1277,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     .reduce((sum, purchase) => sum + purchase.amount, 0);
   const savingsTotal = data.savings.reduce((sum, saving) => sum + saving.amount, 0);
   const savingsTransactionTotal = monthTransactions
-    .filter((transaction) =>
-      transaction.type === "expense"
-      && data.savings.some((saving) => normalizeCategory(saving.name) === normalizeCategory(transaction.category))
-    )
+    .filter(isAppSavingsTransaction)
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   const savingsCreatedThisPeriod = data.savings
     .filter((saving) => saving.createdAt && isInFinancialPeriod(saving.createdAt, month))
@@ -1277,10 +1302,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     ? Math.min(100, Math.round((strongestGoal.saved / strongestGoal.target) * 100))
     : 0;
   const savingsThisPeriod = monthTransactions
-    .filter((transaction) =>
-      transaction.type === "expense"
-      && data.savings.some((saving) => normalizeCategory(saving.name) === normalizeCategory(transaction.category))
-    )
+    .filter(isAppSavingsTransaction)
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   const investmentRows = data.investments.map((investment) => {
     const invested = investment.quantity * investment.averagePrice;
@@ -1900,6 +1922,22 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
+    const editedSaving = editingSavingsId ? data.savings.find((saving) => saving.id === editingSavingsId) : undefined;
+    const duplicateSaving = data.savings.find((saving) =>
+      saving.name.toLowerCase() === name.toLowerCase()
+      && saving.id !== editingSavingsId
+    );
+
+    if (editingSavingsId && !editedSaving) {
+      show("Kunde inte hitta sparkontot som redigeras.");
+      return;
+    }
+
+    if (duplicateSaving) {
+      show("Det finns redan ett sparkonto med det namnet.");
+      return;
+    }
+
     if (remoteReady && !data.categories.includes(name)) {
       try {
         await addRemoteCategory(name, categoryColors[name] ?? "#22c55e", "💰");
@@ -1911,6 +1949,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     let newRemoteId: string | null = null;
     const savingsDate = defaultDateForPeriod(month);
+    const linkedSavingsTransaction = editedSaving ? findLinkedSavingsTransaction(editedSaving, data.transactions) : null;
+    const savingsSource: PurchaseSource = budgetCategorySet.has(normalizeCategory(name)) ? "budget" : "free";
+    const savingsTitle = getSavingsTransactionTitle(name);
 
     if (remoteReady) {
       try {
@@ -1918,6 +1959,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           const remoteId = toRemoteId(editingSavingsId);
           if (remoteId) {
             await updateRemoteSavingsAccount(remoteId, { name, amount });
+          }
+          const linkedRemoteId = linkedSavingsTransaction ? toRemoteId(linkedSavingsTransaction.id) : null;
+          if (linkedRemoteId && linkedSavingsTransaction) {
+            await updateRemotePurchase(
+              linkedRemoteId,
+              savingsTitle,
+              amount,
+              name,
+              toDateTime(linkedSavingsTransaction.date),
+              savingsSource
+            );
           }
         } else {
           const existing = data.savings.find((saving) => saving.name.toLowerCase() === name.toLowerCase());
@@ -1938,8 +1990,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     let savingsTransaction: Transaction | null = null;
 
     if (!editingSavingsId) {
-      const savingsSource: PurchaseSource = budgetCategorySet.has(normalizeCategory(name)) ? "budget" : "free";
-      const savingsTitle = `Sparande till ${name}`;
       let transactionId = crypto.randomUUID();
 
       if (remoteReady) {
@@ -1985,7 +2035,19 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return {
         ...current,
         savings,
-        transactions: savingsTransaction ? [savingsTransaction, ...current.transactions] : current.transactions,
+        transactions: editingSavingsId && linkedSavingsTransaction
+          ? current.transactions.map((transaction) =>
+              transaction.id === linkedSavingsTransaction.id
+                ? {
+                    ...transaction,
+                    title: savingsTitle,
+                    amount,
+                    category: name,
+                    source: savingsSource,
+                  }
+                : transaction
+            )
+          : savingsTransaction ? [savingsTransaction, ...current.transactions] : current.transactions,
         categories: current.categories.includes(name) ? current.categories : [...current.categories, name],
       };
     });
