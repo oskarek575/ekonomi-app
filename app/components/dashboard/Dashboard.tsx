@@ -1547,8 +1547,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     event.preventDefault();
     const limit = Number(budgetForm.limit);
     if (limit <= 0) return;
+    const duplicateBudget = data.budgets.find((budget) =>
+      budget.category === budgetForm.category
+      && budget.id !== editingBudgetId
+    );
 
     if (editingBudgetId) {
+      if (duplicateBudget) {
+        show("Det finns redan en budget för den kategorin.");
+        return;
+      }
+
       const remoteId = toRemoteId(editingBudgetId);
       if (remoteReady && remoteId) {
         await updateRemoteBudget(remoteId, budgetForm.category, limit);
@@ -1564,7 +1573,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     } else {
       let id = crypto.randomUUID();
 
-      if (remoteReady) {
+      if (duplicateBudget) {
+        id = duplicateBudget.id;
+        const remoteId = toRemoteId(duplicateBudget.id);
+        if (remoteReady && remoteId) {
+          await updateRemoteBudget(remoteId, budgetForm.category, limit);
+        }
+      } else if (remoteReady) {
         const created = await addRemoteBudget(budgetForm.category, limit) as RemoteBudget;
         id = String(created.id);
       }
@@ -2070,6 +2085,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   async function removeSavings(id: string) {
+    const saving = data.savings.find((item) => item.id === id);
+    const linkedSavingsTransaction = saving ? findLinkedSavingsTransaction(saving, data.transactions) : null;
     const remoteId = toRemoteId(id);
     if (remoteReady && remoteId) {
       try {
@@ -2080,11 +2097,27 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       }
     }
 
-    setData((current) => ({ ...current, savings: current.savings.filter((saving) => saving.id !== id) }));
+    const linkedRemoteId = linkedSavingsTransaction ? toRemoteId(linkedSavingsTransaction.id) : null;
+    if (remoteReady && linkedRemoteId) {
+      try {
+        await deleteRemotePurchase(linkedRemoteId);
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
+    setData((current) => ({
+      ...current,
+      savings: current.savings.filter((saving) => saving.id !== id),
+      transactions: linkedSavingsTransaction
+        ? current.transactions.filter((transaction) => transaction.id !== linkedSavingsTransaction.id)
+        : current.transactions,
+    }));
     if (editingSavingsId === id) {
       cancelSavingsEdit();
     }
-    show("Sparkontot togs bort.");
+    show(linkedSavingsTransaction ? "Sparkontot och kopplad spartransaktion togs bort." : "Sparkontot togs bort.");
   }
 
   function resetInvestmentForm() {
