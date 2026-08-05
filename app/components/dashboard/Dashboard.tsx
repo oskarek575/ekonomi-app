@@ -712,6 +712,62 @@ function findLinkedSavingsTransaction(saving: SavingsAccount, transactions: Tran
   return createdDateMatch ?? candidates[0];
 }
 
+function findSavingsAccountForTransaction(transaction: Transaction, savings: SavingsAccount[]) {
+  if (transaction.type !== "expense") return null;
+
+  const normalizedCategory = normalizeCategory(transaction.category);
+  const titlePrefix = "sparande till ";
+  const normalizedTitle = transaction.title.trim().toLowerCase();
+  const titleSavingsName = normalizedTitle.startsWith(titlePrefix)
+    ? normalizeCategory(transaction.title.slice(titlePrefix.length))
+    : "";
+
+  return savings.find((saving) => {
+    const normalizedSavingName = normalizeCategory(saving.name);
+
+    return normalizedSavingName === normalizedCategory || (titleSavingsName && normalizedSavingName === titleSavingsName);
+  }) ?? null;
+}
+
+function getSavingsAdjustments(previous: Transaction | null, next: Transaction | null, savings: SavingsAccount[]) {
+  const adjustments = new Map<string, number>();
+
+  const addAdjustment = (saving: SavingsAccount | null, delta: number) => {
+    if (!saving || !delta) return;
+    adjustments.set(saving.id, (adjustments.get(saving.id) ?? 0) + delta);
+  };
+
+  if (previous) {
+    addAdjustment(findSavingsAccountForTransaction(previous, savings), -previous.amount);
+  }
+
+  if (next) {
+    addAdjustment(findSavingsAccountForTransaction(next, savings), next.amount);
+  }
+
+  return adjustments;
+}
+
+function applySavingsAdjustments(savings: SavingsAccount[], adjustments: Map<string, number>) {
+  if (!adjustments.size) return savings;
+
+  return savings.map((saving) => {
+    const delta = adjustments.get(saving.id) ?? 0;
+
+    return delta ? { ...saving, amount: Math.max(0, saving.amount + delta) } : saving;
+  });
+}
+
+function findLinkedSavingsForGoal(goal: Goal, savings: SavingsAccount[]) {
+  const normalizedTitle = normalizeCategory(goal.title);
+
+  return savings.find((saving) => normalizeCategory(saving.name) === normalizedTitle) ?? null;
+}
+
+function getGoalSavedAmount(goal: Goal, savings: SavingsAccount[]) {
+  return findLinkedSavingsForGoal(goal, savings)?.amount ?? goal.saved;
+}
+
 function getAffordabilityResult({
   title,
   amount,
@@ -1032,7 +1088,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         savings: parsed.savings ?? [],
         investments: parsed.investments ?? [],
         travelBudgets: parsed.travelBudgets ?? defaultData.travelBudgets,
-        categories: Array.from(new Set([...defaultData.categories, ...(parsed.categories ?? [])])),
+        categories: Array.from(new Set([
+          ...defaultData.categories,
+          ...(parsed.categories ?? []),
+          ...(parsed.savings ?? []).map((saving) => saving.name),
+        ])),
       });
       setLastLocalSave(window.localStorage.getItem(`${userStorageKey}-saved-at`));
     }
@@ -1094,7 +1154,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             category: budget.category,
             limit: Number(budget.monthly_budget),
           })),
-          categories: Array.from(new Set([...defaultData.categories, ...current.categories, ...categoryRows.map((category) => category.name)])),
+          categories: Array.from(new Set([
+            ...defaultData.categories,
+            ...current.categories,
+            ...categoryRows.map((category) => category.name),
+            ...savingsRows.map((saving) => saving.name),
+          ])),
           subscriptions: subscriptionRows.map((subscription) => {
             const id = String(subscription.id);
             const cached = current.subscriptions.find((item) => item.id === id);
@@ -1290,16 +1355,27 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const freeMoneyProgress = Math.max(0, Math.min(100, Math.round((Math.max(freeMoney, 0) / freeMoneyBase) * 100)));
   const freeMoneyStyle = { "--free-progress": `${freeMoneyProgress}%` } as CSSProperties;
   const freeMoneyPerDay = Math.max(0, Math.floor(freeMoney / Math.max(remainingDays, 1)));
-  const manualGoalsSaved = data.goals.reduce((sum, goal) => sum + goal.saved, 0);
+  const linkedGoalSavingsIds = new Set(data.goals
+    .map((goal) => findLinkedSavingsForGoal(goal, data.savings)?.id)
+    .filter(Boolean));
+  const manualGoalsSaved = data.goals.reduce((sum, goal) => {
+    const linkedSaving = findLinkedSavingsForGoal(goal, data.savings);
+
+    return sum + (linkedSaving ? 0 : goal.saved);
+  }, 0);
+  const standaloneSavingsTotal = data.savings
+    .filter((saving) => !linkedGoalSavingsIds.has(saving.id))
+    .reduce((sum, saving) => sum + saving.amount, 0);
   const goalsTargetTotal = data.goals.reduce((sum, goal) => sum + goal.target, 0);
-  const goalSavedTotal = manualGoalsSaved + savingsTotal;
+  const linkedGoalSavedTotal = data.goals.reduce((sum, goal) => sum + getGoalSavedAmount(goal, data.savings), 0);
+  const goalSavedTotal = linkedGoalSavedTotal + standaloneSavingsTotal;
   const goalProgress = goalsTargetTotal ? Math.min(100, Math.round((goalSavedTotal / goalsTargetTotal) * 100)) : 0;
   const goalsRemainingTotal = Math.max(goalsTargetTotal - goalSavedTotal, 0);
   const strongestGoal = data.goals.length
-    ? [...data.goals].sort((a, b) => (b.target ? b.saved / b.target : 0) - (a.target ? a.saved / a.target : 0))[0]
+    ? [...data.goals].sort((a, b) => (b.target ? getGoalSavedAmount(b, data.savings) / b.target : 0) - (a.target ? getGoalSavedAmount(a, data.savings) / a.target : 0))[0]
     : null;
   const strongestGoalProgress = strongestGoal?.target
-    ? Math.min(100, Math.round((strongestGoal.saved / strongestGoal.target) * 100))
+    ? Math.min(100, Math.round((getGoalSavedAmount(strongestGoal, data.savings) / strongestGoal.target) * 100))
     : 0;
   const savingsThisPeriod = monthTransactions
     .filter(isAppSavingsTransaction)
@@ -1422,6 +1498,26 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setNotice(message);
   }
 
+  async function syncRemoteSavingsAdjustments(adjustments: Map<string, number>) {
+    if (!remoteReady || !adjustments.size) return;
+
+    await Promise.all(data.savings.map(async (saving) => {
+      const delta = adjustments.get(saving.id) ?? 0;
+      const remoteId = toRemoteId(saving.id);
+      if (!delta || !remoteId) return;
+
+      try {
+        await updateRemoteSavingsAccount(remoteId, {
+          name: saving.name,
+          amount: Math.max(0, saving.amount + delta),
+        });
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }));
+  }
+
   async function addTransaction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = parseMoney(transactionForm.amount);
@@ -1451,6 +1547,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     };
 
     if (editingTransactionId) {
+      const previousTransaction = data.transactions.find((item) => item.id === editingTransactionId) ?? null;
+      const nextTransaction: Transaction = { id: editingTransactionId, ...transaction };
+      const savingsAdjustments = getSavingsAdjustments(previousTransaction, nextTransaction, data.savings);
       const remoteId = toRemoteId(editingTransactionId);
       if (remoteReady && remoteId) {
         try {
@@ -1468,8 +1567,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           show("Kunde inte uppdatera i Supabase, ändringen sparades lokalt.");
         }
       }
+      await syncRemoteSavingsAdjustments(savingsAdjustments);
       setData((current) => ({
         ...current,
+        savings: applySavingsAdjustments(current.savings, savingsAdjustments),
         transactions: current.transactions.map((item) =>
           item.id === editingTransactionId ? { ...item, ...transaction } : item
         ),
@@ -1500,9 +1601,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         }
       }
 
+      const nextTransaction: Transaction = { id, ...transaction };
+      const savingsAdjustments = getSavingsAdjustments(null, nextTransaction, data.savings);
+      await syncRemoteSavingsAdjustments(savingsAdjustments);
       setData((current) => ({
         ...current,
-        transactions: [{ id, ...transaction }, ...current.transactions],
+        savings: applySavingsAdjustments(current.savings, savingsAdjustments),
+        transactions: [nextTransaction, ...current.transactions],
       }));
       show(savedRemotely || !remoteFailed ? (transaction.type === "income" ? "Inkomst tillagd." : "Köp sparat.") : "Köp sparat lokalt, men Supabase svarade inte.");
     }
@@ -1531,12 +1636,19 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   async function removeTransaction(id: string) {
+    const transaction = data.transactions.find((item) => item.id === id) ?? null;
+    const savingsAdjustments = getSavingsAdjustments(transaction, null, data.savings);
     const remoteId = toRemoteId(id);
     if (remoteReady && remoteId) {
       await deleteRemotePurchase(remoteId);
     }
 
-    setData((current) => ({ ...current, transactions: current.transactions.filter((item) => item.id !== id) }));
+    await syncRemoteSavingsAdjustments(savingsAdjustments);
+    setData((current) => ({
+      ...current,
+      savings: applySavingsAdjustments(current.savings, savingsAdjustments),
+      transactions: current.transactions.filter((item) => item.id !== id),
+    }));
     if (editingTransactionId === id) {
       cancelTransactionEdit();
     }
@@ -1849,7 +1961,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   async function saveGoal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const title = goalForm.title.trim();
-    const saved = parseMoney(goalForm.saved);
+    const saved = goalForm.saved.trim() ? parseMoney(goalForm.saved) : 0;
     const target = parseMoney(goalForm.target);
 
     if (!title) {
@@ -1925,15 +2037,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   async function addSavings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = savingsForm.name.trim();
-    const amount = parseMoney(savingsForm.amount);
+    const amount = savingsForm.amount.trim() ? parseMoney(savingsForm.amount) : 0;
 
     if (!name) {
       show("Skriv namn på sparkontot först.");
       return;
     }
 
-    if (!Number.isFinite(amount) || amount <= 0) {
-      show("Skriv ett giltigt sparbelopp, till exempel 500 eller 500,50.");
+    if (!Number.isFinite(amount) || amount < 0) {
+      show("Skriv ett giltigt belopp, till exempel 0, 500 eller 500,50.");
       return;
     }
 
@@ -1976,25 +2088,19 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             await updateRemoteSavingsAccount(remoteId, { name, amount });
           }
           const linkedRemoteId = linkedSavingsTransaction ? toRemoteId(linkedSavingsTransaction.id) : null;
-          if (linkedRemoteId && linkedSavingsTransaction) {
+          if (linkedRemoteId && linkedSavingsTransaction && linkedSavingsTransaction.category !== name) {
             await updateRemotePurchase(
               linkedRemoteId,
               savingsTitle,
-              amount,
+              linkedSavingsTransaction.amount,
               name,
               toDateTime(linkedSavingsTransaction.date),
-              savingsSource
+              linkedSavingsTransaction.source ?? savingsSource
             );
           }
         } else {
-          const existing = data.savings.find((saving) => saving.name.toLowerCase() === name.toLowerCase());
-          const existingRemoteId = existing ? toRemoteId(existing.id) : null;
-          if (existing && existingRemoteId) {
-            await updateRemoteSavingsAccount(existingRemoteId, { name: existing.name, amount: existing.amount + amount });
-          } else {
-            const created = await addRemoteSavingsAccount({ name, amount }) as RemoteSavingsAccount;
-            newRemoteId = String(created.id);
-          }
+          const created = await addRemoteSavingsAccount({ name, amount }) as RemoteSavingsAccount;
+          newRemoteId = String(created.id);
         }
       } catch (error) {
         console.error(error);
@@ -2002,50 +2108,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       }
     }
 
-    let savingsTransaction: Transaction | null = null;
-
-    if (!editingSavingsId) {
-      let transactionId = crypto.randomUUID();
-
-      if (remoteReady) {
-        try {
-          const created = await addRemotePurchase(
-            savingsTitle,
-            amount,
-            name,
-            undefined,
-            toDateTime(savingsDate),
-            savingsSource
-          ) as RemotePurchase;
-          transactionId = String(created.id);
-        } catch (error) {
-          console.error(error);
-          setRemoteReady(false);
-        }
-      }
-
-      savingsTransaction = {
-        id: transactionId,
-        title: savingsTitle,
-        amount,
-        category: name,
-        type: "expense",
-        source: savingsSource,
-        date: savingsDate,
-      };
-    }
-
     setData((current) => {
-      const existing = current.savings.find((saving) => saving.name.toLowerCase() === name.toLowerCase());
       const savings = editingSavingsId
         ? current.savings.map((saving) =>
             saving.id === editingSavingsId ? { ...saving, name, amount } : saving
           )
-        : existing
-          ? current.savings.map((saving) =>
-              saving.id === existing.id ? { ...saving, amount: saving.amount + amount } : saving
-            )
-          : [...current.savings, { id: newRemoteId ?? crypto.randomUUID(), name, amount, createdAt: savingsDate }];
+        : [...current.savings, { id: newRemoteId ?? crypto.randomUUID(), name, amount, createdAt: savingsDate }];
 
       return {
         ...current,
@@ -2056,20 +2124,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 ? {
                     ...transaction,
                     title: savingsTitle,
-                    amount,
                     category: name,
-                    source: savingsSource,
                   }
                 : transaction
             )
-          : savingsTransaction ? [savingsTransaction, ...current.transactions] : current.transactions,
+          : current.transactions,
         categories: current.categories.includes(name) ? current.categories : [...current.categories, name],
       };
     });
 
     setSavingsForm({ name: "", amount: "" });
     setEditingSavingsId(null);
-    show(editingSavingsId ? "Sparkontot är uppdaterat." : `${kr(amount)} lades till i ${name}.`);
+    show(editingSavingsId ? "Sparkontot är uppdaterat." : `Sparkontot ${name} är skapat.`);
   }
 
   function editSavings(saving: SavingsAccount) {
@@ -3326,8 +3392,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <CardTitle>Dina mål</CardTitle>
               <div className="premium-goal-grid">
                 {data.goals.length ? data.goals.map((goal) => {
-                  const progress = goal.target ? Math.min(100, Math.round((goal.saved / goal.target) * 100)) : 0;
-                  const remaining = Math.max(goal.target - goal.saved, 0);
+                  const linkedSaving = findLinkedSavingsForGoal(goal, data.savings);
+                  const savedAmount = getGoalSavedAmount(goal, data.savings);
+                  const progress = goal.target ? Math.min(100, Math.round((savedAmount / goal.target) * 100)) : 0;
+                  const remaining = Math.max(goal.target - savedAmount, 0);
 
                   return (
                     <div className="premium-goal-card" key={goal.id}>
@@ -3336,8 +3404,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                         <small>{progress >= 100 ? "Mål nått" : `${kr(remaining)} kvar`}</small>
                       </div>
                       <h3>{goal.title}</h3>
-                      <strong>{kr(goal.saved)}</strong>
-                      <p>av {kr(goal.target)}</p>
+                      <strong>{kr(savedAmount)}</strong>
+                      <p>av {kr(goal.target)}{linkedSaving ? ` · kopplat till ${linkedSaving.name}` : ""}</p>
                       <div className="premium-progress"><i style={{ width: `${progress}%` }}/></div>
                       <div className="premium-card-actions">
                         <button onClick={() => editGoal(goal)} type="button">Redigera</button>
@@ -3369,17 +3437,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <form className="premium-editor-card" onSubmit={saveGoal}>
               <div><span>Mål</span><b>{editingGoalId ? "Redigera mål" : "Skapa nytt mål"}</b></div>
               <input placeholder="Mål, t.ex. Resa 2027" value={goalForm.title} onChange={(event) => setGoalForm((goal) => ({ ...goal, title: event.target.value }))}/>
-              <input inputMode="decimal" placeholder="Sparat nu" value={goalForm.saved} onChange={(event) => setGoalForm((goal) => ({ ...goal, saved: event.target.value }))}/>
+              <input inputMode="decimal" placeholder="Manuellt sparat om inget sparkonto finns" value={goalForm.saved} onChange={(event) => setGoalForm((goal) => ({ ...goal, saved: event.target.value }))}/>
               <input inputMode="decimal" placeholder="Målsumma" value={goalForm.target} onChange={(event) => setGoalForm((goal) => ({ ...goal, target: event.target.value }))}/>
               <button type="submit"><Edit3 size={16}/> {editingGoalId ? "Spara mål" : "Skapa mål"}</button>
               {editingGoalId && <button className="secondary-action" onClick={cancelGoalEdit} type="button">Avbryt</button>}
             </form>
 
             <form className="premium-editor-card" onSubmit={addSavings}>
-              <div><span>Sparande</span><b>{editingSavingsId ? "Redigera sparkonto" : "Lägg till sparande"}</b></div>
+              <div><span>Sparkonto</span><b>{editingSavingsId ? "Redigera sparkonto" : "Skapa sparkonto"}</b></div>
               <input placeholder="Sparkonto, t.ex. Resa 2027" value={savingsForm.name} onChange={(event) => setSavingsForm((form) => ({ ...form, name: event.target.value }))}/>
-              <input inputMode="decimal" placeholder={editingSavingsId ? "Totalt belopp" : "Belopp att lägga till"} value={savingsForm.amount} onChange={(event) => setSavingsForm((form) => ({ ...form, amount: event.target.value }))}/>
-              <button type="submit"><Plus size={16}/> {editingSavingsId ? "Spara sparkonto" : "Lägg till sparande"}</button>
+              <input inputMode="decimal" placeholder={editingSavingsId ? "Totalt saldo" : "Startsaldo, t.ex. 0"} value={savingsForm.amount} onChange={(event) => setSavingsForm((form) => ({ ...form, amount: event.target.value }))}/>
+              <button type="submit"><Plus size={16}/> {editingSavingsId ? "Spara sparkonto" : "Skapa sparkonto"}</button>
               {editingSavingsId && <button className="secondary-action" onClick={cancelSavingsEdit} type="button">Avbryt</button>}
             </form>
           </section>
