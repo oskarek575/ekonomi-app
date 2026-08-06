@@ -1045,6 +1045,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   });
   const [dangerConfirm, setDangerConfirm] = useState("");
   const investmentAutoRefreshKey = useRef("");
+  const goalEditorRef = useRef<HTMLFormElement | null>(null);
+  const savingsEditorRef = useRef<HTMLFormElement | null>(null);
   const refreshAllInvestmentPricesRef = useRef<(investments?: Investment[], options?: { onlyStale?: boolean; silent?: boolean; auto?: boolean }) => Promise<void>>(async () => {});
   const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
   const userThemeStorageKey = user ? `${themeStorageKey}-${user.id}` : themeStorageKey;
@@ -1514,6 +1516,34 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   function show(message: string) {
     setNotice(message);
+  }
+
+  function scrollToEditor(ref: { current: HTMLFormElement | null }) {
+    window.setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+  }
+
+  function startNewGoal() {
+    setEditingGoalId(null);
+    setGoalForm((goal) => ({
+      title: goal.title || "",
+      saved: goal.saved || "",
+      target: goal.target || "",
+      linkedSavingsId: goal.linkedSavingsId || "",
+    }));
+    scrollToEditor(goalEditorRef);
+    show("Fyll i ditt nya mÃ¥l hÃ¤r nere.");
+  }
+
+  function startNewSavings() {
+    setEditingSavingsId(null);
+    setSavingsForm((form) => ({
+      name: form.name || "",
+      amount: form.amount || "",
+    }));
+    scrollToEditor(savingsEditorRef);
+    show("Fyll i ditt nya sparande hÃ¤r nere.");
   }
 
   async function syncRemoteSavingsAdjustments(adjustments: Map<string, number>) {
@@ -2026,6 +2056,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   function editGoal(goal: Goal) {
     setEditingGoalId(goal.id);
     setGoalForm({ title: goal.title, saved: String(goal.saved), target: String(goal.target), linkedSavingsId: goal.linkedSavingsId ?? findLinkedSavingsForGoal(goal, data.savings)?.id ?? "" });
+    scrollToEditor(goalEditorRef);
     show("Redigerar mål.");
   }
 
@@ -2160,6 +2191,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   function editSavings(saving: SavingsAccount) {
     setEditingSavingsId(saving.id);
     setSavingsForm({ name: saving.name, amount: String(saving.amount) });
+    scrollToEditor(savingsEditorRef);
     show("Redigerar sparkonto.");
   }
 
@@ -3388,7 +3420,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <span>Sparportfölj</span>
               <h2>{kr(goalSavedTotal)}</h2>
               <p>{goalsTargetTotal ? `${goalProgress}% mot dina mål · ${kr(goalsRemainingTotal)} kvar` : "Skapa ditt första mål och börja bygga något."}</p>
-              <div className="savings-hero-actions">
+              <div className="savings-hero-actions" onClick={(event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLElement)) return;
+                const button = target.closest("button");
+                if (!button) return;
+                const index = Array.from(button.parentElement?.children ?? []).indexOf(button);
+                if (index === 0) startNewGoal();
+                if (index === 1) startNewSavings();
+              }}>
                 <button onClick={() => setGoalForm((goal) => ({ ...goal, title: goal.title || "Resa 2027" }))} type="button"><Crosshair size={16}/> Nytt mål</button>
                 <button onClick={() => setSavingsForm((form) => ({ ...form, name: form.name || "Sparkonto" }))} type="button"><PiggyBank size={16}/> Lägg till sparande</button>
               </div>
@@ -3453,7 +3493,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           </section>
 
           <section className="premium-editor-grid">
-            <form className="premium-editor-card" onSubmit={saveGoal}>
+            <form className="premium-editor-card" onSubmit={saveGoal} ref={goalEditorRef}>
               <div><span>Mål</span><b>{editingGoalId ? "Redigera mål" : "Skapa nytt mål"}</b></div>
               <input placeholder="Mål, t.ex. Resa 2027" value={goalForm.title} onChange={(event) => setGoalForm((goal) => ({ ...goal, title: event.target.value }))}/>
               <select value={goalForm.linkedSavingsId} onChange={(event) => setGoalForm((goal) => ({ ...goal, linkedSavingsId: event.target.value }))}>
@@ -3466,7 +3506,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               {editingGoalId && <button className="secondary-action" onClick={cancelGoalEdit} type="button">Avbryt</button>}
             </form>
 
-            <form className="premium-editor-card" onSubmit={addSavings}>
+            <form className="premium-editor-card" onSubmit={addSavings} ref={savingsEditorRef}>
               <div><span>Sparkonto</span><b>{editingSavingsId ? "Redigera sparkonto" : "Skapa sparkonto"}</b></div>
               <input placeholder="Sparkonto, t.ex. Resa 2027" value={savingsForm.name} onChange={(event) => setSavingsForm((form) => ({ ...form, name: event.target.value }))}/>
               <input inputMode="decimal" placeholder={editingSavingsId ? "Totalt saldo" : "Startsaldo, t.ex. 0"} value={savingsForm.amount} onChange={(event) => setSavingsForm((form) => ({ ...form, amount: event.target.value }))}/>
