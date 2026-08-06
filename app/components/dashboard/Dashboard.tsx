@@ -785,6 +785,19 @@ function getGoalSavedAmount(goal: Goal, savings: SavingsAccount[]) {
   return findLinkedSavingsForGoal(goal, savings)?.amount ?? goal.saved;
 }
 
+function getGoalDisplaySavedAmount(goal: Goal, goals: Goal[], savings: SavingsAccount[]) {
+  if (goals.length === 1) {
+    const linkedSaving = findLinkedSavingsForGoal(goal, savings);
+    const standaloneSavings = savings
+      .filter((saving) => saving.id !== linkedSaving?.id)
+      .reduce((sum, saving) => sum + saving.amount, 0);
+
+    return getGoalSavedAmount(goal, savings) + standaloneSavings;
+  }
+
+  return getGoalSavedAmount(goal, savings);
+}
+
 function getAffordabilityResult({
   title,
   amount,
@@ -1392,10 +1405,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const goalProgress = goalsTargetTotal ? Math.min(100, Math.round((goalSavedTotal / goalsTargetTotal) * 100)) : 0;
   const goalsRemainingTotal = Math.max(goalsTargetTotal - goalSavedTotal, 0);
   const strongestGoal = data.goals.length
-    ? [...data.goals].sort((a, b) => (b.target ? getGoalSavedAmount(b, data.savings) / b.target : 0) - (a.target ? getGoalSavedAmount(a, data.savings) / a.target : 0))[0]
+    ? [...data.goals].sort((a, b) => (b.target ? getGoalDisplaySavedAmount(b, data.goals, data.savings) / b.target : 0) - (a.target ? getGoalDisplaySavedAmount(a, data.goals, data.savings) / a.target : 0))[0]
     : null;
   const strongestGoalProgress = strongestGoal?.target
-    ? Math.min(100, Math.round((getGoalSavedAmount(strongestGoal, data.savings) / strongestGoal.target) * 100))
+    ? Math.min(100, Math.round((getGoalDisplaySavedAmount(strongestGoal, data.goals, data.savings) / strongestGoal.target) * 100))
     : 0;
   const savingsThisPeriod = monthTransactions
     .filter(isAppSavingsTransaction)
@@ -3452,7 +3465,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <div className="premium-goal-grid">
                 {data.goals.length ? data.goals.map((goal) => {
                   const linkedSaving = findLinkedSavingsForGoal(goal, data.savings);
-                  const savedAmount = getGoalSavedAmount(goal, data.savings);
+                  const savedAmount = getGoalDisplaySavedAmount(goal, data.goals, data.savings);
+                  const usesSavingsPool = !linkedSaving && data.goals.length === 1 && data.savings.length > 0;
                   const progress = goal.target ? Math.min(100, Math.round((savedAmount / goal.target) * 100)) : 0;
                   const remaining = Math.max(goal.target - savedAmount, 0);
 
@@ -3464,7 +3478,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                       </div>
                       <h3>{goal.title}</h3>
                       <strong>{kr(savedAmount)}</strong>
-                      <p>av {kr(goal.target)}{linkedSaving ? ` · kopplat till ${linkedSaving.name}` : ""}</p>
+                      <p>av {kr(goal.target)}{linkedSaving ? ` · kopplat till ${linkedSaving.name}` : usesSavingsPool ? " · kopplat till sparpott" : ""}</p>
                       <div className="premium-progress"><i style={{ width: `${progress}%` }}/></div>
                       <div className="premium-card-actions">
                         <button onClick={() => editGoal(goal)} type="button">Redigera</button>
@@ -4266,13 +4280,14 @@ function GoalPanel({
         </div>
         <div className="goals-list">
           {goals.length ? goals.map((goal) => {
-            const savedAmount = getGoalSavedAmount(goal, savings);
+            const savedAmount = getGoalDisplaySavedAmount(goal, goals, savings);
             const linkedSaving = findLinkedSavingsForGoal(goal, savings);
+            const usesSavingsPool = !linkedSaving && goals.length === 1 && savings.length > 0;
             const progress = goal.target ? Math.min(100, Math.round((savedAmount / goal.target) * 100)) : 0;
 
             return (
               <div className="goal-row" key={goal.id}>
-                <span><b>{goal.title}</b><small>{kr(savedAmount)} av {kr(goal.target)}{linkedSaving ? " · kopplat" : ""}</small></span>
+                <span><b>{goal.title}</b><small>{kr(savedAmount)} av {kr(goal.target)}{linkedSaving || usesSavingsPool ? " · kopplat" : ""}</small></span>
                 <div className="mini-progress"><i style={{ width: `${progress}%` }}/></div>
                 <strong>{progress}%</strong>
                 {showSavingsDetails && (
