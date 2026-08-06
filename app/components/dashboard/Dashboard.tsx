@@ -92,6 +92,7 @@ type Goal = {
   title: string;
   saved: number;
   target: number;
+  linkedSavingsId?: string;
 };
 
 type SavingsAccount = {
@@ -759,9 +760,25 @@ function applySavingsAdjustments(savings: SavingsAccount[], adjustments: Map<str
 }
 
 function findLinkedSavingsForGoal(goal: Goal, savings: SavingsAccount[]) {
-  const normalizedTitle = normalizeCategory(goal.title);
+  if (goal.linkedSavingsId) {
+    const linkedById = savings.find((saving) => saving.id === goal.linkedSavingsId);
+    if (linkedById) return linkedById;
+  }
 
-  return savings.find((saving) => normalizeCategory(saving.name) === normalizedTitle) ?? null;
+  const normalizedTitle = normalizeCategory(goal.title);
+  const titleWords = normalizedTitle.split(/\s+/).filter((word) => word.length > 2);
+  const exactNameMatch = savings.find((saving) => normalizeCategory(saving.name) === normalizedTitle);
+
+  if (exactNameMatch) return exactNameMatch;
+
+  return savings.find((saving) => {
+    const normalizedSavingName = normalizeCategory(saving.name);
+    const savingWords = normalizedSavingName.split(/\s+/).filter((word) => word.length > 2);
+
+    return normalizedSavingName.includes(normalizedTitle)
+      || normalizedTitle.includes(normalizedSavingName)
+      || titleWords.some((word) => savingWords.includes(word));
+  }) ?? null;
 }
 
 function getGoalSavedAmount(goal: Goal, savings: SavingsAccount[]) {
@@ -974,7 +991,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [budgetForm, setBudgetForm] = useState({ category: "Mat & Livsmedel", limit: "" });
   const [subscriptionForm, setSubscriptionForm] = useState(defaultSubscriptionForm);
   const [categoryName, setCategoryName] = useState("");
-  const [goalForm, setGoalForm] = useState({ title: "", saved: "", target: "" });
+  const [goalForm, setGoalForm] = useState({ title: "", saved: "", target: "", linkedSavingsId: "" });
   const [savingsForm, setSavingsForm] = useState({ name: "", amount: "" });
   const [investmentForm, setInvestmentForm] = useState({
     assetSearch: "",
@@ -1181,6 +1198,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             title: goal.title,
             saved: Number(goal.saved),
             target: Number(goal.target),
+            linkedSavingsId: current.goals.find((item) => item.id === String(goal.id) || normalizeCategory(item.title) === normalizeCategory(goal.title))?.linkedSavingsId,
           })) : current.goals,
           savings: savingsRows.length ? savingsRows.map((saving) => ({
             id: String(saving.id),
@@ -1963,6 +1981,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const title = goalForm.title.trim();
     const saved = goalForm.saved.trim() ? parseMoney(goalForm.saved) : 0;
     const target = parseMoney(goalForm.target);
+    const linkedSavingsId = goalForm.linkedSavingsId || undefined;
 
     if (!title) {
       show("Skriv namn på målet först.");
@@ -1996,23 +2015,23 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setData((current) => ({
       ...current,
       goals: editingGoalId
-        ? current.goals.map((goal) => goal.id === editingGoalId ? { ...goal, title, saved, target } : goal)
-        : [...current.goals, { id, title, saved, target }],
+        ? current.goals.map((goal) => goal.id === editingGoalId ? { ...goal, title, saved, target, linkedSavingsId } : goal)
+        : [...current.goals, { id, title, saved, target, linkedSavingsId }],
     }));
-    setGoalForm({ title: "", saved: "", target: "" });
+    setGoalForm({ title: "", saved: "", target: "", linkedSavingsId: "" });
     setEditingGoalId(null);
     show(editingGoalId ? "Målet är uppdaterat." : "Nytt mål är skapat.");
   }
 
   function editGoal(goal: Goal) {
     setEditingGoalId(goal.id);
-    setGoalForm({ title: goal.title, saved: String(goal.saved), target: String(goal.target) });
+    setGoalForm({ title: goal.title, saved: String(goal.saved), target: String(goal.target), linkedSavingsId: goal.linkedSavingsId ?? findLinkedSavingsForGoal(goal, data.savings)?.id ?? "" });
     show("Redigerar mål.");
   }
 
   function cancelGoalEdit() {
     setEditingGoalId(null);
-    setGoalForm({ title: "", saved: "", target: "" });
+    setGoalForm({ title: "", saved: "", target: "", linkedSavingsId: "" });
     show("Redigering av mål avbruten.");
   }
 
@@ -2653,7 +2672,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   function resetDemo() {
     setData(defaultData);
     setSubscriptionForm(defaultSubscriptionForm());
-    setGoalForm({ title: "", saved: "", target: "" });
+    setGoalForm({ title: "", saved: "", target: "", linkedSavingsId: "" });
     setSavingsForm({ name: "", amount: "" });
     setTravelForm(defaultTravelForm());
     setTravelPurchaseForm({ title: "", amount: "", category: "Mat", date: formatDateInput(new Date()) });
@@ -3437,6 +3456,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <form className="premium-editor-card" onSubmit={saveGoal}>
               <div><span>Mål</span><b>{editingGoalId ? "Redigera mål" : "Skapa nytt mål"}</b></div>
               <input placeholder="Mål, t.ex. Resa 2027" value={goalForm.title} onChange={(event) => setGoalForm((goal) => ({ ...goal, title: event.target.value }))}/>
+              <select value={goalForm.linkedSavingsId} onChange={(event) => setGoalForm((goal) => ({ ...goal, linkedSavingsId: event.target.value }))}>
+                <option value="">Koppla sparkonto automatiskt</option>
+                {data.savings.map((saving) => <option key={saving.id} value={saving.id}>{saving.name}</option>)}
+              </select>
               <input inputMode="decimal" placeholder="Manuellt sparat om inget sparkonto finns" value={goalForm.saved} onChange={(event) => setGoalForm((goal) => ({ ...goal, saved: event.target.value }))}/>
               <input inputMode="decimal" placeholder="Målsumma" value={goalForm.target} onChange={(event) => setGoalForm((goal) => ({ ...goal, target: event.target.value }))}/>
               <button type="submit"><Edit3 size={16}/> {editingGoalId ? "Spara mål" : "Skapa mål"}</button>
@@ -4203,11 +4226,13 @@ function GoalPanel({
         </div>
         <div className="goals-list">
           {goals.length ? goals.map((goal) => {
-            const progress = goal.target ? Math.min(100, Math.round((goal.saved / goal.target) * 100)) : 0;
+            const savedAmount = getGoalSavedAmount(goal, savings);
+            const linkedSaving = findLinkedSavingsForGoal(goal, savings);
+            const progress = goal.target ? Math.min(100, Math.round((savedAmount / goal.target) * 100)) : 0;
 
             return (
               <div className="goal-row" key={goal.id}>
-                <span><b>{goal.title}</b><small>{kr(goal.saved)} av {kr(goal.target)}</small></span>
+                <span><b>{goal.title}</b><small>{kr(savedAmount)} av {kr(goal.target)}{linkedSaving ? " · kopplat" : ""}</small></span>
                 <div className="mini-progress"><i style={{ width: `${progress}%` }}/></div>
                 <strong>{progress}%</strong>
                 {showSavingsDetails && (
