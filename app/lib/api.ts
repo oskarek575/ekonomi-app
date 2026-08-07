@@ -44,6 +44,34 @@ export type FeedbackInput = {
   app_version?: string;
 };
 
+export type AdminStats = {
+  configured: boolean;
+  message?: string;
+  generatedAt: string;
+  users?: {
+    total: number;
+    active7: number;
+    active30: number;
+    new30: number;
+    confirmed: number;
+  };
+  app?: {
+    activeWriters30: number;
+    rowsByTable: { table: string; rows: number | null; last30: number | null }[];
+  };
+  support?: {
+    open: number;
+    total: number;
+  };
+  recentUsers?: {
+    id: string;
+    email?: string;
+    name?: string | null;
+    createdAt?: string;
+    lastSignInAt?: string;
+  }[];
+};
+
 export async function getCurrentUser() {
   const { data, error } = await supabase.auth.getUser();
 
@@ -840,6 +868,28 @@ export async function updateFeedbackStatus(id: number, status: string) {
     .eq("id", id);
 
   if (error) throw error;
+}
+
+export async function getAdminStats() {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+  if (sessionError) throw sessionError;
+
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("Du behÃ¶ver vara inloggad som admin.");
+
+  const response = await fetch("/api/admin/stats", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Kunde inte hÃ¤mta adminstatistik.");
+  }
+
+  return payload as AdminStats;
 }
 export async function generateSubscriptionsForCurrentMonth() {
   const { data: subscriptions, error } = await supabase

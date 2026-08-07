@@ -1,12 +1,13 @@
 "use client";
 
-import { CSSProperties, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import packageInfo from "../../../package.json";
 import {
-  ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
+  Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
   ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
-  Download, LineChart, PiggyBank, Plane, Plus, RefreshCw, Search, ShieldCheck, Sparkles, Trash2, WalletCards,
+  Database, Download, LineChart, MessageSquare, PiggyBank, Plane, Plus,
+  RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Users, WalletCards,
 } from "lucide-react";
 import {
   addBudget as addRemoteBudget,
@@ -30,6 +31,7 @@ import {
   deleteTravelBudget as deleteRemoteTravelBudget,
   deleteTravelPurchase as deleteRemoteTravelPurchase,
   getCurrentUser,
+  getAdminStats,
   getBudgets,
   getCategories,
   getGoals,
@@ -53,6 +55,7 @@ import {
   updateSubscription as updateRemoteSubscription,
   updateTravelBudget as updateRemoteTravelBudget,
 } from "../../lib/api";
+import type { AdminStats } from "../../lib/api";
 import type { AppSection } from "../Sidebar";
 
 type TransactionType = "income" | "expense";
@@ -1026,6 +1029,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [affordabilityForm, setAffordabilityForm] = useState({ title: "", amount: "" });
   const [feedbackForm, setFeedbackForm] = useState({ type: "bug" as "bug" | "idea" | "question" | "other", message: "" });
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
+  const [adminStatsLoading, setAdminStatsLoading] = useState(false);
+  const [adminStatsError, setAdminStatsError] = useState("");
   const [proActive, setProActive] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
@@ -1068,6 +1074,24 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const greeting = getTimeGreeting();
   const initials = getInitials(displayName);
   const showAdminPanels = isAdminUser(user) || localAdminEnabled;
+
+  const loadAdminStats = useCallback(async () => {
+    if (!showAdminPanels) return;
+
+    setAdminStatsLoading(true);
+    setAdminStatsError("");
+
+    try {
+      const stats = await getAdminStats();
+      setAdminStats(stats);
+    } catch (error) {
+      console.error(error);
+      setAdminStats(null);
+      setAdminStatsError(getReadableError(error));
+    } finally {
+      setAdminStatsLoading(false);
+    }
+  }, [showAdminPanels]);
 
   useEffect(() => {
     let active = true;
@@ -1293,6 +1317,16 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         setSupportTickets([]);
       });
   }, [user, showAdminPanels]);
+
+  useEffect(() => {
+    if (!showAdminPanels) {
+      setAdminStats(null);
+      setAdminStatsError("");
+      return;
+    }
+
+    loadAdminStats();
+  }, [showAdminPanels, loadAdminStats]);
 
   useEffect(() => {
     setTransactionForm((form) => ({ ...form, date: defaultDateForPeriod(month) }));
@@ -3780,6 +3814,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         <SectionPanel title="Inställningar" description="Hantera testdata och kontoinställningar.">
           {showAdminPanels && (
             <>
+              <AdminOverviewPanel
+                stats={adminStats}
+                tickets={supportTickets}
+                loading={adminStatsLoading}
+                error={adminStatsError}
+                onRefresh={loadAdminStats}
+              />
               <BetaStatusPanel checks={betaChecks} readiness={betaReadiness} remoteReady={remoteReady} />
               <LaunchChecklistPanel checks={launchChecks} readiness={launchReadiness} />
             </>
@@ -4058,6 +4099,95 @@ function BetaStatusPanel({
             <strong>{check.value}</strong>
           </div>
         ))}
+      </div>
+    </article>
+  );
+}
+
+function AdminOverviewPanel({
+  stats,
+  tickets,
+  loading,
+  error,
+  onRefresh,
+}: {
+  stats: AdminStats | null;
+  tickets: SupportTicket[];
+  loading: boolean;
+  error: string;
+  onRefresh: () => void;
+}) {
+  const openTickets = stats?.support?.open ?? tickets.filter((ticket) => ticket.status === "new").length;
+  const totalTickets = stats?.support?.total ?? tickets.length;
+  const topTables = stats?.app?.rowsByTable
+    ?.filter((row) => row.rows !== null)
+    .sort((a, b) => (b.rows ?? 0) - (a.rows ?? 0))
+    .slice(0, 5) ?? [];
+  const generatedAt = stats?.generatedAt ? new Date(stats.generatedAt).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) : null;
+
+  return (
+    <article className="admin-overview-panel">
+      <div className="admin-overview-heading">
+        <div>
+          <span>Adminpanel</span>
+          <b>Beta-koll fÃ¶r Oskars Ekonomi</b>
+          <small>Syns bara fÃ¶r admin. HÃ¤r fÃ¥r du koll pÃ¥ anvÃ¤ndare, aktivitet och support.</small>
+        </div>
+        <button onClick={onRefresh} disabled={loading} type="button">
+          <RefreshCw size={15} className={loading ? "spin-icon" : ""}/>
+          {loading ? "Uppdaterar" : "Uppdatera"}
+        </button>
+      </div>
+
+      {!stats?.configured && (
+        <div className="admin-config-warning">
+          <ShieldCheck size={18}/>
+          <span>
+            <b>Servernyckel saknas</b>
+            <small>{stats?.message ?? error ?? "LÃ¤gg till SUPABASE_SERVICE_ROLE_KEY i Vercel fÃ¶r att kunna visa totalt antal Auth-anvÃ¤ndare."}</small>
+          </span>
+        </div>
+      )}
+
+      {error && !stats && (
+        <div className="admin-config-warning admin-config-error">
+          <ShieldCheck size={18}/>
+          <span><b>Kunde inte hÃ¤mta adminstatistik</b><small>{error}</small></span>
+        </div>
+      )}
+
+      <div className="admin-metric-grid">
+        <div><Users size={18}/><span>AnvÃ¤ndare</span><b>{stats?.users?.total ?? "â€”"}</b><small>Totalt skapade konton</small></div>
+        <div><Activity size={18}/><span>Aktiva 7 dagar</span><b>{stats?.users?.active7 ?? "â€”"}</b><small>Senaste inloggning</small></div>
+        <div><Users size={18}/><span>Nya 30 dagar</span><b>{stats?.users?.new30 ?? "â€”"}</b><small>Nya beta-anvÃ¤ndare</small></div>
+        <div><MessageSquare size={18}/><span>Support</span><b>{openTickets}</b><small>{totalTickets} Ã¤renden totalt</small></div>
+      </div>
+
+      <div className="admin-detail-grid">
+        <section>
+          <div className="admin-section-title"><Database size={16}/><b>Appaktivitet</b><small>{stats?.app?.activeWriters30 ?? "â€”"} anvÃ¤ndare har lagt in data senaste 30 dagarna</small></div>
+          <div className="admin-table-list">
+            {topTables.length ? topTables.map((row) => (
+              <div key={row.table}>
+                <span>{row.table}</span>
+                <b>{row.rows ?? 0}</b>
+                <small>{row.last30 ?? 0} nya 30 dagar</small>
+              </div>
+            )) : <EmptyState text={loading ? "HÃ¤mtar tabellstatistik..." : "Tabellstatistik visas nÃ¤r servernyckeln Ã¤r konfigurerad."} />}
+          </div>
+        </section>
+
+        <section>
+          <div className="admin-section-title"><Users size={16}/><b>Senaste konton</b><small>{generatedAt ? `Uppdaterad ${generatedAt}` : "VÃ¤ntar pÃ¥ adminstatistik"}</small></div>
+          <div className="admin-user-list">
+            {stats?.recentUsers?.length ? stats.recentUsers.map((recentUser) => (
+              <div key={recentUser.id}>
+                <span><b>{recentUser.name || recentUser.email || "Ny anvÃ¤ndare"}</b><small>{recentUser.email ?? "Ingen e-post"}</small></span>
+                <small>{recentUser.lastSignInAt ? `Aktiv ${new Date(recentUser.lastSignInAt).toLocaleDateString("sv-SE")}` : "Inte inloggad Ã¤n"}</small>
+              </div>
+            )) : <EmptyState text={loading ? "HÃ¤mtar anvÃ¤ndare..." : "Senaste konton visas nÃ¤r servernyckeln Ã¤r konfigurerad."} />}
+          </div>
+        </section>
       </div>
     </article>
   );
