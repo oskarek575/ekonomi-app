@@ -1418,7 +1418,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const untrackedSavingsTotal = Math.max(0, savingsCreatedThisPeriod - savingsTransactionTotal);
   const actualExpenses = expenses + missingPostedFixedExpenses + travelSpentForActualBalance + untrackedSavingsTotal;
   const actualBalance = income - actualExpenses;
-  const freeMoney = income - reservedTotal - freePurchaseSpent - travelSpentAffectingFreeMoney;
+  const budgetRows = data.budgets.map((budget) => {
+    const used = monthTransactions
+      .filter((item) => item.type === "expense" && item.category === budget.category && !isFreePurchase(item, budgetCategorySet))
+      .reduce((sum, item) => sum + item.amount, 0);
+    const pct = Math.min(100, Math.round((used / budget.limit) * 100));
+    const remaining = Math.max(budget.limit - used, 0);
+    const overspent = Math.max(used - budget.limit, 0);
+    return { ...budget, used, pct, remaining, overspent };
+  });
+  const budgetOverspendTotal = budgetRows.reduce((sum, budget) => sum + budget.overspent, 0);
+  const freeMoney = income - reservedTotal - freePurchaseSpent - travelSpentAffectingFreeMoney - budgetOverspendTotal;
   const freeMoneyBase = Math.max(income - reservedTotal, 1);
   const freeMoneyProgress = Math.max(0, Math.min(100, Math.round((Math.max(freeMoney, 0) / freeMoneyBase) * 100)));
   const freeMoneyStyle = { "--free-progress": `${freeMoneyProgress}%` } as CSSProperties;
@@ -1553,14 +1563,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       })).filter((row) => row.sum > 0)
     : [];
 
-  const budgetRows = data.budgets.map((budget) => {
-    const used = monthTransactions
-      .filter((item) => item.type === "expense" && item.category === budget.category && !isFreePurchase(item, budgetCategorySet))
-      .reduce((sum, item) => sum + item.amount, 0);
-    const pct = Math.min(100, Math.round((used / budget.limit) * 100));
-    const remaining = Math.max(budget.limit - used, 0);
-    return { ...budget, used, pct, remaining };
-  });
   const budgetRemainingTotal = budgetRows.reduce((sum, budget) => sum + budget.remaining, 0);
   const registeredSavingsSpent = savingsTransactionTotal;
   const registeredFreeSpent = monthTransactions
@@ -3296,6 +3298,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span>
               <i>−</i>
               <span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>
+              {budgetOverspendTotal > 0 && <><i>−</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget över</small></span></>}
               <i>=</i>
               <span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span>
             </div>
@@ -3388,7 +3391,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 </article>
                 <article className="panel list-panel">
                   <CardTitle link="Visa alla" onClick={() => onNavigate("budgets")}>Budgetöversikt</CardTitle>
-                  <div className="budget-list">{budgetRows.map((budget) => <div className="budget-row" key={budget.id}><span className="budget-icon">⚑</span><div><span className="budget-meta"><b>{budget.category}</b><small>{kr(budget.remaining)} kvar</small></span><small>{kr(budget.used)} använt av {kr(budget.limit)}</small><div className="progress"><i style={{width: `${budget.pct}%`}}/></div></div></div>)}</div>
+                  <div className="budget-list">{budgetRows.map((budget) => <div className="budget-row" key={budget.id}><span className="budget-icon">⚑</span><div><span className="budget-meta"><b>{budget.category}</b><small>{budget.overspent ? `${kr(budget.overspent)} över` : `${kr(budget.remaining)} kvar`}</small></span><small>{kr(budget.used)} använt av {kr(budget.limit)}</small><div className="progress"><i style={{width: `${budget.pct}%`}}/></div></div></div>)}</div>
                   <button className="wide-button" onClick={() => onNavigate("budgets")} type="button">Visa alla budgetar <ArrowRight size={15}/></button>
                 </article>
               </div>
@@ -3430,7 +3433,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         <SectionPanel title="Fria köp" description="Köp och sparande i kategorier som inte har en egen budget dras från fria pengar.">
           <div className="free-money-panel compact panel" style={freeMoneyStyle}>
             <div><span>Kvar att handla för</span><strong>{kr(freeMoney)}</strong></div>
-            <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>−</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>−</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span><i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Kvar</small></span></div>
+            <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>−</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>−</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>{budgetOverspendTotal > 0 && <><i>−</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget över</small></span></>}<i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Kvar</small></span></div>
           </div>
           <article className="single-purchase-entry panel">
             <div>
@@ -3451,10 +3454,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         <SectionPanel title="Budget" description="Sätt en månadsgräns per kategori.">
           <div className="free-money-panel compact panel">
             <div><span>Fria pengar</span><strong>{kr(freeMoney)}</strong></div>
-            <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>−</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>−</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span><i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span></div>
+            <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>−</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>−</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>{budgetOverspendTotal > 0 && <><i>−</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget över</small></span></>}<i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span></div>
           </div>
           <form className="management-form budget-form" onSubmit={addBudget}><select value={budgetForm.category} onChange={(event) => setBudgetForm((form) => ({ ...form, category: event.target.value }))}>{data.categories.filter((category) => !["Lön", "Fria köp", "Prenumerationer"].includes(category)).map((category) => <option key={category}>{category}</option>)}</select><input inputMode="numeric" placeholder="Månadsbudget" value={budgetForm.limit} onChange={(event) => setBudgetForm((form) => ({ ...form, limit: event.target.value }))}/><button type="submit"><Plus size={16}/> {editingBudgetId ? "Spara ändring" : "Spara budget"}</button>{editingBudgetId && <button className="secondary-action" onClick={cancelBudgetEdit} type="button">Avbryt</button>}</form>
-          <div className="data-table">{budgetRows.map((budget) => <div className="table-row budget-table-row" key={budget.id}><span><b>{budget.category}</b><small>{kr(budget.used)} använt · {kr(budget.remaining)} kvar inom budgeten</small></span><div className="table-progress"><i style={{ width: `${budget.pct}%` }}/></div><strong>{kr(budget.limit)} reserverat</strong><span className="row-actions"><button onClick={() => editBudget(budget)} type="button">Redigera</button><button onClick={() => removeBudget(budget.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <div className="data-table">{budgetRows.map((budget) => <div className="table-row budget-table-row" key={budget.id}><span><b>{budget.category}</b><small>{kr(budget.used)} använt · {budget.overspent ? `${kr(budget.overspent)} över budget` : `${kr(budget.remaining)} kvar inom budgeten`}</small></span><div className="table-progress"><i style={{ width: `${budget.pct}%` }}/></div><strong>{kr(budget.limit)} reserverat</strong><span className="row-actions"><button onClick={() => editBudget(budget)} type="button">Redigera</button><button onClick={() => removeBudget(budget.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
@@ -3821,6 +3824,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <div className="balance-comparison-grid">
               <div><span>Budget kvar</span><b>{kr(budgetRemainingTotal)}</b><small>Alla budgetar som inte Ã¤r slut</small></div>
               <div><span>Fria pengar</span><b>{kr(freeMoney)}</b><small>Pengar kvar att spendera fritt</small></div>
+              <div className={budgetOverspendTotal > 0 ? "warning" : "ok"}><span>Budget över gräns</span><b>{kr(budgetOverspendTotal)}</b><small>Dras från fria pengar</small></div>
               <div><span>Planerat kvar</span><b>{kr(plannedAvailableMoney)}</b><small>Budget kvar + fria pengar</small></div>
               <div className={plannedVsActualDifference > 0 ? "warning" : "ok"}><span>Skillnad mot saldo</span><b>{kr(plannedVsActualDifference)}</b><small>{plannedVsActualDifference > 0 ? "Finns som dragningar/sparande i saldot" : "Plan och saldo ligger nära"}</small></div>
             </div>
