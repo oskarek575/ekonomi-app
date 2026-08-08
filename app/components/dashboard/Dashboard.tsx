@@ -1560,6 +1560,25 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const remaining = Math.max(budget.limit - used, 0);
     return { ...budget, used, pct, remaining };
   });
+  const budgetRemainingTotal = budgetRows.reduce((sum, budget) => sum + budget.remaining, 0);
+  const registeredSavingsSpent = savingsTransactionTotal;
+  const registeredFreeSpent = monthTransactions
+    .filter((item) => isFreePurchase(item, budgetCategorySet) && !isAppSavingsTransaction(item))
+    .reduce((sum, item) => sum + item.amount, 0);
+  const registeredBudgetSpent = monthTransactions
+    .filter((item) => item.type === "expense" && !isFreePurchase(item, budgetCategorySet) && !isAppSavingsTransaction(item))
+    .reduce((sum, item) => sum + item.amount, 0);
+  const plannedAvailableMoney = budgetRemainingTotal + freeMoney;
+  const plannedVsActualDifference = plannedAvailableMoney - actualBalance;
+  const balanceBreakdownRows = [
+    { label: "Inkomst", amount: income, tone: "plus", detail: "Registrerade inkomster i perioden" },
+    { label: "Budgetköp", amount: -registeredBudgetSpent, tone: "minus", detail: "Köp i kategorier med budget" },
+    { label: "Fria köp", amount: -registeredFreeSpent, tone: "minus", detail: "Småköp/fria köp som minskar fria pengar" },
+    { label: "Sparande", amount: -registeredSavingsSpent, tone: "minus", detail: "Spartransaktioner som påverkar banksaldo" },
+    { label: "Fasta utgifter som borde vara dragna", amount: -missingPostedFixedExpenses, tone: "minus", detail: "Schemalagda dragningar utan matchande transaktion" },
+    { label: "Resebudget utanför transaktioner", amount: -travelSpentForActualBalance, tone: "minus", detail: "Resköp som inte redan finns som vanlig transaktion" },
+    { label: "Nytt sparsaldo utan transaktion", amount: -untrackedSavingsTotal, tone: "minus", detail: "Sparkonto skapat/ökat utan matchande spartransaktion" },
+  ].filter((row) => row.amount !== 0 || row.label === "Inkomst");
 
   function show(message: string) {
     setNotice(message);
@@ -3789,6 +3808,34 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       {activeSection === "reports" && (
         <SectionPanel title="Rapporter" description={`Sammanfattning för ${monthFormatter.format(monthDate)}.`}>
           <div className="report-grid"><div><span>Inkomster</span><b>{kr(income)}</b></div><div><span>Reserverat</span><b>{kr(reservedTotal)}</b></div><div><span>Fria pengar</span><b>{kr(freeMoney)}</b></div><div><span>Faktiskt saldo</span><b>{kr(actualBalance)}</b></div></div>
+          <article className="balance-analysis-panel">
+            <div className="balance-analysis-heading">
+              <div>
+                <span>Saldoanalys</span>
+                <b>VarfÃ¶r Ã¤r aktuellt saldo {kr(actualBalance)}?</b>
+                <small>HÃ¤r bryts saldot ner sÃ¥ du kan se exakt vad som drar pengar utanfÃ¶r budget kvar och fria pengar.</small>
+              </div>
+              <strong className={actualBalance >= 0 ? "plus" : "minus"}>{kr(actualBalance)}</strong>
+            </div>
+            <div className="balance-comparison-grid">
+              <div><span>Budget kvar</span><b>{kr(budgetRemainingTotal)}</b><small>Alla budgetar som inte Ã¤r slut</small></div>
+              <div><span>Fria pengar</span><b>{kr(freeMoney)}</b><small>Pengar kvar att spendera fritt</small></div>
+              <div><span>Planerat kvar</span><b>{kr(plannedAvailableMoney)}</b><small>Budget kvar + fria pengar</small></div>
+              <div className={plannedVsActualDifference > 0 ? "warning" : "ok"}><span>Skillnad mot saldo</span><b>{kr(plannedVsActualDifference)}</b><small>{plannedVsActualDifference > 0 ? "Finns som dragningar/sparande i saldot" : "Plan och saldo ligger nära"}</small></div>
+            </div>
+            <div className="balance-breakdown-list">
+              {balanceBreakdownRows.map((row) => (
+                <div className={`balance-breakdown-row ${row.tone}`} key={row.label}>
+                  <span><b>{row.label}</b><small>{row.detail}</small></span>
+                  <strong>{row.amount > 0 ? "+" : row.amount < 0 ? "−" : ""}{kr(Math.abs(row.amount))}</strong>
+                </div>
+              ))}
+              <div className={`balance-breakdown-row result ${actualBalance >= 0 ? "plus" : "minus"}`}>
+                <span><b>Aktuellt saldo</b><small>Inkomst minus allt ovan</small></span>
+                <strong>{kr(actualBalance)}</strong>
+              </div>
+            </div>
+          </article>
           <article className="report-category-panel">
             <CardTitle>Utgifter per kategori</CardTitle>
             {expensesByCategory.length ? (
