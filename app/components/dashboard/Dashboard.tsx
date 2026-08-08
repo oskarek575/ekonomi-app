@@ -56,6 +56,9 @@ import {
   updateTravelBudget as updateRemoteTravelBudget,
 } from "../../lib/api";
 import type { AdminStats } from "../../lib/api";
+import {
+  calculateFinanceSummary,
+} from "../../lib/finance-calculator";
 import type { AppSection } from "../Sidebar";
 
 type TransactionType = "income" | "expense";
@@ -70,6 +73,7 @@ type Transaction = {
   date: string;
   type: TransactionType;
   source?: PurchaseSource;
+  subscriptionId?: string;
 };
 
 type Budget = {
@@ -145,6 +149,7 @@ type AffordabilityResult = {
 };
 
 type FinanceData = {
+  openingBalance: number;
   transactions: Transaction[];
   budgets: Budget[];
   subscriptions: Subscription[];
@@ -162,6 +167,7 @@ type RemotePurchase = {
   kategori: string;
   created_at: string;
   source?: PurchaseSource | null;
+  subscription_id?: number | null;
 };
 
 type RemoteBudget = {
@@ -295,14 +301,6 @@ const subscriptionFrequencies: { id: SubscriptionFrequency; label: string; month
   { id: "custom", label: "Eget intervall", months: 1 },
 ];
 
-const subscriptionFrequencyLabels: Record<SubscriptionFrequency, string> = {
-  monthly: "Varje månad",
-  quarterly: "Varje kvartal",
-  semiannual: "Varje halvår",
-  yearly: "Varje år",
-  custom: "Eget intervall",
-};
-
 const categoryColors: Record<string, string> = {
   "Bostad": "#8b45f5",
   "Mat & Livsmedel": "#42c776",
@@ -319,6 +317,7 @@ const categoryColors: Record<string, string> = {
 const lockedCategories = ["Lön", "Fria köp", "Prenumerationer"] as const;
 
 const defaultData: FinanceData = {
+  openingBalance: 0,
   categories: ["Bostad", "Mat & Livsmedel", "Drivmedel", "Transport", "Nöjen", "Shopping", "Fria köp", "Prenumerationer", "Lön", "Övrigt"],
   transactions: [
     { id: "t1", title: "Lön", category: "Lön", amount: 34850, date: "2025-05-30", type: "income" },
@@ -507,14 +506,6 @@ function isInFinancialPeriod(date: string, month: string) {
   return transactionDate >= start && transactionDate < end;
 }
 
-function isOnOrBeforeToday(date: string) {
-  const today = new Date();
-  const todayAtNoon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
-  const target = new Date(`${date}T12:00:00`);
-
-  return target <= todayAtNoon;
-}
-
 function dateForPeriodDay(month: string, day: number) {
   const [year, monthNumber] = month.split("-").map(Number);
   const targetMonthIndex = day >= salaryDay ? monthNumber - 2 : monthNumber - 1;
@@ -536,63 +527,8 @@ function getSubscriptionIntervalMonths(subscription: Pick<Subscription, "frequen
   return subscriptionFrequencies.find((frequency) => frequency.id === (subscription.frequency ?? "monthly"))?.months ?? 1;
 }
 
-function getSubscriptionStartDate(subscription: Pick<Subscription, "startDate" | "day">, month: string) {
-  return subscription.startDate ?? dateForPeriodDay(month, clampPaymentDay(subscription.day));
-}
-
-function monthsBetween(start: Date, end: Date) {
-  return (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth();
-}
-
 function normalizeCategory(category: string) {
   return category.trim().toLowerCase();
-}
-
-function subscriptionOccurrenceDate(start: Date, monthOffset: number, day: number) {
-  return new Date(start.getFullYear(), start.getMonth() + monthOffset, clampPaymentDay(day), 12, 0, 0, 0);
-}
-
-function getSubscriptionDueDateInPeriod(subscription: Subscription, month: string) {
-  if (!subscription.active) return null;
-
-  const period = getFinancialPeriod(month);
-  const intervalMonths = getSubscriptionIntervalMonths(subscription);
-  const startDate = new Date(`${getSubscriptionStartDate(subscription, month)}T12:00:00`);
-  const firstOccurrence = subscriptionOccurrenceDate(startDate, 0, subscription.day);
-  const firstPossibleOffset = Math.max(0, Math.floor(monthsBetween(firstOccurrence, period.start) / intervalMonths) * intervalMonths);
-
-  for (let offset = firstPossibleOffset; offset <= firstPossibleOffset + intervalMonths + 24; offset += intervalMonths) {
-    const occurrence = subscriptionOccurrenceDate(firstOccurrence, offset, subscription.day);
-
-    if (occurrence >= period.end) return null;
-    if (occurrence >= period.start) return formatDateInput(occurrence);
-  }
-
-  return null;
-}
-
-function getNextSubscriptionDueDate(subscription: Subscription, fromDate = new Date()) {
-  if (!subscription.active) return null;
-
-  const intervalMonths = getSubscriptionIntervalMonths(subscription);
-  const startDate = new Date(`${subscription.startDate ?? formatDateInput(fromDate)}T12:00:00`);
-  const firstOccurrence = subscriptionOccurrenceDate(startDate, 0, subscription.day);
-  const today = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 12, 0, 0, 0);
-
-  for (let offset = 0; offset <= 240; offset += intervalMonths) {
-    const occurrence = subscriptionOccurrenceDate(firstOccurrence, offset, subscription.day);
-    if (occurrence >= today) return formatDateInput(occurrence);
-  }
-
-  return null;
-}
-
-function getSubscriptionScheduleLabel(subscription: Subscription) {
-  if (subscription.frequency === "custom") {
-    return `Var ${getSubscriptionIntervalMonths(subscription)}:e månad`;
-  }
-
-  return subscriptionFrequencyLabels[subscription.frequency ?? "monthly"];
 }
 
 function defaultDateForPeriod(month: string) {
@@ -613,18 +549,6 @@ function toRemoteId(id: string) {
 
 function toDateTime(date: string) {
   return `${date}T12:00:00`;
-}
-
-function daysLeftInPeriod(period: { start: Date; end: Date }) {
-  const oneDay = 86400000;
-  const today = new Date();
-  const todayAtNoon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
-
-  if (todayAtNoon < period.start || todayAtNoon >= period.end) {
-    return Math.max(1, Math.ceil((period.end.getTime() - period.start.getTime()) / oneDay));
-  }
-
-  return Math.max(1, Math.ceil((period.end.getTime() - todayAtNoon.getTime()) / oneDay));
 }
 
 function daysLeftInTravel(startDate: string, endDate: string) {
@@ -674,18 +598,6 @@ function sourceFromRemotePurchase(
   return purchase.kategori === "Fria köp" || (budgetCategorySet && !budgetCategorySet.has(normalizeCategory(purchase.kategori)))
     ? "free"
     : "budget";
-}
-
-function hasMatchingTransaction(
-  transactions: Transaction[],
-  match: { title: string; amount: number; date: string }
-) {
-  return transactions.some((transaction) =>
-    transaction.type === "expense"
-    && transaction.date === match.date
-    && transaction.title.trim().toLowerCase() === match.title.trim().toLowerCase()
-    && Math.round(transaction.amount) === Math.round(match.amount)
-  );
 }
 
 function getSavingsTransactionTitle(name: string) {
@@ -1050,6 +962,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "" });
   const [authMessage, setAuthMessage] = useState("");
   const [profileNameForm, setProfileNameForm] = useState("");
+  const [openingBalanceForm, setOpeningBalanceForm] = useState("");
   const [layoutTheme, setLayoutTheme] = useState<LayoutTheme>("blue");
   const [lastLocalSave, setLastLocalSave] = useState<string | null>(null);
   const [localAdminEnabled, setLocalAdminEnabled] = useState(false);
@@ -1165,6 +1078,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }, [authLoading, layoutTheme, user, userThemeStorageKey]);
 
   useEffect(() => {
+    setOpeningBalanceForm(data.openingBalance ? String(data.openingBalance) : "");
+  }, [data.openingBalance]);
+
+  useEffect(() => {
     async function loadSupabaseData() {
       if (!user) {
         setRemoteReady(false);
@@ -1203,6 +1120,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               date: purchase.created_at.slice(0, 10),
               type,
               source,
+              subscriptionId: purchase.subscription_id ? String(purchase.subscription_id) : undefined,
             };
           }),
           budgets: budgetRowsData.map((budget) => ({
@@ -1350,89 +1268,47 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }, [activeSection]);
 
   const monthDate = new Date(`${month}-01T12:00:00`);
-  const period = getFinancialPeriod(month);
-  const remainingDays = daysLeftInPeriod(period);
-  const monthTransactions = useMemo(
-    () => data.transactions.filter((transaction) => isInFinancialPeriod(transaction.date, month)),
-    [data.transactions, month]
-  );
   const budgetCategorySet = useMemo(
     () => new Set(data.budgets.map((budget) => normalizeCategory(budget.category))),
     [data.budgets]
   );
 
-  const income = monthTransactions.filter((item) => item.type === "income").reduce((sum, item) => sum + item.amount, 0);
-  const expenses = monthTransactions.filter((item) => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
-  const freePurchaseSpent = monthTransactions.filter((item) => isFreePurchase(item, budgetCategorySet)).reduce((sum, item) => sum + item.amount, 0);
-  const todayFreePurchaseSpent = monthTransactions
-    .filter((item) => isFreePurchase(item, budgetCategorySet) && item.date === formatDateInput(new Date()))
-    .reduce((sum, item) => sum + item.amount, 0);
-  const reservedBudgetTotal = data.budgets.reduce((sum, budget) => sum + budget.limit, 0);
-  const scheduledSubscriptions = data.subscriptions.map((subscription) => {
-    const dueDate = getSubscriptionDueDateInPeriod(subscription, month);
-    const nextDueDate = getNextSubscriptionDueDate(subscription);
-
-    return {
-      ...subscription,
-      dueDate,
-      nextDueDate,
-      scheduleLabel: getSubscriptionScheduleLabel(subscription),
-      isDueThisPeriod: Boolean(dueDate),
-    };
-  });
-  const fixedExpenseTotal = scheduledSubscriptions
-    .filter((subscription) => subscription.isDueThisPeriod)
-    .reduce((sum, subscription) => sum + subscription.amount, 0);
-  const missingPostedSubscriptions = scheduledSubscriptions
-    .filter((subscription) => subscription.active && subscription.dueDate && isOnOrBeforeToday(subscription.dueDate))
-    .filter((subscription) => !hasMatchingTransaction(monthTransactions, {
-      title: subscription.name,
-      amount: subscription.amount,
-      date: subscription.dueDate ?? "",
-    }));
-  const missingPostedFixedExpenses = missingPostedSubscriptions
-    .reduce((sum, subscription) => sum + subscription.amount, 0);
-  const reservedTotal = reservedBudgetTotal + fixedExpenseTotal;
-  const travelPurchasesInPeriod = data.travelBudgets
-    .flatMap((travel) => travel.purchases)
-    .filter((purchase) => isInFinancialPeriod(purchase.date, month));
-  const travelSpentForActualBalance = travelPurchasesInPeriod
-    .filter((purchase) => !hasMatchingTransaction(monthTransactions, {
-      title: purchase.title,
-      amount: purchase.amount,
-      date: purchase.date,
-    }))
-    .reduce((sum, purchase) => sum + purchase.amount, 0);
-  const travelSpentAffectingFreeMoney = data.travelBudgets
-    .filter((travel) => !travel.separateFromFreeMoney)
-    .flatMap((travel) => travel.purchases)
-    .filter((purchase) => isInFinancialPeriod(purchase.date, month))
-    .reduce((sum, purchase) => sum + purchase.amount, 0);
-  const savingsTotal = data.savings.reduce((sum, saving) => sum + saving.amount, 0);
-  const savingsTransactionTotal = monthTransactions
-    .filter(isAppSavingsTransaction)
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const savingsCreatedThisPeriod = data.savings
-    .filter((saving) => saving.createdAt && isInFinancialPeriod(saving.createdAt, month))
-    .reduce((sum, saving) => sum + saving.amount, 0);
-  const untrackedSavingsTotal = Math.max(0, savingsCreatedThisPeriod - savingsTransactionTotal);
-  const actualExpenses = expenses + missingPostedFixedExpenses + travelSpentForActualBalance + untrackedSavingsTotal;
-  const actualBalance = income - actualExpenses;
-  const budgetRows = data.budgets.map((budget) => {
-    const used = monthTransactions
-      .filter((item) => item.type === "expense" && item.category === budget.category && !isFreePurchase(item, budgetCategorySet))
-      .reduce((sum, item) => sum + item.amount, 0);
-    const pct = Math.min(100, Math.round((used / budget.limit) * 100));
-    const remaining = Math.max(budget.limit - used, 0);
-    const overspent = Math.max(used - budget.limit, 0);
-    return { ...budget, used, pct, remaining, overspent };
-  });
-  const budgetOverspendTotal = budgetRows.reduce((sum, budget) => sum + budget.overspent, 0);
-  const freeMoney = income - reservedTotal - freePurchaseSpent - travelSpentAffectingFreeMoney - budgetOverspendTotal;
-  const freeMoneyBase = Math.max(income - reservedTotal, 1);
-  const freeMoneyProgress = Math.max(0, Math.min(100, Math.round((Math.max(freeMoney, 0) / freeMoneyBase) * 100)));
+  const financeSummary = useMemo(() => calculateFinanceSummary({
+    transactions: data.transactions,
+    budgets: data.budgets,
+    subscriptions: data.subscriptions,
+    savings: data.savings,
+    travelBudgets: data.travelBudgets,
+    month,
+    openingBalance: data.openingBalance,
+    salaryDay,
+  }), [data.budgets, data.openingBalance, data.savings, data.subscriptions, data.transactions, data.travelBudgets, month]);
+  const {
+    period,
+    monthTransactions,
+    income,
+    expenses,
+    freePurchaseSpent,
+    todayFreePurchaseSpent,
+    reservedBudgetTotal,
+    scheduledSubscriptions,
+    fixedExpenseTotal,
+    missingPostedSubscriptions,
+    missingPostedFixedExpenses,
+    reservedTotal,
+    savingsTotal,
+    actualBalance,
+    budgetRows,
+    budgetOverspendTotal,
+    freeMoney,
+    freeMoneyProgress,
+    remainingDays,
+    freeMoneyPerDay,
+    plannedAvailableMoney,
+    plannedVsActualDifference,
+    balanceBreakdown: balanceBreakdownRows,
+  } = financeSummary;
   const freeMoneyStyle = { "--free-progress": `${freeMoneyProgress}%` } as CSSProperties;
-  const freeMoneyPerDay = Math.max(0, Math.floor(freeMoney / Math.max(remainingDays, 1)));
   const linkedGoalSavingsIds = new Set(data.goals
     .map((goal) => findLinkedSavingsForGoal(goal, data.savings)?.id)
     .filter(Boolean));
@@ -1564,25 +1440,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     : [];
 
   const budgetRemainingTotal = budgetRows.reduce((sum, budget) => sum + budget.remaining, 0);
-  const registeredSavingsSpent = savingsTransactionTotal;
-  const registeredFreeSpent = monthTransactions
-    .filter((item) => isFreePurchase(item, budgetCategorySet) && !isAppSavingsTransaction(item))
-    .reduce((sum, item) => sum + item.amount, 0);
-  const registeredBudgetSpent = monthTransactions
-    .filter((item) => item.type === "expense" && !isFreePurchase(item, budgetCategorySet) && !isAppSavingsTransaction(item))
-    .reduce((sum, item) => sum + item.amount, 0);
-  const plannedAvailableMoney = budgetRemainingTotal + freeMoney;
-  const plannedVsActualDifference = plannedAvailableMoney - actualBalance;
-  const balanceBreakdownRows = [
-    { label: "Inkomst", amount: income, tone: "plus", detail: "Registrerade inkomster i perioden" },
-    { label: "Budgetköp", amount: -registeredBudgetSpent, tone: "minus", detail: "Köp i kategorier med budget" },
-    { label: "Fria köp", amount: -registeredFreeSpent, tone: "minus", detail: "Småköp/fria köp som minskar fria pengar" },
-    { label: "Sparande", amount: -registeredSavingsSpent, tone: "minus", detail: "Spartransaktioner som påverkar banksaldo" },
-    { label: "Fasta utgifter som borde vara dragna", amount: -missingPostedFixedExpenses, tone: "minus", detail: "Schemalagda dragningar utan matchande transaktion" },
-    { label: "Resebudget utanför transaktioner", amount: -travelSpentForActualBalance, tone: "minus", detail: "Resköp som inte redan finns som vanlig transaktion" },
-    { label: "Nytt sparsaldo utan transaktion", amount: -untrackedSavingsTotal, tone: "minus", detail: "Sparkonto skapat/ökat utan matchande spartransaktion" },
-  ].filter((row) => row.amount !== 0 || row.label === "Inkomst");
-
   function show(message: string) {
     setNotice(message);
   }
@@ -1665,7 +1522,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     if (editingTransactionId) {
       const previousTransaction = data.transactions.find((item) => item.id === editingTransactionId) ?? null;
-      const nextTransaction: Transaction = { id: editingTransactionId, ...transaction };
+      const nextTransaction: Transaction = { id: editingTransactionId, ...transaction, subscriptionId: previousTransaction?.subscriptionId };
       const savingsAdjustments = getSavingsAdjustments(previousTransaction, nextTransaction, data.savings);
       const remoteId = toRemoteId(editingTransactionId);
       if (remoteReady && remoteId) {
@@ -1689,7 +1546,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ...current,
         savings: applySavingsAdjustments(current.savings, savingsAdjustments),
         transactions: current.transactions.map((item) =>
-          item.id === editingTransactionId ? { ...item, ...transaction } : item
+          item.id === editingTransactionId ? { ...item, ...transaction, subscriptionId: item.subscriptionId } : item
         ),
       }));
       setEditingTransactionId(null);
@@ -1996,9 +1853,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   async function createSubscriptionExpenses() {
-    const existingKeys = new Set(monthTransactions.filter((item) => item.category === "Prenumerationer").map((item) => `${item.title}-${item.date}`));
+    const existingKeys = new Set(monthTransactions
+      .filter((item) => item.category === "Prenumerationer" || item.subscriptionId)
+      .flatMap((item) => [
+        item.subscriptionId ? `id-${item.subscriptionId}` : "",
+        `${normalizeCategory(item.title)}-${item.date}`,
+      ])
+      .filter(Boolean));
     const newTransactions = scheduledSubscriptions
-      .filter((subscription) => subscription.active && subscription.dueDate && !existingKeys.has(`${subscription.name}-${subscription.dueDate}`))
+      .filter((subscription) => subscription.active && subscription.dueDate && !existingKeys.has(`id-${subscription.id}`) && !existingKeys.has(`${normalizeCategory(subscription.name)}-${subscription.dueDate}`))
       .map<Transaction>((subscription) => ({
         id: crypto.randomUUID(),
         title: subscription.name,
@@ -2006,6 +1869,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         amount: subscription.amount,
         type: "expense",
         source: "budget",
+        subscriptionId: subscription.id,
         date: subscription.dueDate ?? dateForPeriodDay(month, subscription.day),
       }));
 
@@ -2015,7 +1879,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             transaction.title,
             transaction.amount,
             transaction.category,
-            undefined,
+            transaction.subscriptionId ? toRemoteId(transaction.subscriptionId) ?? undefined : undefined,
             toDateTime(transaction.date),
             "budget"
           ) as RemotePurchase;
@@ -3142,6 +3006,19 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
   }
 
+  function saveOpeningBalance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const amount = openingBalanceForm.trim() ? parseMoney(openingBalanceForm) : 0;
+
+    if (!Number.isFinite(amount)) {
+      show("Skriv ett giltigt ingående saldo, till exempel 10000 eller -580.");
+      return;
+    }
+
+    setData((current) => ({ ...current, openingBalance: amount }));
+    show("Ingående saldo är sparat.");
+  }
+
   async function submitFeedback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = feedbackForm.message.trim();
@@ -3908,6 +3785,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <input value={profileNameForm} onChange={(event) => setProfileNameForm(event.target.value)} placeholder="Ditt namn" />
             <button type="submit"><Edit3 size={16}/> Spara namn</button>
           </form>
+          <form className="profile-settings-panel" onSubmit={saveOpeningBalance}>
+            <div><span>Saldoavstämning</span><b>Banksaldo vid löneperiodens start</b><small>Används bara för aktuellt saldo. Fria pengar räknas fortfarande på inkomst, budgetar och köp.</small></div>
+            <input inputMode="decimal" value={openingBalanceForm} onChange={(event) => setOpeningBalanceForm(event.target.value)} placeholder="Ex. 10000 eller -580" />
+            <button type="submit"><WalletCards size={16}/> Spara saldo</button>
+          </form>
           <FeedbackPanel form={feedbackForm} tickets={supportTickets} onChange={setFeedbackForm} onSubmit={submitFeedback} />
           {showAdminPanels && <SupportAdminPanel tickets={supportTickets} onStatusChange={changeTicketStatus} />}
           <PrivacyInfoPanel />
@@ -3915,6 +3797,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           <div className="settings-status"><span>Profil</span><b>{displayName}</b></div>
           <div className="settings-status"><span>Inloggad som</span><b>{user.email ?? "Ditt konto"}</b></div>
           <div className="settings-status"><span>Status</span><b>{remoteReady ? "Privat Supabase-synk aktiv" : "Lokal cache / väntar på Supabase"}</b></div>
+          <div className="settings-status"><span>Ingående saldo</span><b>{kr(data.openingBalance)}</b></div>
           <div className="settings-status"><span>Layoutfärg</span><b>{layoutThemes.find((theme) => theme.id === layoutTheme)?.label ?? "Mörkblå"}</b></div>
           <div className="settings-status"><span>Läge</span><b>{proActive ? "Pro-demo aktiv" : "Standardläge"}</b></div>
         </SectionPanel>

@@ -13,6 +13,7 @@ export interface Purchase {
   kategori: string;
   created_at: string;
   source?: "budget" | "free";
+  subscription_id?: number | null;
 }
 
 export interface Category {
