@@ -38,6 +38,7 @@ import {
   getInvestments,
   getPurchasesByDateRange,
   getFeedbackTickets,
+  getProfile,
   getSavingsAccounts,
   getSubscriptions,
   getTravelBudgets,
@@ -51,6 +52,7 @@ import {
   updatePurchase as updateRemotePurchase,
   updateSavingsAccount as updateRemoteSavingsAccount,
   updateProfileName,
+  updateOpeningBalance,
   updateFeedbackStatus,
   updateSubscription as updateRemoteSubscription,
   updateTravelBudget as updateRemoteTravelBudget,
@@ -1091,7 +1093,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       try {
         const periodRange = getFinancialPeriod(month);
-        const [purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, investmentRows, travelRows] = await Promise.all([
+        const [profile, purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, investmentRows, travelRows] = await Promise.all([
+          getProfile().catch(() => null),
           getPurchasesByDateRange(periodRange.start, periodRange.end) as Promise<RemotePurchase[]>,
           getBudgets() as Promise<RemoteBudget[]>,
           getCategories() as Promise<RemoteCategory[]>,
@@ -1108,6 +1111,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
         setData((current) => ({
           ...current,
+          openingBalance: Number(profile?.opening_balance ?? current.openingBalance ?? 0),
           transactions: purchaseRows.map((purchase) => {
             const type: TransactionType = purchase.kategori === "Lön" ? "income" : "expense";
             const source = type === "expense" ? sourceFromRemotePurchase(purchase, remoteBudgetCategorySet) : undefined;
@@ -3006,7 +3010,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
   }
 
-  function saveOpeningBalance(event: FormEvent<HTMLFormElement>) {
+  async function saveOpeningBalance(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = openingBalanceForm.trim() ? parseMoney(openingBalanceForm) : 0;
 
@@ -3015,8 +3019,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
+    let savedRemotely = false;
+    if (remoteReady) {
+      try {
+        await updateOpeningBalance(amount);
+        savedRemotely = true;
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
     setData((current) => ({ ...current, openingBalance: amount }));
-    show("Ingående saldo är sparat.");
+    show(savedRemotely || !remoteReady ? "Ingående saldo är sparat." : "Ingående saldo sparades lokalt. Kör senaste Supabase-SQL om det inte synkas mellan enheter.");
   }
 
   async function submitFeedback(event: FormEvent<HTMLFormElement>) {

@@ -128,6 +128,7 @@ export type Profile = {
   user_id?: string;
   monthly_income: number;
   monthly_savings: number;
+  opening_balance?: number;
   full_name?: string | null;
 };
 
@@ -172,6 +173,7 @@ async function ensureProfileForUser(user: User | null, name?: string): Promise<P
         user_id: user.id,
         monthly_income: 0,
         monthly_savings: 0,
+        opening_balance: 0,
         full_name: fullName,
       },
     ])
@@ -463,6 +465,20 @@ export async function updateProfileName(full_name: string) {
   if (authError) throw authError;
 
   return data.user;
+}
+
+export async function updateOpeningBalance(opening_balance: number) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Du behöver vara inloggad för att spara ingående saldo.");
+
+  await ensureProfileForUser(user);
+
+  const { error } = await supabase
+    .from("profile")
+    .update({ opening_balance })
+    .eq("user_id", user.id);
+
+  if (error) throw error;
 }
 export async function updatePurchase(
   id: number,

@@ -37,6 +37,7 @@ create table if not exists public.profile (
   full_name text,
   monthly_income numeric not null default 0,
   monthly_savings numeric not null default 0,
+  opening_balance numeric not null default 0,
   created_at timestamptz not null default now()
 );
 
@@ -69,6 +70,9 @@ alter table if exists public.profile
 
 alter table if exists public.profile
   add column if not exists monthly_savings numeric not null default 0;
+
+alter table if exists public.profile
+  add column if not exists opening_balance numeric not null default 0;
 
 alter table if exists public.profile
   add column if not exists created_at timestamptz not null default now();
