@@ -971,6 +971,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [onboardingForm, setOnboardingForm] = useState({
     income: "",
+    openingBalance: "",
     fixedName: "",
     fixedAmount: "",
     fixedDay: "1",
@@ -2764,6 +2765,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   async function finishOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const incomeAmount = parseMoney(onboardingForm.income);
+    const openingBalanceAmount = onboardingForm.openingBalance.trim() ? parseMoney(onboardingForm.openingBalance) : 0;
     const fixedAmount = parseMoney(onboardingForm.fixedAmount);
     const budgetAmount = parseMoney(onboardingForm.budgetAmount);
     const nextTransactions: Transaction[] = [];
@@ -2791,6 +2793,20 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       }
 
       nextTransactions.push({ id, ...transaction });
+    }
+
+    if (!Number.isFinite(openingBalanceAmount)) {
+      show("Skriv ett giltigt banksaldo vid periodstart, eller lämna rutan tom.");
+      return;
+    }
+
+    if (remoteReady) {
+      try {
+        await updateOpeningBalance(openingBalanceAmount);
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
     }
 
     if (onboardingForm.fixedName.trim() && Number.isFinite(fixedAmount) && fixedAmount > 0) {
@@ -2843,11 +2859,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     setData((current) => ({
       ...current,
+      openingBalance: openingBalanceAmount,
       transactions: [...nextTransactions, ...current.transactions],
       subscriptions: [...current.subscriptions, ...nextSubscriptions],
       budgets: [...current.budgets.filter((budget) => !nextBudgets.some((nextBudget) => nextBudget.category === budget.category)), ...nextBudgets],
     }));
-    setOnboardingForm({ income: "", fixedName: "", fixedAmount: "", fixedDay: "1", budgetCategory: "Mat & Livsmedel", budgetAmount: "" });
+    setOnboardingForm({ income: "", openingBalance: "", fixedName: "", fixedAmount: "", fixedDay: "1", budgetCategory: "Mat & Livsmedel", budgetAmount: "" });
     completeOnboarding();
     show("Startguiden är klar. Din första ekonomiplan är skapad.");
   }
@@ -3832,28 +3849,52 @@ function OnboardingPanel({
   onSkip,
 }: {
   categories: string[];
-  form: { income: string; fixedName: string; fixedAmount: string; fixedDay: string; budgetCategory: string; budgetAmount: string };
-  onChange: (form: { income: string; fixedName: string; fixedAmount: string; fixedDay: string; budgetCategory: string; budgetAmount: string }) => void;
+  form: { income: string; openingBalance: string; fixedName: string; fixedAmount: string; fixedDay: string; budgetCategory: string; budgetAmount: string };
+  onChange: (form: { income: string; openingBalance: string; fixedName: string; fixedAmount: string; fixedDay: string; budgetCategory: string; budgetAmount: string }) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSkip: () => void;
 }) {
   const budgetCategories = categories.filter((category) => !["Lön", "Fria köp", "Prenumerationer"].includes(category));
+  const previewIncome = parseMoney(form.income);
+  const previewFixed = parseMoney(form.fixedAmount);
+  const previewBudget = parseMoney(form.budgetAmount);
+  const plannedReserved =
+    (Number.isFinite(previewFixed) && previewFixed > 0 ? previewFixed : 0)
+    + (Number.isFinite(previewBudget) && previewBudget > 0 ? previewBudget : 0);
+  const previewFreeMoney = Number.isFinite(previewIncome) && previewIncome > 0
+    ? Math.max(0, previewIncome - plannedReserved)
+    : 0;
 
   return (
     <section className="onboarding-panel">
       <div className="onboarding-copy">
         <span>Startguide</span>
-        <h2>Kom igång utan krångel</h2>
-        <p>Börja med lönen. Vill du kan du lägga till en fast utgift och en första budget direkt, annars går det lika bra senare.</p>
+        <h2>Bygg din första plan</h2>
+        <p>Guiden hjälper dig skapa rätt grund så appen kan visa fria pengar utan att du behöver flytta pengar mellan konton.</p>
+        <div className="onboarding-preview">
+          <small>Förhandsvisning</small>
+          <strong>{kr(previewFreeMoney)}</strong>
+          <span>ungefär fria pengar efter det du fyllt i</span>
+        </div>
+        <ul className="onboarding-principles">
+          <li>Budgetar reserverar pengar.</li>
+          <li>Fria köp minskar fria pengar direkt.</li>
+          <li>Ingående saldo hjälper saldot matcha banken.</li>
+        </ul>
       </div>
       <form className="onboarding-form" onSubmit={onSubmit}>
         <div className="onboarding-step onboarding-step-primary">
-          <div><b>1. Din lön</b><small>Det här räcker för att appen ska kunna visa fria pengar.</small></div>
+          <div><b>1. Lägg in lönen</b><small>Det här är basen. Appen räknar perioden från lönen den 25:e till nästa 24:e.</small></div>
           <label><span>Månadslön</span><input inputMode="decimal" placeholder="25000" value={form.income} onChange={(event) => onChange({ ...form, income: event.target.value })}/></label>
         </div>
 
         <div className="onboarding-step">
-          <div><b>2. Valfritt: fast utgift</b><small>Exempelvis hyra, försäkring eller abonnemang.</small></div>
+          <div><b>2. Stäm av banksaldot</b><small>Skriv vad kontot hade vid löneperiodens start. Lämna tomt om du vill göra det senare.</small></div>
+          <label><span>Banksaldo vid periodstart</span><input inputMode="decimal" placeholder="Ex. 10000 eller -580" value={form.openingBalance} onChange={(event) => onChange({ ...form, openingBalance: event.target.value })}/></label>
+        </div>
+
+        <div className="onboarding-step">
+          <div><b>3. Lägg in en fast utgift</b><small>Exempelvis hyra, försäkring eller abonnemang. Du kan lägga fler senare.</small></div>
           <div className="onboarding-step-grid">
             <label><span>Namn</span><input placeholder="Hyra" value={form.fixedName} onChange={(event) => onChange({ ...form, fixedName: event.target.value })}/></label>
             <label><span>Belopp</span><input inputMode="decimal" placeholder="8500" value={form.fixedAmount} onChange={(event) => onChange({ ...form, fixedAmount: event.target.value })}/></label>
@@ -3862,7 +3903,7 @@ function OnboardingPanel({
         </div>
 
         <div className="onboarding-step">
-          <div><b>3. Valfritt: första budget</b><small>Perfekt för mat, drivmedel eller annat du vill reservera pengar till.</small></div>
+          <div><b>4. Skapa din första budget</b><small>Perfekt för mat, drivmedel eller annat du vill reservera pengar till.</small></div>
           <div className="onboarding-step-grid two-columns">
             <label><span>Kategori</span><select value={form.budgetCategory} onChange={(event) => onChange({ ...form, budgetCategory: event.target.value })}>{budgetCategories.map((category) => <option key={category}>{category}</option>)}</select></label>
             <label><span>Budgetbelopp</span><input inputMode="decimal" placeholder="4000" value={form.budgetAmount} onChange={(event) => onChange({ ...form, budgetAmount: event.target.value })}/></label>
@@ -3870,7 +3911,7 @@ function OnboardingPanel({
         </div>
 
         <div className="onboarding-actions">
-          <button type="submit"><ShieldCheck size={16}/> Spara start</button>
+          <button type="submit"><ShieldCheck size={16}/> Skapa min första plan</button>
           <button className="secondary-action" onClick={onSkip} type="button">Hoppa över</button>
         </div>
       </form>
