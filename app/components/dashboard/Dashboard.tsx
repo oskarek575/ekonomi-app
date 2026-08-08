@@ -1383,13 +1383,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const fixedExpenseTotal = scheduledSubscriptions
     .filter((subscription) => subscription.isDueThisPeriod)
     .reduce((sum, subscription) => sum + subscription.amount, 0);
-  const missingPostedFixedExpenses = scheduledSubscriptions
+  const missingPostedSubscriptions = scheduledSubscriptions
     .filter((subscription) => subscription.active && subscription.dueDate && isOnOrBeforeToday(subscription.dueDate))
     .filter((subscription) => !hasMatchingTransaction(monthTransactions, {
       title: subscription.name,
       amount: subscription.amount,
       date: subscription.dueDate ?? "",
-    }))
+    }));
+  const missingPostedFixedExpenses = missingPostedSubscriptions
     .reduce((sum, subscription) => sum + subscription.amount, 0);
   const reservedTotal = reservedBudgetTotal + fixedExpenseTotal;
   const travelPurchasesInPeriod = data.travelBudgets
@@ -3830,6 +3831,24 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                   <strong>{row.amount > 0 ? "+" : row.amount < 0 ? "−" : ""}{kr(Math.abs(row.amount))}</strong>
                 </div>
               ))}
+              {missingPostedSubscriptions.length > 0 && (
+                <div className="missing-fixed-list">
+                  <div>
+                    <span>Ingår i fasta utgifter som borde vara dragna</span>
+                    <b>{missingPostedSubscriptions.length} poster · {kr(missingPostedFixedExpenses)}</b>
+                    <small>Om något här redan är betalt behöver transaktionen matcha namn, belopp och datum — eller så behöver fasta utgiften redigeras.</small>
+                  </div>
+                  {missingPostedSubscriptions.map((subscription) => (
+                    <div className="missing-fixed-row" key={subscription.id}>
+                      <span>
+                        <b>{subscription.name}</b>
+                        <small>Dras {subscription.dueDate ? new Date(`${subscription.dueDate}T12:00:00`).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }) : "okänt datum"} · {subscription.scheduleLabel}</small>
+                      </span>
+                      <strong>{kr(subscription.amount)}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className={`balance-breakdown-row result ${actualBalance >= 0 ? "plus" : "minus"}`}>
                 <span><b>Aktuellt saldo</b><small>Inkomst minus allt ovan</small></span>
                 <strong>{kr(actualBalance)}</strong>
