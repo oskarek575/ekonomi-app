@@ -1,6 +1,6 @@
 "use client";
 
-import StatisticsCard from "./StatisticsCard";
+import StatisticsCard from "../cards/StatisticsCard";
 
 type Props = {
   totalBudget: number;

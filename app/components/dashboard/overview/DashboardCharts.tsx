@@ -1,9 +1,9 @@
 "use client";
 
-import { Budget, Purchase } from "../../types/database";
+import { Budget, Purchase } from "../../../types/database";
 
-import SpendingChart from "./SpendingChart";
-import TopCategories from "./TopCategories";
+import SpendingChart from "../cards/SpendingChart";
+import TopCategories from "../cards/TopCategories";
 
 type Props = {
   purchases: Purchase[];

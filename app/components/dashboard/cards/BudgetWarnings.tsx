@@ -1,6 +1,6 @@
 "use client";
 
-import { Budget, Purchase } from "../../types/database";
+import { Budget, Purchase } from "../../../types/database";
 
 type Props = {
   budgets: Budget[];

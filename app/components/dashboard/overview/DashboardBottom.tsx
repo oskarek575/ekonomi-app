@@ -1,13 +1,13 @@
 "use client";
 
-import { Budget, Purchase } from "../../types/database";
+import { Budget, Purchase } from "../../../types/database";
 
-import BudgetProgress from "./BudgetProgress";
-import BudgetWarnings from "./BudgetWarnings";
-import BiggestPurchase from "./BiggestPurchase";
-import QuickActions from "./QuickActions";
-import UpcomingSubscriptions from "./UpcomingSubscriptions";
-import RecentPurchases from "./RecentPurchases";
+import BudgetProgress from "../cards/BudgetProgress";
+import BudgetWarnings from "../cards/BudgetWarnings";
+import BiggestPurchase from "../cards/BiggestPurchase";
+import QuickActions from "../actions/QuickActions";
+import UpcomingSubscriptions from "../lists/UpcomingSubscriptions";
+import RecentPurchases from "../lists/RecentPurchases";
 
 type Props = {
   budgets: Budget[];

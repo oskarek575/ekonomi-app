@@ -5,7 +5,7 @@ import type { User } from "@supabase/supabase-js";
 import packageInfo from "../../../package.json";
 import {
   Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
-  ChevronDown, ChevronRight, CircleCheck, CreditCard, Crosshair, Edit3, Lightbulb,
+  ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
   Database, Download, MessageSquare, PiggyBank, Plane, Plus,
   RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Users, WalletCards,
 } from "lucide-react";
@@ -62,6 +62,7 @@ import {
   calculateFinanceSummary,
 } from "../../lib/finance-calculator";
 import type { AppSection } from "../Sidebar";
+import LoansSection from "./sections/LoansSection";
 
 type TransactionType = "income" | "expense";
 type PurchaseSource = "budget" | "free";
@@ -258,23 +259,23 @@ const themeStorageKey = "oskars-ekonomi-theme";
 const onboardingStorageKey = "oskars-ekonomi-onboarding";
 const fallbackAdminEmails = ["oskarek575@gmail.com"];
 const salaryDay = 25;
-const loanSubscriptionPlan = "Lån";
+const loanSubscriptionPlan = "LÃ¥n";
 const monthFormatter = new Intl.DateTimeFormat("sv-SE", { month: "long", year: "numeric" });
 const dateFormatter = new Intl.DateTimeFormat("sv-SE", { day: "numeric", month: "short" });
 
 const layoutThemes: { id: LayoutTheme; label: string; description: string }[] = [
-  { id: "blue", label: "Mörkblå", description: "Lugn app-känsla" },
-  { id: "green", label: "Grön", description: "Ekonomi & sparande" },
+  { id: "blue", label: "MÃ¶rkblÃ¥", description: "Lugn app-kÃ¤nsla" },
+  { id: "green", label: "GrÃ¶n", description: "Ekonomi & sparande" },
   { id: "purple", label: "Lila", description: "Lite mer premium" },
   { id: "rose", label: "Rosa", description: "Varmare ton" },
   { id: "orange", label: "Orange", description: "Mer energi" },
 ];
 
 const subscriptionFrequencies: { id: SubscriptionFrequency; label: string; months: number }[] = [
-  { id: "monthly", label: "Varje månad", months: 1 },
+  { id: "monthly", label: "Varje mÃ¥nad", months: 1 },
   { id: "quarterly", label: "Varje kvartal", months: 3 },
-  { id: "semiannual", label: "Varje halvår", months: 6 },
-  { id: "yearly", label: "Varje år", months: 12 },
+  { id: "semiannual", label: "Varje halvÃ¥r", months: 6 },
+  { id: "yearly", label: "Varje Ã¥r", months: 12 },
   { id: "custom", label: "Eget intervall", months: 1 },
 ];
 
@@ -283,41 +284,41 @@ const categoryColors: Record<string, string> = {
   "Mat & Livsmedel": "#42c776",
   "Transport": "#438ee8",
   "Drivmedel": "#2dd4bf",
-  "Nöjen": "#f3a047",
+  "NÃ¶jen": "#f3a047",
   "Shopping": "#d1519b",
-  "Fria köp": "#22c55e",
+  "Fria kÃ¶p": "#22c55e",
   "Prenumerationer": "#38bdf8",
-  "Lön": "#39d979",
-  "Övrigt": "#637083",
+  "LÃ¶n": "#39d979",
+  "Ã–vrigt": "#637083",
 };
 
-const lockedCategories = ["Lön", "Fria köp", "Prenumerationer"] as const;
+const lockedCategories = ["LÃ¶n", "Fria kÃ¶p", "Prenumerationer"] as const;
 
 const defaultData: FinanceData = {
   openingBalance: 0,
-  categories: ["Bostad", "Mat & Livsmedel", "Drivmedel", "Transport", "Nöjen", "Shopping", "Fria köp", "Prenumerationer", "Lön", "Övrigt"],
+  categories: ["Bostad", "Mat & Livsmedel", "Drivmedel", "Transport", "NÃ¶jen", "Shopping", "Fria kÃ¶p", "Prenumerationer", "LÃ¶n", "Ã–vrigt"],
   transactions: [
-    { id: "t1", title: "Lön", category: "Lön", amount: 34850, date: "2025-05-30", type: "income" },
+    { id: "t1", title: "LÃ¶n", category: "LÃ¶n", amount: 34850, date: "2025-05-30", type: "income" },
     { id: "t2", title: "Hyra", category: "Bostad", amount: 6850, date: "2025-05-27", type: "expense" },
     { id: "t3", title: "ICA Kvantum", category: "Mat & Livsmedel", amount: 842, date: "2025-05-29", type: "expense" },
     { id: "t4", title: "Bensin", category: "Drivmedel", amount: 679, date: "2025-05-27", type: "expense" },
     { id: "t5", title: "Spotify", category: "Prenumerationer", amount: 129, date: "2025-05-28", type: "expense" },
     { id: "t6", title: "Netflix", category: "Prenumerationer", amount: 179, date: "2025-05-26", type: "expense" },
-    { id: "t7", title: "Restaurang", category: "Nöjen", amount: 520, date: "2025-05-24", type: "expense" },
-    { id: "t8", title: "Kläder", category: "Shopping", amount: 890, date: "2025-05-22", type: "expense" },
-    { id: "t9", title: "Sparande", category: "Övrigt", amount: 8250, date: "2025-05-31", type: "expense" },
+    { id: "t7", title: "Restaurang", category: "NÃ¶jen", amount: 520, date: "2025-05-24", type: "expense" },
+    { id: "t8", title: "KlÃ¤der", category: "Shopping", amount: 890, date: "2025-05-22", type: "expense" },
+    { id: "t9", title: "Sparande", category: "Ã–vrigt", amount: 8250, date: "2025-05-31", type: "expense" },
   ],
   budgets: [
     { id: "b1", category: "Mat & Livsmedel", limit: 5000 },
     { id: "b2", category: "Drivmedel", limit: 2500 },
-    { id: "b3", category: "Nöjen", limit: 2000 },
+    { id: "b3", category: "NÃ¶jen", limit: 2000 },
     { id: "b4", category: "Shopping", limit: 1500 },
-    { id: "b5", category: "Övrigt", limit: 1000 },
+    { id: "b5", category: "Ã–vrigt", limit: 1000 },
   ],
   subscriptions: [
     { id: "s1", name: "Netflix", plan: "Standard Plan", amount: 149, day: 1, active: true },
     { id: "s2", name: "Spotify", plan: "Premium", amount: 129, day: 3, active: true },
-    { id: "s3", name: "Gymmet", plan: "Månadskort", amount: 299, day: 5, active: true },
+    { id: "s3", name: "Gymmet", plan: "MÃ¥nadskort", amount: 299, day: 5, active: true },
     { id: "s4", name: "Adobe", plan: "Creative Cloud", amount: 239, day: 10, active: true },
     { id: "s5", name: "YouTube Premium", plan: "Familj", amount: 179, day: 15, active: true },
   ],
@@ -362,16 +363,16 @@ function estimateLoanMonths(loan: Pick<Loan, "remainingAmount" | "monthlyPayment
 }
 
 function formatLoanTime(months: number) {
-  if (!Number.isFinite(months)) return "Betalningen täcker inte räntan";
+  if (!Number.isFinite(months)) return "Betalningen tÃ¤cker inte rÃ¤ntan";
   if (months <= 0) return "Klart";
 
   const years = Math.floor(months / 12);
   const restMonths = months % 12;
 
-  if (!years) return `${months} mån`;
-  if (!restMonths) return `${years} år`;
+  if (!years) return `${months} mÃ¥n`;
+  if (!restMonths) return `${years} Ã¥r`;
 
-  return `${years} år ${restMonths} mån`;
+  return `${years} Ã¥r ${restMonths} mÃ¥n`;
 }
 
 function parseMoney(value: string) {
@@ -520,7 +521,7 @@ function isFreePurchase(
   budgetCategorySet?: Set<string>
 ) {
   if (item.type !== "expense") return false;
-  if (item.source === "free" || item.category === "Fria köp") return true;
+  if (item.source === "free" || item.category === "Fria kÃ¶p") return true;
   if (item.source === "budget") return false;
 
   return budgetCategorySet ? !budgetCategorySet.has(normalizeCategory(item.category)) : false;
@@ -534,7 +535,7 @@ function sourceFromRemotePurchase(
     return purchase.source;
   }
 
-  return purchase.kategori === "Fria köp" || (budgetCategorySet && !budgetCategorySet.has(normalizeCategory(purchase.kategori)))
+  return purchase.kategori === "Fria kÃ¶p" || (budgetCategorySet && !budgetCategorySet.has(normalizeCategory(purchase.kategori)))
     ? "free"
     : "budget";
 }
@@ -671,7 +672,7 @@ function getAffordabilityResult({
     return {
       answer: "Nej",
       tone: "bad",
-      summary: "Skriv ett giltigt pris först.",
+      summary: "Skriv ett giltigt pris fÃ¶rst.",
       details: ["Exempel: 499 eller 499,90."],
     };
   }
@@ -686,11 +687,11 @@ function getAffordabilityResult({
     return {
       answer: "Nej",
       tone: "bad",
-      summary: `Nej, ${purchaseName} är för dyrt just nu.`,
+      summary: `Nej, ${purchaseName} Ã¤r fÃ¶r dyrt just nu.`,
       details: [
         `Det kostar ${kr(amount)}, men du har ${kr(freeMoney)} fria pengar.`,
-        `Du skulle hamna på ${kr(remainingAfterPurchase)} efter köpet.`,
-        `Det är ${remainingDays} dagar kvar i perioden.`,
+        `Du skulle hamna pÃ¥ ${kr(remainingAfterPurchase)} efter kÃ¶pet.`,
+        `Det Ã¤r ${remainingDays} dagar kvar i perioden.`,
       ],
     };
   }
@@ -699,11 +700,11 @@ function getAffordabilityResult({
     return {
       answer: "Ja, men tajt",
       tone: "warning",
-      summary: `Du har råd med ${purchaseName}, men marginalen blir låg.`,
+      summary: `Du har rÃ¥d med ${purchaseName}, men marginalen blir lÃ¥g.`,
       details: [
-        `Efter köpet har du ${kr(remainingAfterPurchase)} kvar i fria pengar.`,
-        `Det blir ungefär ${kr(dailyMoneyAfter)} per dag i ${remainingDays} dagar.`,
-        `Jag hade helst sett en buffert på minst ${kr(safetyBuffer)}.`,
+        `Efter kÃ¶pet har du ${kr(remainingAfterPurchase)} kvar i fria pengar.`,
+        `Det blir ungefÃ¤r ${kr(dailyMoneyAfter)} per dag i ${remainingDays} dagar.`,
+        `Jag hade helst sett en buffert pÃ¥ minst ${kr(safetyBuffer)}.`,
       ],
     };
   }
@@ -713,9 +714,9 @@ function getAffordabilityResult({
     tone: "good",
     summary: `Ja, ${purchaseName} ser rimligt ut.`,
     details: [
-      `Köpet kostar ${kr(amount)} och du har ${kr(freeMoney)} fria pengar.`,
-      `Efter köpet har du ${kr(remainingAfterPurchase)} kvar.`,
-      `Det blir ungefär ${kr(dailyMoneyAfter)} per dag tills perioden är slut.`,
+      `KÃ¶pet kostar ${kr(amount)} och du har ${kr(freeMoney)} fria pengar.`,
+      `Efter kÃ¶pet har du ${kr(remainingAfterPurchase)} kvar.`,
+      `Det blir ungefÃ¤r ${kr(dailyMoneyAfter)} per dag tills perioden Ã¤r slut.`,
     ],
   };
 }
@@ -729,7 +730,7 @@ function CardTitle({ children, link, onClick }: { children: ReactNode; link?: st
 }
 
 function Logo({ title, tone = "white" }: { title: string; tone?: string }) {
-  const letter = title === "Spotify" ? "◉" : title === "Netflix" ? "N" : title.slice(0, 3).toUpperCase();
+  const letter = title === "Spotify" ? "â—‰" : title === "Netflix" ? "N" : title.slice(0, 3).toUpperCase();
   return <span className={`logo ${tone}`}>{letter}</span>;
 }
 
@@ -738,31 +739,31 @@ const merchantIcons = [
   { match: ["coop"], label: "Coop", tone: "coop" },
   { match: ["willys"], label: "W", tone: "willys" },
   { match: ["lidl"], label: "L", tone: "lidl" },
-  { match: ["spotify"], label: "◎", tone: "spotify" },
+  { match: ["spotify"], label: "â—Ž", tone: "spotify" },
   { match: ["netflix"], label: "N", tone: "netflix" },
-  { match: ["bensin", "circle", "okq8", "preem", "shell"], label: "⛽", tone: "fuel" },
-  { match: ["lön", "lon", "salary"], label: "↓", tone: "income" },
-  { match: ["hyra", "bostad"], label: "⌂", tone: "home" },
+  { match: ["bensin", "circle", "okq8", "preem", "shell"], label: "â›½", tone: "fuel" },
+  { match: ["lÃ¶n", "lon", "salary"], label: "â†“", tone: "income" },
+  { match: ["hyra", "bostad"], label: "âŒ‚", tone: "home" },
   { match: ["gym"], label: "GYM", tone: "gym" },
   { match: ["adobe"], label: "A", tone: "adobe" },
-  { match: ["youtube"], label: "▶", tone: "youtube" },
+  { match: ["youtube"], label: "â–¶", tone: "youtube" },
 ];
 
 const categoryIcons: Record<string, { label: string; tone: string }> = {
-  "Bostad": { label: "⌂", tone: "home" },
-  "Mat & Livsmedel": { label: "🛒", tone: "food" },
-  "Drivmedel": { label: "⛽", tone: "fuel" },
-  "Transport": { label: "↔", tone: "transport" },
-  "Nöjen": { label: "★", tone: "fun" },
-  "Shopping": { label: "🛍", tone: "shopping" },
-  "Fria köp": { label: "₿", tone: "free" },
-  "Prenumerationer": { label: "↻", tone: "subscription" },
-  "Lön": { label: "↓", tone: "income" },
-  "Övrigt": { label: "•", tone: "default" },
+  "Bostad": { label: "âŒ‚", tone: "home" },
+  "Mat & Livsmedel": { label: "ðŸ›’", tone: "food" },
+  "Drivmedel": { label: "â›½", tone: "fuel" },
+  "Transport": { label: "â†”", tone: "transport" },
+  "NÃ¶jen": { label: "â˜…", tone: "fun" },
+  "Shopping": { label: "ðŸ›", tone: "shopping" },
+  "Fria kÃ¶p": { label: "â‚¿", tone: "free" },
+  "Prenumerationer": { label: "â†»", tone: "subscription" },
+  "LÃ¶n": { label: "â†“", tone: "income" },
+  "Ã–vrigt": { label: "â€¢", tone: "default" },
 };
 
 function getCategoryIcon(category: string, type: TransactionType = "expense") {
-  return categoryIcons[category] ?? { label: type === "income" ? "↓" : category.slice(0, 2).toUpperCase(), tone: type === "income" ? "income" : "default" };
+  return categoryIcons[category] ?? { label: type === "income" ? "â†“" : category.slice(0, 2).toUpperCase(), tone: type === "income" ? "income" : "default" };
 }
 
 function TransactionIcon({ title, category, type }: { title: string; category: string; type: TransactionType }) {
@@ -781,7 +782,7 @@ function CategoryMeta({ category, type, suffix }: { category: string; type: Tran
   return (
     <small className="category-meta">
       <span className={`category-mini-icon ${icon.tone}`}>{icon.label}</span>
-      <span>{category}{suffix ? ` · ${suffix}` : ""}</span>
+      <span>{category}{suffix ? ` Â· ${suffix}` : ""}</span>
     </small>
   );
 }
@@ -796,7 +797,7 @@ function getUserDisplayName(user: AuthUser) {
 
   if (name?.trim()) return name.trim();
 
-  return user?.email?.split("@")[0] ?? "där";
+  return user?.email?.split("@")[0] ?? "dÃ¤r";
 }
 
 function getInitials(name: string) {
@@ -814,7 +815,7 @@ function getTimeGreeting(date = new Date()) {
   if (hour < 11) return "God morgon";
   if (hour < 17) return "God dag";
 
-  return "God kväll";
+  return "God kvÃ¤ll";
 }
 
 function getAdminEmails() {
@@ -838,13 +839,13 @@ function getReadableError(error: unknown) {
     if (typeof message === "string") return message;
   }
 
-  return "Okänt fel";
+  return "OkÃ¤nt fel";
 }
 
 export default function Dashboard({ activeSection, onNavigate }: DashboardProps) {
   const [data, setData] = useState<FinanceData>(defaultData);
   const [month, setMonth] = useState(currentMonthValue);
-  const [notice, setNotice] = useState("Klart! Din ekonomi är uppdaterad.");
+  const [notice, setNotice] = useState("Klart! Din ekonomi Ã¤r uppdaterad.");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("Alla");
   const [transactionForm, setTransactionForm] = useState({
@@ -1017,7 +1018,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     async function loadSupabaseData() {
       if (!user) {
         setRemoteReady(false);
-        setNotice("Logga in för att synka säkert med Supabase.");
+        setNotice("Logga in fÃ¶r att synka sÃ¤kert med Supabase.");
         return;
       }
 
@@ -1043,7 +1044,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           ...current,
           openingBalance: Number(profile?.opening_balance ?? current.openingBalance ?? 0),
           transactions: purchaseRows.map((purchase) => {
-            const type: TransactionType = purchase.kategori === "Lön" ? "income" : "expense";
+            const type: TransactionType = purchase.kategori === "LÃ¶n" ? "income" : "expense";
             const source = type === "expense" ? sourceFromRemotePurchase(purchase, remoteBudgetCategorySet) : undefined;
 
             return {
@@ -1126,7 +1127,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       } catch (error) {
         console.error(error);
         setRemoteReady(false);
-        setNotice("Kunde inte nå Supabase, använder lokal cache.");
+        setNotice("Kunde inte nÃ¥ Supabase, anvÃ¤nder lokal cache.");
       }
     }
 
@@ -1187,13 +1188,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ...form,
         type: "expense",
         source: "free",
-        category: form.category === "Lön" ? "Fria köp" : form.category,
+        category: form.category === "LÃ¶n" ? "Fria kÃ¶p" : form.category,
       }));
     } else {
       setTransactionForm((form) => ({
         ...form,
         source: "budget",
-        category: form.category === "Fria köp" ? "Mat & Livsmedel" : form.category,
+        category: form.category === "Fria kÃ¶p" ? "Mat & Livsmedel" : form.category,
       }));
     }
   }, [activeSection]);
@@ -1295,15 +1296,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     remainingDays,
   });
   const transactionCategories = transactionForm.type === "income"
-    ? data.categories.filter((category) => category === "Lön")
-    : data.categories.filter((category) => category !== "Lön");
+    ? data.categories.filter((category) => category === "LÃ¶n")
+    : data.categories.filter((category) => category !== "LÃ¶n");
 
   const transactionCategoryHasBudget = transactionForm.type === "expense"
     ? budgetCategorySet.has(normalizeCategory(transactionForm.category))
     : false;
 
   const expensesByCategory = data.categories
-    .filter((category) => category !== "Lön")
+    .filter((category) => category !== "LÃ¶n")
     .map((category) => {
       const sum = monthTransactions
         .filter((item) => item.type === "expense" && item.category === category)
@@ -1349,7 +1350,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     .filter((purchase) => purchase.date === formatDateInput(new Date()))
     .reduce((sum, purchase) => sum + purchase.amount, 0) ?? 0;
   const activeTravelCategoryRows = activeTravelBudget
-    ? ["Mat", "Aktiviteter", "Transport", "Shopping", "Boende", "Övrigt"].map((category) => ({
+    ? ["Mat", "Aktiviteter", "Transport", "Shopping", "Boende", "Ã–vrigt"].map((category) => ({
         category,
         sum: activeTravelBudget.purchases
           .filter((purchase) => purchase.category === category)
@@ -1377,7 +1378,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       linkedSavingsId: goal.linkedSavingsId || "",
     }));
     scrollToEditor(goalEditorRef);
-    show("Fyll i ditt nya mÃ¥l hÃ¤r nere.");
+    show("Fyll i ditt nya mÃƒÂ¥l hÃƒÂ¤r nere.");
   }
 
   function startNewSavings() {
@@ -1387,7 +1388,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       amount: form.amount || "",
     }));
     scrollToEditor(savingsEditorRef);
-    show("Fyll i ditt nya sparande hÃ¤r nere.");
+    show("Fyll i ditt nya sparande hÃƒÂ¤r nere.");
   }
 
   async function syncRemoteSavingsAdjustments(adjustments: Map<string, number>) {
@@ -1415,7 +1416,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const amount = parseMoney(transactionForm.amount);
 
     if (!transactionForm.title.trim()) {
-      show("Skriv vad köpet gäller först.");
+      show("Skriv vad kÃ¶pet gÃ¤ller fÃ¶rst.");
       return;
     }
 
@@ -1425,7 +1426,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
 
     const expenseSource: PurchaseSource = transactionForm.type === "expense" && (
-      transactionForm.category === "Fria köp" || !budgetCategorySet.has(normalizeCategory(transactionForm.category))
+      transactionForm.category === "Fria kÃ¶p" || !budgetCategorySet.has(normalizeCategory(transactionForm.category))
     )
       ? "free"
       : "budget";
@@ -1456,7 +1457,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         } catch (error) {
           console.error(error);
           setRemoteReady(false);
-          show("Kunde inte uppdatera i Supabase, ändringen sparades lokalt.");
+          show("Kunde inte uppdatera i Supabase, Ã¤ndringen sparades lokalt.");
         }
       }
       await syncRemoteSavingsAdjustments(savingsAdjustments);
@@ -1468,7 +1469,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ),
       }));
       setEditingTransactionId(null);
-      show("Transaktionen är uppdaterad.");
+      show("Transaktionen Ã¤r uppdaterad.");
     } else {
       let id = crypto.randomUUID();
       let savedRemotely = false;
@@ -1501,7 +1502,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         savings: applySavingsAdjustments(current.savings, savingsAdjustments),
         transactions: [nextTransaction, ...current.transactions],
       }));
-      show(savedRemotely || !remoteFailed ? (transaction.type === "income" ? "Inkomst tillagd." : "Köp sparat.") : "Köp sparat lokalt, men Supabase svarade inte.");
+      show(savedRemotely || !remoteFailed ? (transaction.type === "income" ? "Inkomst tillagd." : "KÃ¶p sparat.") : "KÃ¶p sparat lokalt, men Supabase svarade inte.");
     }
 
     setTransactionForm((form) => ({ ...form, title: "", amount: "" }));
@@ -1558,7 +1559,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     if (editingBudgetId) {
       if (duplicateBudget) {
-        show("Det finns redan en budget för den kategorin.");
+        show("Det finns redan en budget fÃ¶r den kategorin.");
         return;
       }
 
@@ -1573,7 +1574,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ),
       }));
       setEditingBudgetId(null);
-      show("Budgeten är uppdaterad.");
+      show("Budgeten Ã¤r uppdaterad.");
     } else {
       let id = crypto.randomUUID();
 
@@ -1595,7 +1596,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           { id, category: budgetForm.category, limit },
         ],
       }));
-      show("Budgeten är sparad.");
+      show("Budgeten Ã¤r sparad.");
     }
 
     setBudgetForm((form) => ({ ...form, limit: "" }));
@@ -1624,7 +1625,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       setEditingBudgetId(null);
       setBudgetForm((form) => ({ ...form, limit: "" }));
     }
-    show("Budgeten togs bort och fria pengar räknades om.");
+    show("Budgeten togs bort och fria pengar rÃ¤knades om.");
   }
 
   async function addSubscription(event: FormEvent<HTMLFormElement>) {
@@ -1639,7 +1640,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     const nextSubscription = {
       name: subscriptionForm.name.trim(),
-      plan: subscriptionForm.plan.trim() || "Månadsplan",
+      plan: subscriptionForm.plan.trim() || "MÃ¥nadsplan",
       amount,
       day,
       frequency: subscriptionForm.frequency,
@@ -1672,7 +1673,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ),
       }));
       setEditingSubscriptionId(null);
-      show("Den fasta utgiften är uppdaterad.");
+      show("Den fasta utgiften Ã¤r uppdaterad.");
     } else {
       let id = crypto.randomUUID();
 
@@ -1702,7 +1703,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           },
         ],
       }));
-      show("Den fasta utgiften är tillagd och fria pengar räknades om.");
+      show("Den fasta utgiften Ã¤r tillagd och fria pengar rÃ¤knades om.");
     }
 
     setSubscriptionForm(defaultSubscriptionForm());
@@ -1753,7 +1754,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         subscription.id === id ? { ...subscription, active: !subscription.active } : subscription
       ),
     }));
-    show("Fast utgift uppdaterad och fria pengar räknades om.");
+    show("Fast utgift uppdaterad och fria pengar rÃ¤knades om.");
   }
 
   async function removeSubscription(id: string) {
@@ -1767,7 +1768,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       setEditingSubscriptionId(null);
       setSubscriptionForm(defaultSubscriptionForm());
     }
-    show("Fast utgift togs bort och fria pengar räknades om.");
+    show("Fast utgift togs bort och fria pengar rÃ¤knades om.");
   }
 
   async function createSubscriptionExpenses() {
@@ -1807,7 +1808,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       : newTransactions;
 
     setData((current) => ({ ...current, transactions: [...savedTransactions, ...current.transactions] }));
-    show(newTransactions.length ? `${newTransactions.length} fasta utgifter skapades som transaktioner.` : "Alla månadens fasta utgifter finns redan.");
+    show(newTransactions.length ? `${newTransactions.length} fasta utgifter skapades som transaktioner.` : "Alla mÃ¥nadens fasta utgifter finns redan.");
   }
 
   async function addCategory(event: FormEvent<HTMLFormElement>) {
@@ -1816,18 +1817,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     if (!name || data.categories.includes(name)) return;
 
     if (remoteReady) {
-      await addRemoteCategory(name, categoryColors[name] ?? "#64748b", "•");
+      await addRemoteCategory(name, categoryColors[name] ?? "#64748b", "â€¢");
     }
 
     setData((current) => ({ ...current, categories: [...current.categories, name] }));
     setCategoryName("");
     setTransactionForm((form) => ({ ...form, category: name }));
-    show("Kategorin är tillagd.");
+    show("Kategorin Ã¤r tillagd.");
   }
 
   async function removeCategory(name: string) {
     if (lockedCategories.includes(name as (typeof lockedCategories)[number])) {
-      show("Den här kategorin behövs av appen och kan inte raderas.");
+      show("Den hÃ¤r kategorin behÃ¶vs av appen och kan inte raderas.");
       return;
     }
 
@@ -1839,7 +1840,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       data.travelBudgets.some((travelBudget) => travelBudget.purchases.some((purchase) => purchase.category === name));
 
     if (categoryIsUsed) {
-      show("Kategorin används redan. Ta bort eller flytta det som använder kategorin först.");
+      show("Kategorin anvÃ¤nds redan. Ta bort eller flytta det som anvÃ¤nder kategorin fÃ¶rst.");
       return;
     }
 
@@ -1851,7 +1852,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       ...current,
       categories: current.categories.filter((category) => category !== name),
     }));
-    setTransactionForm((form) => ({ ...form, category: form.category === name ? "Fria köp" : form.category }));
+    setTransactionForm((form) => ({ ...form, category: form.category === name ? "Fria kÃ¶p" : form.category }));
     setBudgetForm((form) => ({ ...form, category: form.category === name ? data.categories.find((category) => category !== name && !lockedCategories.includes(category as (typeof lockedCategories)[number])) ?? "" : form.category }));
     setCategoryName("");
     show("Kategorin togs bort.");
@@ -1865,12 +1866,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const linkedSavingsId = goalForm.linkedSavingsId || undefined;
 
     if (!title) {
-      show("Skriv namn på målet först.");
+      show("Skriv namn pÃ¥ mÃ¥let fÃ¶rst.");
       return;
     }
 
     if (!Number.isFinite(saved) || saved < 0 || !Number.isFinite(target) || target <= 0) {
-      show("Skriv giltiga belopp för sparat och mål.");
+      show("Skriv giltiga belopp fÃ¶r sparat och mÃ¥l.");
       return;
     }
 
@@ -1901,20 +1902,20 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }));
     setGoalForm({ title: "", saved: "", target: "", linkedSavingsId: "" });
     setEditingGoalId(null);
-    show(editingGoalId ? "Målet är uppdaterat." : "Nytt mål är skapat.");
+    show(editingGoalId ? "MÃ¥let Ã¤r uppdaterat." : "Nytt mÃ¥l Ã¤r skapat.");
   }
 
   function editGoal(goal: Goal) {
     setEditingGoalId(goal.id);
     setGoalForm({ title: goal.title, saved: String(goal.saved), target: String(goal.target), linkedSavingsId: goal.linkedSavingsId ?? findLinkedSavingsForGoal(goal, data.savings)?.id ?? "" });
     scrollToEditor(goalEditorRef);
-    show("Redigerar mål.");
+    show("Redigerar mÃ¥l.");
   }
 
   function cancelGoalEdit() {
     setEditingGoalId(null);
     setGoalForm({ title: "", saved: "", target: "", linkedSavingsId: "" });
-    show("Redigering av mål avbruten.");
+    show("Redigering av mÃ¥l avbruten.");
   }
 
   async function removeGoal(id: string) {
@@ -1932,7 +1933,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     if (editingGoalId === id) {
       cancelGoalEdit();
     }
-    show("Målet togs bort.");
+    show("MÃ¥let togs bort.");
   }
 
   async function addSavings(event: FormEvent<HTMLFormElement>) {
@@ -1941,7 +1942,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const amount = savingsForm.amount.trim() ? parseMoney(savingsForm.amount) : 0;
 
     if (!name) {
-      show("Skriv namn på sparkontot först.");
+      show("Skriv namn pÃ¥ sparkontot fÃ¶rst.");
       return;
     }
 
@@ -1968,7 +1969,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     if (remoteReady && !data.categories.includes(name)) {
       try {
-        await addRemoteCategory(name, categoryColors[name] ?? "#22c55e", "💰");
+        await addRemoteCategory(name, categoryColors[name] ?? "#22c55e", "ðŸ’°");
       } catch (error) {
         console.error(error);
         setRemoteReady(false);
@@ -2036,7 +2037,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     setSavingsForm({ name: "", amount: "" });
     setEditingSavingsId(null);
-    show(editingSavingsId ? "Sparkontot är uppdaterat." : `Sparkontot ${name} är skapat.`);
+    show(editingSavingsId ? "Sparkontot Ã¤r uppdaterat." : `Sparkontot ${name} Ã¤r skapat.`);
   }
 
   function editSavings(saving: SavingsAccount) {
@@ -2176,12 +2177,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const paymentDay = clampPaymentDay(Number(loanForm.paymentDay));
 
     if (!name) {
-      show("Skriv namn på lånet först.");
+      show("Skriv namn pÃ¥ lÃ¥net fÃ¶rst.");
       return;
     }
 
     if (!Number.isFinite(remainingAmount) || remainingAmount < 0 || !Number.isFinite(monthlyPayment) || monthlyPayment <= 0 || !Number.isFinite(interestRate) || interestRate < 0) {
-      show("Skriv giltig skuld, månadsbetalning och ränta.");
+      show("Skriv giltig skuld, mÃ¥nadsbetalning och rÃ¤nta.");
       return;
     }
 
@@ -2226,7 +2227,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             )
           : [...current.subscriptions, syncedSubscription.subscription],
       }));
-      show("Lånet är uppdaterat.");
+      show("LÃ¥net Ã¤r uppdaterat.");
     } else {
       let id = crypto.randomUUID();
 
@@ -2249,7 +2250,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             )
           : [...current.subscriptions, syncedSubscription.subscription],
       }));
-      show("Lånet är tillagt.");
+      show("LÃ¥net Ã¤r tillagt.");
     }
 
     resetLoanForm();
@@ -2264,7 +2265,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       interestRate: String(loan.interestRate),
       paymentDay: String(loan.paymentDay),
     });
-    show("Redigerar lån.");
+    show("Redigerar lÃ¥n.");
   }
 
   async function removeLoan(id: string) {
@@ -2304,7 +2305,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     if (editingLoanId === id) {
       resetLoanForm();
     }
-    show("Lånet togs bort.");
+    show("LÃ¥net togs bort.");
   }
 
   async function saveTravelBudget(event: FormEvent<HTMLFormElement>) {
@@ -2312,7 +2313,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const budget = parseMoney(travelForm.budget);
 
     if (!travelForm.name.trim()) {
-      show("Skriv ett namn på resan först.");
+      show("Skriv ett namn pÃ¥ resan fÃ¶rst.");
       return;
     }
 
@@ -2322,7 +2323,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
 
     if (travelForm.endDate < travelForm.startDate) {
-      show("Slutdatum behöver vara efter startdatum.");
+      show("Slutdatum behÃ¶ver vara efter startdatum.");
       return;
     }
 
@@ -2368,7 +2369,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         setActiveTravelId(syncedId);
       }
       setEditingTravelId(null);
-      show("Resebudgeten är uppdaterad.");
+      show("Resebudgeten Ã¤r uppdaterad.");
     } else {
       let id = crypto.randomUUID();
 
@@ -2393,7 +2394,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         travelBudgets: [{ id, name: travelForm.name.trim(), budget, startDate: travelForm.startDate, endDate: travelForm.endDate, separateFromFreeMoney: travelForm.separateFromFreeMoney, purchases: [] }, ...current.travelBudgets],
       }));
       setActiveTravelId(id);
-      show("Resebudgeten är skapad.");
+      show("Resebudgeten Ã¤r skapad.");
     }
 
     setTravelForm(defaultTravelForm());
@@ -2434,18 +2435,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     event.preventDefault();
 
     if (!activeTravelBudget) {
-      show("Skapa en resebudget först.");
+      show("Skapa en resebudget fÃ¶rst.");
       return;
     }
 
     const amount = parseMoney(travelPurchaseForm.amount);
     if (!travelPurchaseForm.title.trim()) {
-      show("Skriv vad reseköpet gäller.");
+      show("Skriv vad resekÃ¶pet gÃ¤ller.");
       return;
     }
 
     if (!Number.isFinite(amount) || amount <= 0) {
-      show("Skriv ett giltigt belopp för reseköpet.");
+      show("Skriv ett giltigt belopp fÃ¶r resekÃ¶pet.");
       return;
     }
 
@@ -2473,7 +2474,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       travelBudgets: current.travelBudgets.map((travel) => travel.id === activeTravelBudget.id ? { ...travel, purchases: [purchase, ...travel.purchases] } : travel),
     }));
     setTravelPurchaseForm((form) => ({ ...form, title: "", amount: "" }));
-    show(activeTravelBudget.separateFromFreeMoney ? "Reseköpet sparades i resebudgeten." : "Reseköpet sparades och påverkar fria pengar.");
+    show(activeTravelBudget.separateFromFreeMoney ? "ResekÃ¶pet sparades i resebudgeten." : "ResekÃ¶pet sparades och pÃ¥verkar fria pengar.");
   }
 
   async function removeTravelPurchase(travelId: string, purchaseId: string) {
@@ -2491,7 +2492,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       ...current,
       travelBudgets: current.travelBudgets.map((travel) => travel.id === travelId ? { ...travel, purchases: travel.purchases.filter((purchase) => purchase.id !== purchaseId) } : travel),
     }));
-    show("Reseköpet togs bort.");
+    show("ResekÃ¶pet togs bort.");
   }
 
   function resetDemo() {
@@ -2505,25 +2506,25 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setEditingSavingsId(null);
     setEditingTravelId(null);
     setActiveTravelId(defaultData.travelBudgets[0]?.id ?? null);
-    show("Demodata är återställd.");
+    show("Demodata Ã¤r Ã¥terstÃ¤lld.");
   }
 
   function toggleProDemo() {
     setProActive((active) => !active);
-    show(proActive ? "Pro-demo är avstängd." : "Pro-demo är aktiverad.");
+    show(proActive ? "Pro-demo Ã¤r avstÃ¤ngd." : "Pro-demo Ã¤r aktiverad.");
   }
 
   const stats = [
-    { title: "Totalt saldo", value: kr(actualBalance), change: actualBalance >= 0 ? "+ stabilt" : "- underskott", tail: "efter registrerade köp", color: "green", Icon: WalletCards },
-    { title: "Inkomster", value: kr(income), change: income ? "+ registrerat" : "0", tail: "i vald månad", color: "green", Icon: ArrowDownToLine },
-    { title: "Utgifter", value: `-${kr(expenses)}`, change: expenses ? "- aktivt" : "0", tail: "i vald månad", color: "purple", Icon: ArrowUpRight },
-    { title: "Fria pengar", value: kr(freeMoney), change: `-${kr(freePurchaseSpent)}`, tail: "fria köp", color: "blue", Icon: PiggyBank },
+    { title: "Totalt saldo", value: kr(actualBalance), change: actualBalance >= 0 ? "+ stabilt" : "- underskott", tail: "efter registrerade kÃ¶p", color: "green", Icon: WalletCards },
+    { title: "Inkomster", value: kr(income), change: income ? "+ registrerat" : "0", tail: "i vald mÃ¥nad", color: "green", Icon: ArrowDownToLine },
+    { title: "Utgifter", value: `-${kr(expenses)}`, change: expenses ? "- aktivt" : "0", tail: "i vald mÃ¥nad", color: "purple", Icon: ArrowUpRight },
+    { title: "Fria pengar", value: kr(freeMoney), change: `-${kr(freePurchaseSpent)}`, tail: "fria kÃ¶p", color: "blue", Icon: PiggyBank },
   ];
 
   const topInsights = [
-    freeMoney < 0 ? "Du har använt mer fria pengar än perioden tillåter." : `Du har ${kr(freeMoney)} kvar i fria pengar.`,
-    data.subscriptions.length ? `Fasta utgifter denna period är ${kr(fixedExpenseTotal)} och budgetar reserverar ${kr(reservedBudgetTotal)}.` : "Lägg in fasta utgifter för att räkna fria pengar bättre.",
-    goalProgress >= 100 ? "Sparmålen är nådda. Dags för nästa mål!" : `Du är ${goalProgress}% på väg mot dina mål. Sparkonton: ${kr(savingsTotal)}.`,
+    freeMoney < 0 ? "Du har anvÃ¤nt mer fria pengar Ã¤n perioden tillÃ¥ter." : `Du har ${kr(freeMoney)} kvar i fria pengar.`,
+    data.subscriptions.length ? `Fasta utgifter denna period Ã¤r ${kr(fixedExpenseTotal)} och budgetar reserverar ${kr(reservedBudgetTotal)}.` : "LÃ¤gg in fasta utgifter fÃ¶r att rÃ¤kna fria pengar bÃ¤ttre.",
+    goalProgress >= 100 ? "SparmÃ¥len Ã¤r nÃ¥dda. Dags fÃ¶r nÃ¤sta mÃ¥l!" : `Du Ã¤r ${goalProgress}% pÃ¥ vÃ¤g mot dina mÃ¥l. Sparkonton: ${kr(savingsTotal)}.`,
   ];
 
   const betaChecks = [
@@ -2531,37 +2532,37 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       title: "Inloggning",
       status: user ? "ok" : "warning",
       value: user ? "Aktiv" : "Inte inloggad",
-      detail: user ? `Privat konto: ${user.email ?? displayName}` : "Logga in för att datan ska vara privat.",
+      detail: user ? `Privat konto: ${user.email ?? displayName}` : "Logga in fÃ¶r att datan ska vara privat.",
     },
     {
       title: "Supabase-synk",
       status: remoteReady ? "ok" : "warning",
       value: remoteReady ? "Aktiv" : "Lokal fallback",
-      detail: remoteReady ? "Appen kan läsa och skriva mot Supabase." : "Kör release-setup.sql eller kontrollera anslutningen.",
+      detail: remoteReady ? "Appen kan lÃ¤sa och skriva mot Supabase." : "KÃ¶r release-setup.sql eller kontrollera anslutningen.",
     },
     {
       title: "Lokal cache",
       status: lastLocalSave ? "ok" : "warning",
-      value: lastLocalSave ? "Sparad" : "Väntar",
-      detail: lastLocalSave ? `Senast ${new Date(lastLocalSave).toLocaleString("sv-SE")}` : "Ingen lokal sparning registrerad än.",
+      value: lastLocalSave ? "Sparad" : "VÃ¤ntar",
+      detail: lastLocalSave ? `Senast ${new Date(lastLocalSave).toLocaleString("sv-SE")}` : "Ingen lokal sparning registrerad Ã¤n.",
     },
     {
       title: "Resebudget",
       status: remoteReady && data.travelBudgets.every((travel) => Boolean(toRemoteId(travel.id))) ? "ok" : "info",
       value: `${data.travelBudgets.length} resor`,
-      detail: remoteReady ? "Nya resebudgetar sparas i Supabase." : "Sparar lokalt tills Supabase-tabellerna är redo.",
+      detail: remoteReady ? "Nya resebudgetar sparas i Supabase." : "Sparar lokalt tills Supabase-tabellerna Ã¤r redo.",
     },
     {
       title: "Fasta utgifter",
       status: data.subscriptions.some((subscription) => (subscription.frequency ?? "monthly") !== "monthly") ? "ok" : "info",
       value: `${data.subscriptions.length} st`,
-      detail: "Stöd för månad, kvartal, halvår, år och eget intervall.",
+      detail: "StÃ¶d fÃ¶r mÃ¥nad, kvartal, halvÃ¥r, Ã¥r och eget intervall.",
     },
     {
       title: "Appversion",
       status: "ok",
       value: `v${packageInfo.version}`,
-      detail: "Redo för beta-test och Vercel-deploy.",
+      detail: "Redo fÃ¶r beta-test och Vercel-deploy.",
     },
   ];
   const betaReadyCount = betaChecks.filter((check) => check.status === "ok").length;
@@ -2571,37 +2572,37 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     {
       title: "Supabase & privat data",
       status: remoteReady ? "ok" : "warning",
-      detail: remoteReady ? "Synk och RLS är aktivt i appen." : "Kontrollera Supabase eller kör release-setup.sql.",
+      detail: remoteReady ? "Synk och RLS Ã¤r aktivt i appen." : "Kontrollera Supabase eller kÃ¶r release-setup.sql.",
     },
     {
       title: "Onboarding",
       status: onboardingDismissed || !needsOnboarding ? "ok" : "warning",
-      detail: "Nya användare får startguide för lön, fast utgift och budget.",
+      detail: "Nya anvÃ¤ndare fÃ¥r startguide fÃ¶r lÃ¶n, fast utgift och budget.",
     },
     {
       title: "Export/radera data",
       status: "ok",
-      detail: "Användaren kan exportera JSON och radera sin appdata.",
+      detail: "AnvÃ¤ndaren kan exportera JSON och radera sin appdata.",
     },
     {
       title: "Mobil/PWA",
       status: "info",
-      detail: "Fortsätt testa på iPhone/Android under betan.",
+      detail: "FortsÃ¤tt testa pÃ¥ iPhone/Android under betan.",
     },
     {
       title: "Juridik",
       status: "warning",
-      detail: "Privacy policy, villkor och supportkontakt behöver skrivas innan publik lansering.",
+      detail: "Privacy policy, villkor och supportkontakt behÃ¶ver skrivas innan publik lansering.",
     },
     {
-      title: "Feedbackflöde",
+      title: "FeedbackflÃ¶de",
       status: "ok",
-      detail: "Testare kan rapportera problem och föreslå förbättringar direkt i appen.",
+      detail: "Testare kan rapportera problem och fÃ¶reslÃ¥ fÃ¶rbÃ¤ttringar direkt i appen.",
     },
     {
       title: "Senaste build",
       status: "ok",
-      detail: `Version ${packageInfo.version}. Lint/build körs innan push.`,
+      detail: `Version ${packageInfo.version}. Lint/build kÃ¶rs innan push.`,
     },
   ];
   const launchReadyCount = launchChecks.filter((check) => check.status === "ok").length;
@@ -2614,7 +2615,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   function skipOnboarding() {
     completeOnboarding();
-    show("Startguiden är avstängd. Du kan alltid lägga in allt manuellt.");
+    show("Startguiden Ã¤r avstÃ¤ngd. Du kan alltid lÃ¤gga in allt manuellt.");
   }
 
   async function finishOnboarding(event: FormEvent<HTMLFormElement>) {
@@ -2629,9 +2630,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     if (Number.isFinite(incomeAmount) && incomeAmount > 0) {
       const transaction = {
-        title: "Lön",
+        title: "LÃ¶n",
         amount: incomeAmount,
-        category: "Lön",
+        category: "LÃ¶n",
         type: "income" as TransactionType,
         date: dateForPeriodDay(month, salaryDay),
       };
@@ -2651,7 +2652,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
 
     if (!Number.isFinite(openingBalanceAmount)) {
-      show("Skriv ett giltigt banksaldo vid periodstart, eller lämna rutan tom.");
+      show("Skriv ett giltigt banksaldo vid periodstart, eller lÃ¤mna rutan tom.");
       return;
     }
 
@@ -2721,7 +2722,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }));
     setOnboardingForm({ income: "", openingBalance: "", fixedName: "", fixedAmount: "", fixedDay: "1", budgetCategory: "Mat & Livsmedel", budgetAmount: "" });
     completeOnboarding();
-    show("Startguiden är klar. Din första ekonomiplan är skapad.");
+    show("Startguiden Ã¤r klar. Din fÃ¶rsta ekonomiplan Ã¤r skapad.");
   }
 
   function exportUserData() {
@@ -2744,12 +2745,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     link.download = `oskars-ekonomi-export-${formatDateInput(new Date())}.json`;
     link.click();
     URL.revokeObjectURL(url);
-    show("Exporten är nedladdad.");
+    show("Exporten Ã¤r nedladdad.");
   }
 
   async function deleteAllUserData() {
     if (dangerConfirm.trim().toUpperCase() !== "RADERA") {
-      show("Skriv RADERA i rutan för att bekräfta.");
+      show("Skriv RADERA i rutan fÃ¶r att bekrÃ¤fta.");
       return;
     }
 
@@ -2758,7 +2759,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         await deleteCurrentUserData();
       } catch (error) {
         console.error(error);
-        show("Kunde inte radera i Supabase. Försök igen innan du lämnar sidan.");
+        show("Kunde inte radera i Supabase. FÃ¶rsÃ¶k igen innan du lÃ¤mnar sidan.");
         return;
       }
     }
@@ -2769,7 +2770,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setData({ ...defaultData, transactions: [], budgets: [], subscriptions: [], goals: [], savings: [], loans: [], travelBudgets: [] });
     setDangerConfirm("");
     setOnboardingDismissed(false);
-    show("Din appdata är raderad för den här användaren.");
+    show("Din appdata Ã¤r raderad fÃ¶r den hÃ¤r anvÃ¤ndaren.");
   }
 
   function openStat(title: string) {
@@ -2779,7 +2780,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
 
     if (title === "Inkomster") {
-      setCategoryFilter("Lön");
+      setCategoryFilter("LÃ¶n");
       onNavigate("transactions");
       return;
     }
@@ -2799,7 +2800,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       title,
       type: "expense",
       source: "free",
-      category: "Fria köp",
+      category: "Fria kÃ¶p",
     }));
     setCategoryFilter("Alla");
     onNavigate("transactions");
@@ -2812,12 +2813,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const password = authForm.password;
 
     if (authMode === "signup" && !name) {
-      setAuthMessage("Skriv ditt namn också, så appen kan hälsa rätt.");
+      setAuthMessage("Skriv ditt namn ocksÃ¥, sÃ¥ appen kan hÃ¤lsa rÃ¤tt.");
       return;
     }
 
     if (!email || password.length < 6) {
-      setAuthMessage("Skriv e-post och minst 6 tecken som lösenord.");
+      setAuthMessage("Skriv e-post och minst 6 tecken som lÃ¶senord.");
       return;
     }
 
@@ -2831,16 +2832,16 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       if (authMode === "signup" && !authResult.session) {
         setAuthMode("signin");
-        setAuthMessage("Kontot är skapat. Bekräfta mejlet från Supabase om du får ett, och logga sedan in.");
+        setAuthMessage("Kontot Ã¤r skapat. BekrÃ¤fta mejlet frÃ¥n Supabase om du fÃ¥r ett, och logga sedan in.");
         return;
       }
 
       setUser(authResult.user);
-      setAuthMessage(authMode === "signin" ? "Du är inloggad." : "Kontot är skapat och du är inloggad.");
-      setNotice("Inloggad och redo att synka säkert.");
+      setAuthMessage(authMode === "signin" ? "Du Ã¤r inloggad." : "Kontot Ã¤r skapat och du Ã¤r inloggad.");
+      setNotice("Inloggad och redo att synka sÃ¤kert.");
     } catch (error) {
       console.error(error);
-      setAuthMessage(authMode === "signin" ? "Kunde inte logga in. Kolla e-post och lösenord." : "Kunde inte skapa konto. Testa annan e-post eller längre lösenord.");
+      setAuthMessage(authMode === "signin" ? "Kunde inte logga in. Kolla e-post och lÃ¶senord." : "Kunde inte skapa konto. Testa annan e-post eller lÃ¤ngre lÃ¶senord.");
       const errorMessage = getReadableError(error);
       setAuthMessage(authMode === "signin" ? `Kunde inte logga in: ${errorMessage}` : `Kunde inte skapa konto: ${errorMessage}`);
     } finally {
@@ -2855,7 +2856,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       setRemoteReady(false);
       setData(defaultData);
       setAuthForm((form) => ({ ...form, password: "" }));
-      setNotice("Du är utloggad.");
+      setNotice("Du Ã¤r utloggad.");
     } catch (error) {
       console.error(error);
       show("Kunde inte logga ut just nu.");
@@ -2867,7 +2868,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const nextName = profileNameForm.trim();
 
     if (!nextName) {
-      show("Skriv ett namn först.");
+      show("Skriv ett namn fÃ¶rst.");
       return;
     }
 
@@ -2875,7 +2876,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       const updatedUser = await updateProfileName(nextName);
       setUser(updatedUser);
       setProfileNameForm(nextName);
-      show("Namnet är uppdaterat.");
+      show("Namnet Ã¤r uppdaterat.");
     } catch (error) {
       console.error(error);
       show(`Kunde inte uppdatera namn: ${getReadableError(error)}`);
@@ -2887,7 +2888,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const amount = openingBalanceForm.trim() ? parseMoney(openingBalanceForm) : 0;
 
     if (!Number.isFinite(amount)) {
-      show("Skriv ett giltigt ingående saldo, till exempel 10000 eller -580.");
+      show("Skriv ett giltigt ingÃ¥ende saldo, till exempel 10000 eller -580.");
       return;
     }
 
@@ -2902,7 +2903,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
 
     setData((current) => ({ ...current, openingBalance: amount }));
-    show(savedRemotely || !remoteReady ? "Ingående saldo är sparat." : "Ingående saldo sparades lokalt. Kör senaste Supabase-SQL om det inte synkas mellan enheter.");
+    show(savedRemotely || !remoteReady ? "IngÃ¥ende saldo Ã¤r sparat." : "IngÃ¥ende saldo sparades lokalt. KÃ¶r senaste Supabase-SQL om det inte synkas mellan enheter.");
   }
 
   async function submitFeedback(event: FormEvent<HTMLFormElement>) {
@@ -2910,7 +2911,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const message = feedbackForm.message.trim();
 
     if (message.length < 5) {
-      show("Skriv lite mer feedback först.");
+      show("Skriv lite mer feedback fÃ¶rst.");
       return;
     }
 
@@ -2923,13 +2924,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       }) as SupportTicket;
       setFeedbackForm({ type: "bug", message: "" });
       setSupportTickets((tickets) => [created, ...tickets]);
-      show(`Tack! Supportärende #${created.id} är mottaget.`);
+      show(`Tack! SupportÃ¤rende #${created.id} Ã¤r mottaget.`);
     } catch (error) {
       console.error(error);
       const subject = encodeURIComponent(`Oskars Ekonomi feedback: ${feedbackForm.type}`);
-      const body = encodeURIComponent(`${message}\n\nSida: ${activeSection}\nVersion: ${packageInfo.version}\nAnvändare: ${user?.email ?? "okänd"}`);
+      const body = encodeURIComponent(`${message}\n\nSida: ${activeSection}\nVersion: ${packageInfo.version}\nAnvÃ¤ndare: ${user?.email ?? "okÃ¤nd"}`);
       window.location.href = `mailto:oskarek575@gmail.com?subject=${subject}&body=${body}`;
-      show("Feedback-tabellen kunde inte nås, så jag öppnade mail som fallback.");
+      show("Feedback-tabellen kunde inte nÃ¥s, sÃ¥ jag Ã¶ppnade mail som fallback.");
     }
   }
 
@@ -2937,10 +2938,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     try {
       await updateFeedbackStatus(id, status);
       setSupportTickets((tickets) => tickets.map((ticket) => ticket.id === id ? { ...ticket, status } : ticket));
-      show(`Supportärende #${id} är uppdaterat.`);
+      show(`SupportÃ¤rende #${id} Ã¤r uppdaterat.`);
     } catch (error) {
       console.error(error);
-      show(`Kunde inte uppdatera supportärende: ${getReadableError(error)}`);
+      show(`Kunde inte uppdatera supportÃ¤rende: ${getReadableError(error)}`);
     }
   }
 
@@ -2949,7 +2950,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       <div className="dashboard-shell auth-shell">
         <section className="panel auth-card">
           <h1>Oskars Ekonomi</h1>
-          <p>Laddar säker inloggning…</p>
+          <p>Laddar sÃ¤ker inloggningâ€¦</p>
         </section>
       </div>
     );
@@ -2961,7 +2962,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         <section className="panel auth-card">
           <span className="auth-badge">Privat ekonomi</span>
           <h1>{authMode === "signin" ? "Logga in" : "Skapa konto"}</h1>
-          <p>Varje person får sin egen data. Supabase-reglerna släpper bara igenom rader som tillhör den inloggade användaren.</p>
+          <p>Varje person fÃ¥r sin egen data. Supabase-reglerna slÃ¤pper bara igenom rader som tillhÃ¶r den inloggade anvÃ¤ndaren.</p>
           <div className="auth-mode-switch">
             <button className={authMode === "signin" ? "active" : ""} onClick={() => { setAuthMode("signin"); setAuthMessage(""); }} type="button">Logga in</button>
             <button className={authMode === "signup" ? "active" : ""} onClick={() => { setAuthMode("signup"); setAuthMessage(""); }} type="button">Skapa konto</button>
@@ -2992,13 +2993,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               autoComplete={authMode === "signin" ? "current-password" : "new-password"}
               minLength={6}
               name="password"
-              placeholder="Lösenord"
+              placeholder="LÃ¶senord"
               required
               type="password"
               value={authForm.password}
               onChange={(event) => setAuthForm((form) => ({ ...form, password: event.target.value }))}
             />
-            <button disabled={authLoading} type="submit">{authLoading ? "Vänta..." : authMode === "signin" ? "Logga in" : "Skapa konto"}</button>
+            <button disabled={authLoading} type="submit">{authLoading ? "VÃ¤nta..." : authMode === "signin" ? "Logga in" : "Skapa konto"}</button>
           </form>
           {authMessage && <div className="notice-bar auth-notice">{authMessage}</div>}
           <button
@@ -3019,7 +3020,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   return (
     <div className={`dashboard-shell theme-${layoutTheme} mobile-${activeSection}`}>
       <header className="topbar">
-        <div><h1>{greeting}, {displayName}! <span>👋</span></h1><p>Här är din ekonomiöversikt för idag.</p></div>
+        <div><h1>{greeting}, {displayName}! <span>ðŸ‘‹</span></h1><p>HÃ¤r Ã¤r din ekonomiÃ¶versikt fÃ¶r idag.</p></div>
         <div className="top-actions">
           <button className="icon-button" onClick={() => show("Du har inga nya notiser just nu.")} type="button"><Bell size={19}/></button>
           <button className="top-avatar" onClick={() => onNavigate("settings")} type="button">{initials}</button>
@@ -3028,7 +3029,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       <div className="date-row">
         <label className="month-control"><CalendarDays size={17}/><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /> <ChevronDown size={14}/></label>
-        <span className="period-range">{dateFormatter.format(period.start)} – {dateFormatter.format(new Date(period.end.getTime() - 86400000))}</span>
+        <span className="period-range">{dateFormatter.format(period.start)} â€“ {dateFormatter.format(new Date(period.end.getTime() - 86400000))}</span>
       </div>
 
       <div className="notice-bar">{notice}</div>
@@ -3050,18 +3051,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <span>Fria pengar</span>
               <strong>{kr(freeMoney)}</strong>
               <p>Kvar att spendera denna period</p>
-              <button className="mobile-primary-action" onClick={() => startFreePurchase()} type="button">Lägg till köp</button>
+              <button className="mobile-primary-action" onClick={() => startFreePurchase()} type="button">LÃ¤gg till kÃ¶p</button>
             </div>
             <div className="free-money-ring" aria-hidden="true">
               <WalletCards size={42} />
             </div>
             <div className="free-money-math">
               <span><b>{kr(income)}</b><small>Inkomster</small></span>
-              <i>−</i>
+              <i>âˆ’</i>
               <span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span>
-              <i>−</i>
-              <span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>
-              {budgetOverspendTotal > 0 && <><i>−</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget över</small></span></>}
+              <i>âˆ’</i>
+              <span><b>{kr(freePurchaseSpent)}</b><small>Fria kÃ¶p</small></span>
+              {budgetOverspendTotal > 0 && <><i>âˆ’</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget Ã¶ver</small></span></>}
               <i>=</i>
               <span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span>
             </div>
@@ -3075,23 +3076,23 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           <section className="quick-add panel">
             <div>
               <h2>Ny transaktion</h2>
-              <p>Registrera inkomst eller köp.</p>
+              <p>Registrera inkomst eller kÃ¶p.</p>
             </div>
             <form onSubmit={addTransaction} className="quick-form">
-              <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: "budget", category: event.target.value === "income" ? "Lön" : "Mat & Livsmedel" }))}>
+              <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: "budget", category: event.target.value === "income" ? "LÃ¶n" : "Mat & Livsmedel" }))}>
                 <option value="expense">Utgift</option>
                 <option value="income">Inkomst</option>
               </select>
-              <input placeholder={transactionForm.type === "income" ? "Ex. Lön" : "Ex. ICA Kvantum"} value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value }))} />
+              <input placeholder={transactionForm.type === "income" ? "Ex. LÃ¶n" : "Ex. ICA Kvantum"} value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value }))} />
               <input inputMode="decimal" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value }))} />
               <select value={transactionForm.category} onChange={(event) => setTransactionForm((form) => ({ ...form, category: event.target.value }))}>
                 {transactionCategories.map((category) => <option key={category}>{category}</option>)}
               </select>
               {transactionForm.type === "expense" && (
-                <span className="form-hint">{transactionCategoryHasBudget ? "Budgeterad kategori" : "Dras från fria pengar"}</span>
+                <span className="form-hint">{transactionCategoryHasBudget ? "Budgeterad kategori" : "Dras frÃ¥n fria pengar"}</span>
               )}
               <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
-              <button type="submit"><Plus size={17}/> {editingTransactionId ? "Spara ändring" : "Spara"}</button>
+              <button type="submit"><Plus size={17}/> {editingTransactionId ? "Spara Ã¤ndring" : "Spara"}</button>
               {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
             </form>
             <div className="quick-chip-row" aria-label="Snabba val">
@@ -3112,8 +3113,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             ))}
           </section>
 
-          <section className="mobile-overview-metrics" aria-label="Översikt">
-            <button onClick={() => { setCategoryFilter("Lön"); onNavigate("transactions"); }} type="button"><ArrowDownToLine size={22}/><span>Inkomster</span><b>{kr(income)}</b></button>
+          <section className="mobile-overview-metrics" aria-label="Ã–versikt">
+            <button onClick={() => { setCategoryFilter("LÃ¶n"); onNavigate("transactions"); }} type="button"><ArrowDownToLine size={22}/><span>Inkomster</span><b>{kr(income)}</b></button>
             <button onClick={() => { setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button"><ArrowUpRight size={22}/><span>Utgifter</span><b>{kr(expenses)}</b></button>
             <button onClick={() => onNavigate("budgets")} type="button"><WalletCards size={22}/><span>Reserverat</span><b>{kr(reservedTotal)}</b></button>
             <button onClick={() => onNavigate("freePurchases")} type="button"><PiggyBank size={22}/><span>Fritt idag</span><b>{kr(freeMoneyPerDay)}</b></button>
@@ -3122,14 +3123,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           <section className="mobile-overview-quick" aria-label="Snabbvy">
             <h2>Snabbvy</h2>
             <button onClick={() => { setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button">
-              {latestPurchase ? <TransactionIcon title={latestPurchase.title} category={latestPurchase.category} type={latestPurchase.type} /> : <Logo title="Köp" tone="white" />}
-              <span><small>Senaste köp:</small><b>{latestPurchase?.title ?? "Inget köp än"}</b></span>
+              {latestPurchase ? <TransactionIcon title={latestPurchase.title} category={latestPurchase.category} type={latestPurchase.type} /> : <Logo title="KÃ¶p" tone="white" />}
+              <span><small>Senaste kÃ¶p:</small><b>{latestPurchase?.title ?? "Inget kÃ¶p Ã¤n"}</b></span>
               <strong>{latestPurchase ? kr(latestPurchase.amount) : "0 kr"}</strong>
               <ChevronRight size={18}/>
             </button>
             <button onClick={() => onNavigate("subscriptions")} type="button">
               <Logo title={nextActiveSubscription?.name ?? "Fast"} tone={nextActiveSubscription?.name === "Netflix" ? "black" : "blue"} />
-              <span><small>Nästa fasta utgift:</small><b>{nextActiveSubscription?.name ?? "Ingen aktiv"}</b></span>
+              <span><small>NÃ¤sta fasta utgift:</small><b>{nextActiveSubscription?.name ?? "Ingen aktiv"}</b></span>
               <strong>{nextActiveSubscription ? `${kr(nextActiveSubscription.amount)}, ${nextActiveSubscription.nextDueDate ? new Date(`${nextActiveSubscription.nextDueDate}T12:00:00`).toLocaleDateString("sv-SE") : `dag ${nextActiveSubscription.day}`}` : "0 kr"}</strong>
               <ChevronRight size={18}/>
             </button>
@@ -3138,10 +3139,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           <section className="main-grid">
             <div className="left-stack">
               <article className="panel category-panel">
-                <CardTitle>Utgifter per kategori <span className="period">Denna månad</span></CardTitle>
+                <CardTitle>Utgifter per kategori <span className="period">Denna mÃ¥nad</span></CardTitle>
                 <div className="category-body">
                   <div className="donut" style={{ background: donutGradient }}><div><strong>{kr(expenses)}</strong><span>Totala utgifter</span></div></div>
-                  <div className="category-list">{expensesByCategory.length ? expensesByCategory.map((item) => <button className="category-item" key={item.category} onClick={() => { setCategoryFilter(item.category); onNavigate("transactions"); }} type="button"><i style={{background: item.color}}/><span>{item.category}</span><b>{kr(item.sum)}</b><small>{item.pct}%</small></button>) : <EmptyState text="Inga utgifter den här månaden." />}</div>
+                  <div className="category-list">{expensesByCategory.length ? expensesByCategory.map((item) => <button className="category-item" key={item.category} onClick={() => { setCategoryFilter(item.category); onNavigate("transactions"); }} type="button"><i style={{background: item.color}}/><span>{item.category}</span><b>{kr(item.sum)}</b><small>{item.pct}%</small></button>) : <EmptyState text="Inga utgifter den hÃ¤r mÃ¥naden." />}</div>
                 </div>
                 <button className="wide-button" onClick={() => onNavigate("categories")} type="button">Visa alla kategorier <ArrowRight size={15}/></button>
               </article>
@@ -3153,8 +3154,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                   <button className="wide-button" onClick={() => onNavigate("transactions")} type="button">Visa alla transaktioner <ArrowRight size={15}/></button>
                 </article>
                 <article className="panel list-panel">
-                  <CardTitle link="Visa alla" onClick={() => onNavigate("budgets")}>Budgetöversikt</CardTitle>
-                  <div className="budget-list">{budgetRows.map((budget) => <div className="budget-row" key={budget.id}><span className="budget-icon">⚑</span><div><span className="budget-meta"><b>{budget.category}</b><small>{budget.overspent ? `${kr(budget.overspent)} över` : `${kr(budget.remaining)} kvar`}</small></span><small>{kr(budget.used)} använt av {kr(budget.limit)}</small><div className="progress"><i style={{width: `${budget.pct}%`}}/></div></div></div>)}</div>
+                  <CardTitle link="Visa alla" onClick={() => onNavigate("budgets")}>BudgetÃ¶versikt</CardTitle>
+                  <div className="budget-list">{budgetRows.map((budget) => <div className="budget-row" key={budget.id}><span className="budget-icon">âš‘</span><div><span className="budget-meta"><b>{budget.category}</b><small>{budget.overspent ? `${kr(budget.overspent)} Ã¶ver` : `${kr(budget.remaining)} kvar`}</small></span><small>{kr(budget.used)} anvÃ¤nt av {kr(budget.limit)}</small><div className="progress"><i style={{width: `${budget.pct}%`}}/></div></div></div>)}</div>
                   <button className="wide-button" onClick={() => onNavigate("budgets")} type="button">Visa alla budgetar <ArrowRight size={15}/></button>
                 </article>
               </div>
@@ -3171,62 +3172,62 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       )}
 
       {activeSection === "transactions" && (
-        <SectionPanel title="Transaktioner" description="Lägg till alla köp och inkomster här. Appen avgör automatiskt om köpet går mot en budget eller fria pengar.">
+        <SectionPanel title="Transaktioner" description="LÃ¤gg till alla kÃ¶p och inkomster hÃ¤r. Appen avgÃ¶r automatiskt om kÃ¶pet gÃ¥r mot en budget eller fria pengar.">
           <form className="management-form purchase-form" onSubmit={addTransaction}>
-            <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: "budget", category: event.target.value === "income" ? "Lön" : "Mat & Livsmedel" }))}>
-              <option value="expense">Köp / utgift</option>
+            <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: "budget", category: event.target.value === "income" ? "LÃ¶n" : "Mat & Livsmedel" }))}>
+              <option value="expense">KÃ¶p / utgift</option>
               <option value="income">Inkomst</option>
             </select>
-            <input placeholder={transactionForm.type === "income" ? "Ex. Lön" : "Ex. Willys"} value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value }))} />
+            <input placeholder={transactionForm.type === "income" ? "Ex. LÃ¶n" : "Ex. Willys"} value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value }))} />
             <input inputMode="decimal" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value }))} />
             <select value={transactionForm.category} onChange={(event) => setTransactionForm((form) => ({ ...form, category: event.target.value }))}>
               {transactionCategories.map((category) => <option key={category}>{category}</option>)}
             </select>
-            {transactionForm.type === "expense" && <span className="form-hint">{transactionCategoryHasBudget ? "Budgeterad kategori" : "Dras från fria pengar"}</span>}
+            {transactionForm.type === "expense" && <span className="form-hint">{transactionCategoryHasBudget ? "Budgeterad kategori" : "Dras frÃ¥n fria pengar"}</span>}
             <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
-            <button type="submit"><Plus size={16}/> {editingTransactionId ? "Spara ändring" : "Skapa köp"}</button>
+            <button type="submit"><Plus size={16}/> {editingTransactionId ? "Spara Ã¤ndring" : "Skapa kÃ¶p"}</button>
             {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
           </form>
-          <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök transaktion..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option>Alla</option>{data.categories.map((category) => <option key={category}>{category}</option>)}</select></div>
+          <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="SÃ¶k transaktion..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option>Alla</option>{data.categories.map((category) => <option key={category}>{category}</option>)}</select></div>
           <div className="data-table">{filteredTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={new Date(item.date).toLocaleDateString("sv-SE")}/></span></span><strong className={item.type === "income" ? "plus" : "minus"}>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
       {activeSection === "freePurchases" && (
-        <SectionPanel title="Fria köp" description="Köp och sparande i kategorier som inte har en egen budget dras från fria pengar.">
+        <SectionPanel title="Fria kÃ¶p" description="KÃ¶p och sparande i kategorier som inte har en egen budget dras frÃ¥n fria pengar.">
           <div className="free-money-panel compact panel" style={freeMoneyStyle}>
-            <div><span>Kvar att handla för</span><strong>{kr(freeMoney)}</strong></div>
-            <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>−</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>−</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>{budgetOverspendTotal > 0 && <><i>−</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget över</small></span></>}<i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Kvar</small></span></div>
+            <div><span>Kvar att handla fÃ¶r</span><strong>{kr(freeMoney)}</strong></div>
+            <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>âˆ’</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>âˆ’</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria kÃ¶p</small></span>{budgetOverspendTotal > 0 && <><i>âˆ’</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget Ã¶ver</small></span></>}<i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Kvar</small></span></div>
           </div>
           <article className="single-purchase-entry panel">
             <div>
-              <span>Alla köp på ett ställe</span>
-              <b>Lägg in nya köp under Transaktioner</b>
-              <small>Välj en kategori med budget så räknas köpet mot budgeten. Välj en kategori utan budget så dras det från fria pengar.</small>
+              <span>Alla kÃ¶p pÃ¥ ett stÃ¤lle</span>
+              <b>LÃ¤gg in nya kÃ¶p under Transaktioner</b>
+              <small>VÃ¤lj en kategori med budget sÃ¥ rÃ¤knas kÃ¶pet mot budgeten. VÃ¤lj en kategori utan budget sÃ¥ dras det frÃ¥n fria pengar.</small>
             </div>
-            <button onClick={() => { setTransactionForm((form) => ({ ...form, type: "expense", category: form.category === "Lön" ? "Fria köp" : form.category })); setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button">
-              <Plus size={16}/> Lägg till köp
+            <button onClick={() => { setTransactionForm((form) => ({ ...form, type: "expense", category: form.category === "LÃ¶n" ? "Fria kÃ¶p" : form.category })); setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button">
+              <Plus size={16}/> LÃ¤gg till kÃ¶p
             </button>
           </article>
-          <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök fria köp..." value={search} onChange={(event) => setSearch(event.target.value)} /></label></div>
-          <div className="data-table">{freePurchaseTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={`fria pengar · ${new Date(item.date).toLocaleDateString("sv-SE")}`}/></span></span><strong className="minus">-{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="SÃ¶k fria kÃ¶p..." value={search} onChange={(event) => setSearch(event.target.value)} /></label></div>
+          <div className="data-table">{freePurchaseTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={`fria pengar Â· ${new Date(item.date).toLocaleDateString("sv-SE")}`}/></span></span><strong className="minus">-{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
       {activeSection === "budgets" && (
-        <SectionPanel title="Budget" description="Sätt en månadsgräns per kategori.">
+        <SectionPanel title="Budget" description="SÃ¤tt en mÃ¥nadsgrÃ¤ns per kategori.">
           <div className="free-money-panel compact panel">
             <div><span>Fria pengar</span><strong>{kr(freeMoney)}</strong></div>
-            <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>−</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>−</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>{budgetOverspendTotal > 0 && <><i>−</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget över</small></span></>}<i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span></div>
+            <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>âˆ’</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>âˆ’</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria kÃ¶p</small></span>{budgetOverspendTotal > 0 && <><i>âˆ’</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget Ã¶ver</small></span></>}<i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span></div>
           </div>
-          <form className="management-form budget-form" onSubmit={addBudget}><select value={budgetForm.category} onChange={(event) => setBudgetForm((form) => ({ ...form, category: event.target.value }))}>{data.categories.filter((category) => !["Lön", "Fria köp", "Prenumerationer"].includes(category)).map((category) => <option key={category}>{category}</option>)}</select><input inputMode="numeric" placeholder="Månadsbudget" value={budgetForm.limit} onChange={(event) => setBudgetForm((form) => ({ ...form, limit: event.target.value }))}/><button type="submit"><Plus size={16}/> {editingBudgetId ? "Spara ändring" : "Spara budget"}</button>{editingBudgetId && <button className="secondary-action" onClick={cancelBudgetEdit} type="button">Avbryt</button>}</form>
-          <div className="data-table">{budgetRows.map((budget) => <div className="table-row budget-table-row" key={budget.id}><span><b>{budget.category}</b><small>{kr(budget.used)} använt · {budget.overspent ? `${kr(budget.overspent)} över budget` : `${kr(budget.remaining)} kvar inom budgeten`}</small></span><div className="table-progress"><i style={{ width: `${budget.pct}%` }}/></div><strong>{kr(budget.limit)} reserverat</strong><span className="row-actions"><button onClick={() => editBudget(budget)} type="button">Redigera</button><button onClick={() => removeBudget(budget.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <form className="management-form budget-form" onSubmit={addBudget}><select value={budgetForm.category} onChange={(event) => setBudgetForm((form) => ({ ...form, category: event.target.value }))}>{data.categories.filter((category) => !["LÃ¶n", "Fria kÃ¶p", "Prenumerationer"].includes(category)).map((category) => <option key={category}>{category}</option>)}</select><input inputMode="numeric" placeholder="MÃ¥nadsbudget" value={budgetForm.limit} onChange={(event) => setBudgetForm((form) => ({ ...form, limit: event.target.value }))}/><button type="submit"><Plus size={16}/> {editingBudgetId ? "Spara Ã¤ndring" : "Spara budget"}</button>{editingBudgetId && <button className="secondary-action" onClick={cancelBudgetEdit} type="button">Avbryt</button>}</form>
+          <div className="data-table">{budgetRows.map((budget) => <div className="table-row budget-table-row" key={budget.id}><span><b>{budget.category}</b><small>{kr(budget.used)} anvÃ¤nt Â· {budget.overspent ? `${kr(budget.overspent)} Ã¶ver budget` : `${kr(budget.remaining)} kvar inom budgeten`}</small></span><div className="table-progress"><i style={{ width: `${budget.pct}%` }}/></div><strong>{kr(budget.limit)} reserverat</strong><span className="row-actions"><button onClick={() => editBudget(budget)} type="button">Redigera</button><button onClick={() => removeBudget(budget.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
       {activeSection === "categories" && (
-        <SectionPanel title="Kategorier" description="Skapa och välj egna kategorier.">
-          <form className="management-form" onSubmit={addCategory}><input placeholder="Ny kategori, t.ex. Hund" value={categoryName} onChange={(event) => setCategoryName(event.target.value)}/><button type="submit"><Plus size={16}/> Lägg till kategori</button></form>
+        <SectionPanel title="Kategorier" description="Skapa och vÃ¤lj egna kategorier.">
+          <form className="management-form" onSubmit={addCategory}><input placeholder="Ny kategori, t.ex. Hund" value={categoryName} onChange={(event) => setCategoryName(event.target.value)}/><button type="submit"><Plus size={16}/> LÃ¤gg till kategori</button></form>
           <div className="chip-grid category-chip-grid">
             {data.categories.map((category) => {
               const isLocked = lockedCategories.includes(category as (typeof lockedCategories)[number]);
@@ -3247,12 +3248,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       )}
 
       {activeSection === "goals" && (
-        <SectionPanel title="Mål & sparande" description="Följ dina mål, sparkonton och hur nära du är nästa milstolpe.">
+        <SectionPanel title="MÃ¥l & sparande" description="FÃ¶lj dina mÃ¥l, sparkonton och hur nÃ¤ra du Ã¤r nÃ¤sta milstolpe.">
           <section className="savings-portfolio-hero panel" style={{ "--goal-progress": `${goalProgress}%` } as CSSProperties}>
             <div className="savings-hero-copy">
-              <span>Sparportfölj</span>
+              <span>SparportfÃ¶lj</span>
               <h2>{kr(goalSavedTotal)}</h2>
-              <p>{goalsTargetTotal ? `${goalProgress}% mot dina mål · ${kr(goalsRemainingTotal)} kvar` : "Skapa ditt första mål och börja bygga något."}</p>
+              <p>{goalsTargetTotal ? `${goalProgress}% mot dina mÃ¥l Â· ${kr(goalsRemainingTotal)} kvar` : "Skapa ditt fÃ¶rsta mÃ¥l och bÃ¶rja bygga nÃ¥got."}</p>
               <div className="savings-hero-actions" onClick={(event) => {
                 const target = event.target;
                 if (!(target instanceof HTMLElement)) return;
@@ -3262,8 +3263,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 if (index === 0) startNewGoal();
                 if (index === 1) startNewSavings();
               }}>
-                <button onClick={() => setGoalForm((goal) => ({ ...goal, title: goal.title || "Resa 2027" }))} type="button"><Crosshair size={16}/> Nytt mål</button>
-                <button onClick={() => setSavingsForm((form) => ({ ...form, name: form.name || "Sparkonto" }))} type="button"><PiggyBank size={16}/> Lägg till sparande</button>
+                <button onClick={() => setGoalForm((goal) => ({ ...goal, title: goal.title || "Resa 2027" }))} type="button"><Crosshair size={16}/> Nytt mÃ¥l</button>
+                <button onClick={() => setSavingsForm((form) => ({ ...form, name: form.name || "Sparkonto" }))} type="button"><PiggyBank size={16}/> LÃ¤gg till sparande</button>
               </div>
             </div>
             <div className="savings-hero-ring" aria-hidden="true">
@@ -3273,15 +3274,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           </section>
 
           <section className="savings-metric-grid">
-            <div><span>Totalt sparat</span><b>{kr(goalSavedTotal)}</b><small>Mål + sparkonton</small></div>
-            <div><span>Kvar till mål</span><b>{kr(goalsRemainingTotal)}</b><small>{data.goals.length} aktiva mål</small></div>
+            <div><span>Totalt sparat</span><b>{kr(goalSavedTotal)}</b><small>MÃ¥l + sparkonton</small></div>
+            <div><span>Kvar till mÃ¥l</span><b>{kr(goalsRemainingTotal)}</b><small>{data.goals.length} aktiva mÃ¥l</small></div>
             <div><span>Sparat denna period</span><b>{kr(savingsThisPeriod)}</b><small>Registrerade spartransaktioner</small></div>
-            <div><span>Närmast klart</span><b>{strongestGoal ? `${strongestGoalProgress}%` : "0%"}</b><small>{strongestGoal?.title ?? "Inget mål ännu"}</small></div>
+            <div><span>NÃ¤rmast klart</span><b>{strongestGoal ? `${strongestGoalProgress}%` : "0%"}</b><small>{strongestGoal?.title ?? "Inget mÃ¥l Ã¤nnu"}</small></div>
           </section>
 
           <section className="premium-savings-layout">
             <article className="premium-savings-panel">
-              <CardTitle>Dina mål</CardTitle>
+              <CardTitle>Dina mÃ¥l</CardTitle>
               <div className="premium-goal-grid">
                 {data.goals.length ? data.goals.map((goal) => {
                   const linkedSaving = findLinkedSavingsForGoal(goal, data.savings);
@@ -3294,11 +3295,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                     <div className="premium-goal-card" key={goal.id}>
                       <div className="premium-goal-top">
                         <span><Crosshair size={18}/></span>
-                        <small>{progress >= 100 ? "Mål nått" : `${kr(remaining)} kvar`}</small>
+                        <small>{progress >= 100 ? "MÃ¥l nÃ¥tt" : `${kr(remaining)} kvar`}</small>
                       </div>
                       <h3>{goal.title}</h3>
                       <strong>{kr(savedAmount)}</strong>
-                      <p>av {kr(goal.target)}{linkedSaving ? ` · kopplat till ${linkedSaving.name}` : usesSavingsPool ? " · kopplat till sparpott" : ""}</p>
+                      <p>av {kr(goal.target)}{linkedSaving ? ` Â· kopplat till ${linkedSaving.name}` : usesSavingsPool ? " Â· kopplat till sparpott" : ""}</p>
                       <div className="premium-progress"><i style={{ width: `${progress}%` }}/></div>
                       <div className="premium-card-actions">
                         <button onClick={() => editGoal(goal)} type="button">Redigera</button>
@@ -3306,7 +3307,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                       </div>
                     </div>
                   );
-                }) : <EmptyState text="Skapa ditt första mål och låt appen visa hur nära du är." />}
+                }) : <EmptyState text="Skapa ditt fÃ¶rsta mÃ¥l och lÃ¥t appen visa hur nÃ¤ra du Ã¤r." />}
               </div>
             </article>
 
@@ -3316,27 +3317,27 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 {data.savings.length ? data.savings.map((saving) => (
                   <div className="premium-account-card" key={saving.id}>
                     <span><PiggyBank size={18}/></span>
-                    <div><b>{saving.name}</b><small>Räknas med i totalt sparat</small></div>
+                    <div><b>{saving.name}</b><small>RÃ¤knas med i totalt sparat</small></div>
                     <strong>{kr(saving.amount)}</strong>
                     <button onClick={() => editSavings(saving)} type="button">Redigera</button>
                     <button onClick={() => removeSavings(saving.id)} type="button"><Trash2 size={14}/></button>
                   </div>
-                )) : <EmptyState text="Lägg till ett sparkonto för att följa pengar du flyttar undan." />}
+                )) : <EmptyState text="LÃ¤gg till ett sparkonto fÃ¶r att fÃ¶lja pengar du flyttar undan." />}
               </div>
             </article>
           </section>
 
           <section className="premium-editor-grid">
             <form className="premium-editor-card" onSubmit={saveGoal} ref={goalEditorRef}>
-              <div><span>Mål</span><b>{editingGoalId ? "Redigera mål" : "Skapa nytt mål"}</b></div>
-              <input placeholder="Mål, t.ex. Resa 2027" value={goalForm.title} onChange={(event) => setGoalForm((goal) => ({ ...goal, title: event.target.value }))}/>
+              <div><span>MÃ¥l</span><b>{editingGoalId ? "Redigera mÃ¥l" : "Skapa nytt mÃ¥l"}</b></div>
+              <input placeholder="MÃ¥l, t.ex. Resa 2027" value={goalForm.title} onChange={(event) => setGoalForm((goal) => ({ ...goal, title: event.target.value }))}/>
               <select value={goalForm.linkedSavingsId} onChange={(event) => setGoalForm((goal) => ({ ...goal, linkedSavingsId: event.target.value }))}>
                 <option value="">Koppla sparkonto automatiskt</option>
                 {data.savings.map((saving) => <option key={saving.id} value={saving.id}>{saving.name}</option>)}
               </select>
               <input inputMode="decimal" placeholder="Manuellt sparat om inget sparkonto finns" value={goalForm.saved} onChange={(event) => setGoalForm((goal) => ({ ...goal, saved: event.target.value }))}/>
-              <input inputMode="decimal" placeholder="Målsumma" value={goalForm.target} onChange={(event) => setGoalForm((goal) => ({ ...goal, target: event.target.value }))}/>
-              <button type="submit"><Edit3 size={16}/> {editingGoalId ? "Spara mål" : "Skapa mål"}</button>
+              <input inputMode="decimal" placeholder="MÃ¥lsumma" value={goalForm.target} onChange={(event) => setGoalForm((goal) => ({ ...goal, target: event.target.value }))}/>
+              <button type="submit"><Edit3 size={16}/> {editingGoalId ? "Spara mÃ¥l" : "Skapa mÃ¥l"}</button>
               {editingGoalId && <button className="secondary-action" onClick={cancelGoalEdit} type="button">Avbryt</button>}
             </form>
 
@@ -3353,83 +3354,37 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "loans" && (
         <SectionPanel title="Lån" description="Se hur mycket du är skyldig, vad lånen kostar varje månad och ungefär när de är färdigbetalda.">
-          <section className="loan-hero panel">
-            <div>
-              <span>Total skuld</span>
-              <h2>{kr(totalLoanDebt)}</h2>
-              <p>{data.loans.length ? `${data.loans.length} lån · ${kr(totalLoanMonthlyPayment)} per månad` : "Lägg in första lånet för att få kontroll."}</p>
-              <small>Lån påverkar inte fria pengar automatiskt ännu. Lägg månadsbetalningen som fast utgift om den ska reserveras i budgeten.</small>
-            </div>
-            <div className="loan-payoff-card">
-              <span>Månadsbelastning</span>
-              <strong>{income ? `${debtToIncomePct}%` : "0%"}</strong>
-              <small>av registrerad inkomst</small>
-            </div>
-          </section>
-
-          <section className="loan-metric-grid">
-            <div><span>Total skuld</span><b>{kr(totalLoanDebt)}</b><small>Kvar att betala</small></div>
-            <div><span>Betalas per månad</span><b>{kr(totalLoanMonthlyPayment)}</b><small>Alla lån tillsammans</small></div>
-            <div><span>Ränta / månad</span><b>{kr(totalLoanMonthlyInterest)}</b><small>Ungefärlig räntekostnad</small></div>
-            <div><span>Närmast klart</span><b>{fastestLoan?.name ?? "Inget lån"}</b><small>{fastestLoan ? formatLoanTime(fastestLoan.monthsLeft) : "Lägg till lån"}</small></div>
-          </section>
-
-          <section className="loan-layout">
-            <article className="loan-panel">
-              <CardTitle>Dina lån</CardTitle>
-              <div className="loan-list">
-                {loanRows.length ? loanRows.map((loan) => (
-                  <div className="loan-row" key={loan.id}>
-                    <span className="loan-logo"><CreditCard size={18}/></span>
-                    <div>
-                      <b>{loan.name}</b>
-                      <small>{kr(loan.remainingAmount)} kvar · {loan.interestRate.toString().replace(".", ",")}% ränta · dras dag {loan.paymentDay}</small>
-                      <div className="loan-progress"><i style={{ width: `${loan.progressPct}%` }}/></div>
-                    </div>
-                    <span><b>{kr(loan.monthlyPayment)}/mån</b><small>{formatLoanTime(loan.monthsLeft)}</small></span>
-                    <strong>{kr(loan.amortization)}<small>amortering/mån</small></strong>
-                    <span className="row-actions">
-                      <button onClick={() => editLoan(loan)} type="button">Redigera</button>
-                      <button onClick={() => removeLoan(loan.id)} type="button"><Trash2 size={14}/></button>
-                    </span>
-                  </div>
-                )) : <EmptyState text="Lägg till första lånet för att se skuld, månadsbetalning och ungefärlig tid kvar." />}
-              </div>
-            </article>
-
-            <article className="loan-panel">
-              <CardTitle>Så läser du lån</CardTitle>
-              <div className="loan-help-list">
-                <div><b>Skuld</b><small>Det belopp som är kvar att betala tillbaka.</small></div>
-                <div><b>Månadsbetalning</b><small>Det du faktiskt betalar varje månad.</small></div>
-                <div><b>Tid kvar</b><small>En uppskattning baserat på dagens skuld, ränta och betalning.</small></div>
-                <div><b>Fria pengar</b><small>Vill du att lånet reserveras automatiskt, lägg även betalningen som fast utgift.</small></div>
-              </div>
-            </article>
-          </section>
-
-          <form className="loan-form" onSubmit={saveLoan}>
-            <div><span>Lån</span><b>{editingLoanId ? "Redigera lån" : "Lägg till lån"}</b></div>
-            <input placeholder="Namn, t.ex. Billån" value={loanForm.name} onChange={(event) => setLoanForm((form) => ({ ...form, name: event.target.value }))}/>
-            <input inputMode="decimal" placeholder="Kvar att betala" value={loanForm.remainingAmount} onChange={(event) => setLoanForm((form) => ({ ...form, remainingAmount: event.target.value }))}/>
-            <input inputMode="decimal" placeholder="Månadsbetalning" value={loanForm.monthlyPayment} onChange={(event) => setLoanForm((form) => ({ ...form, monthlyPayment: event.target.value }))}/>
-            <input inputMode="decimal" placeholder="Ränta %, t.ex. 5,2" value={loanForm.interestRate} onChange={(event) => setLoanForm((form) => ({ ...form, interestRate: event.target.value }))}/>
-            <input inputMode="numeric" min="1" max="28" placeholder="Dras dag" value={loanForm.paymentDay} onChange={(event) => setLoanForm((form) => ({ ...form, paymentDay: event.target.value }))}/>
-            <button type="submit"><Plus size={16}/> {editingLoanId ? "Spara lån" : "Lägg till"}</button>
-            {editingLoanId && <button className="secondary-action" onClick={resetLoanForm} type="button">Avbryt</button>}
-          </form>
+          <LoansSection
+            loansCount={data.loans.length}
+            totalDebt={totalLoanDebt}
+            totalMonthlyPayment={totalLoanMonthlyPayment}
+            totalMonthlyInterest={totalLoanMonthlyInterest}
+            debtToIncomePct={income ? debtToIncomePct : 0}
+            fastestLoan={fastestLoan}
+            loanRows={loanRows}
+            loanForm={loanForm}
+            editingLoanId={editingLoanId}
+            onLoanFormChange={setLoanForm}
+            onSaveLoan={saveLoan}
+            onResetLoanForm={resetLoanForm}
+            onEditLoan={editLoan}
+            onRemoveLoan={removeLoan}
+            formatCurrency={kr}
+            formatLoanTime={formatLoanTime}
+            CardTitle={CardTitle}
+            EmptyState={EmptyState}
+          />
         </SectionPanel>
       )}
-
       {activeSection === "travel" && (
-        <SectionPanel title="Resebudget" description="Håll koll på vad du faktiskt kan spendera när du är iväg.">
+        <SectionPanel title="Resebudget" description="HÃ¥ll koll pÃ¥ vad du faktiskt kan spendera nÃ¤r du Ã¤r ivÃ¤g.">
           {activeTravelBudget ? (
             <article className="travel-hero" style={activeTravelStyle}>
               <div>
                 <span>Aktiv resa</span>
                 <h3>{activeTravelBudget.name}</h3>
                 <strong>{kr(activeTravelRemaining)}</strong>
-                <p>{kr(activeTravelPerDay)} per dag · {activeTravelDaysLeft} dagar kvar</p>
+                <p>{kr(activeTravelPerDay)} per dag Â· {activeTravelDaysLeft} dagar kvar</p>
               </div>
               <div className="travel-ring"><Plane size={38}/></div>
               <div className="travel-mini-stats">
@@ -3439,7 +3394,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               </div>
             </article>
           ) : (
-            <EmptyState text="Skapa din första resebudget för att komma igång." />
+            <EmptyState text="Skapa din fÃ¶rsta resebudget fÃ¶r att komma igÃ¥ng." />
           )}
 
           <div className="travel-layout">
@@ -3448,7 +3403,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <input inputMode="decimal" placeholder="Total resebudget" value={travelForm.budget} onChange={(event) => setTravelForm((form) => ({ ...form, budget: event.target.value }))}/>
               <input type="date" value={travelForm.startDate} onChange={(event) => setTravelForm((form) => ({ ...form, startDate: event.target.value }))}/>
               <input type="date" value={travelForm.endDate} onChange={(event) => setTravelForm((form) => ({ ...form, endDate: event.target.value }))}/>
-              <label className="toggle-row"><input checked={travelForm.separateFromFreeMoney} type="checkbox" onChange={(event) => setTravelForm((form) => ({ ...form, separateFromFreeMoney: event.target.checked }))}/><span>Resan är redan avsatt</span></label>
+              <label className="toggle-row"><input checked={travelForm.separateFromFreeMoney} type="checkbox" onChange={(event) => setTravelForm((form) => ({ ...form, separateFromFreeMoney: event.target.checked }))}/><span>Resan Ã¤r redan avsatt</span></label>
               <button type="submit"><Plus size={16}/> {editingTravelId ? "Spara resa" : "Skapa resa"}</button>
               {editingTravelId && <button className="secondary-action" onClick={cancelTravelEdit} type="button">Avbryt</button>}
             </form>
@@ -3458,10 +3413,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 <input placeholder="Ex. lunch, taxi, museum" value={travelPurchaseForm.title} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, title: event.target.value }))}/>
                 <input inputMode="decimal" placeholder="Belopp" value={travelPurchaseForm.amount} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, amount: event.target.value }))}/>
                 <select value={travelPurchaseForm.category} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, category: event.target.value }))}>
-                  {["Mat", "Aktiviteter", "Transport", "Shopping", "Boende", "Övrigt"].map((category) => <option key={category}>{category}</option>)}
+                  {["Mat", "Aktiviteter", "Transport", "Shopping", "Boende", "Ã–vrigt"].map((category) => <option key={category}>{category}</option>)}
                 </select>
                 <input type="date" value={travelPurchaseForm.date} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, date: event.target.value }))}/>
-                <button type="submit"><Plus size={16}/> Lägg till reseköp</button>
+                <button type="submit"><Plus size={16}/> LÃ¤gg till resekÃ¶p</button>
               </form>
             )}
           </div>
@@ -3475,7 +3430,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                   const remaining = Math.max(travel.budget - spent, 0);
                   return (
                     <div className={`table-row travel-table-row ${travel.id === activeTravelBudget?.id ? "active" : ""}`} key={travel.id}>
-                      <span><b>{travel.name}</b><small>{travel.startDate} – {travel.endDate} · {travel.separateFromFreeMoney ? "separat från fria pengar" : "påverkar fria pengar"}</small></span>
+                      <span><b>{travel.name}</b><small>{travel.startDate} â€“ {travel.endDate} Â· {travel.separateFromFreeMoney ? "separat frÃ¥n fria pengar" : "pÃ¥verkar fria pengar"}</small></span>
                       <strong>{kr(remaining)} kvar</strong>
                       <span className="row-actions"><button onClick={() => setActiveTravelId(travel.id)} type="button">Visa</button><button onClick={() => editTravelBudget(travel)} type="button">Redigera</button><button onClick={() => removeTravelBudget(travel.id)} type="button"><Trash2 size={14}/></button></span>
                     </div>
@@ -3485,15 +3440,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </article>
 
             <article className="panel travel-list-panel">
-              <CardTitle>Reseköp</CardTitle>
+              <CardTitle>ResekÃ¶p</CardTitle>
               <div className="data-table">
                 {activeTravelBudget?.purchases.length ? activeTravelBudget.purchases.map((purchase) => (
                   <div className="table-row transaction-table-row" key={purchase.id}>
-                    <span><b>{purchase.title}</b><small>{purchase.category} · {new Date(purchase.date).toLocaleDateString("sv-SE")}</small></span>
+                    <span><b>{purchase.title}</b><small>{purchase.category} Â· {new Date(purchase.date).toLocaleDateString("sv-SE")}</small></span>
                     <strong className="minus">-{kr(purchase.amount)}</strong>
                     <span className="row-actions"><button onClick={() => removeTravelPurchase(activeTravelBudget.id, purchase.id)} type="button"><Trash2 size={14}/></button></span>
                   </div>
-                )) : <EmptyState text="Inga reseköp ännu." />}
+                )) : <EmptyState text="Inga resekÃ¶p Ã¤nnu." />}
               </div>
             </article>
           </div>
@@ -3507,7 +3462,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       )}
 
       {activeSection === "subscriptions" && (
-        <SectionPanel title="Fasta utgifter" description="Hyra, försäkring, lån, abonnemang och andra återkommande kostnader.">
+        <SectionPanel title="Fasta utgifter" description="Hyra, fÃ¶rsÃ¤kring, lÃ¥n, abonnemang och andra Ã¥terkommande kostnader.">
           <form className="management-form subscription-form scheduled-subscription-form" onSubmit={addSubscription}>
             <input placeholder="Namn" value={subscriptionForm.name} onChange={(event) => setSubscriptionForm((form) => ({ ...form, name: event.target.value }))}/>
             <input placeholder="Typ / plan" value={subscriptionForm.plan} onChange={(event) => setSubscriptionForm((form) => ({ ...form, plan: event.target.value }))}/>
@@ -3521,65 +3476,65 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               }}/>
             </label>
             <label className="form-field">
-              <span>Dag i månaden</span>
+              <span>Dag i mÃ¥naden</span>
               <input inputMode="numeric" min="1" max="28" value={subscriptionForm.day} onChange={(event) => setSubscriptionForm((form) => ({ ...form, day: event.target.value }))}/>
             </label>
             <select value={subscriptionForm.frequency} onChange={(event) => setSubscriptionForm((form) => ({ ...form, frequency: event.target.value as SubscriptionFrequency }))}>
               {subscriptionFrequencies.map((frequency) => <option key={frequency.id} value={frequency.id}>{frequency.label}</option>)}
             </select>
             {subscriptionForm.frequency === "custom" && (
-              <input inputMode="numeric" min="1" placeholder="Var X:e månad" value={subscriptionForm.intervalMonths} onChange={(event) => setSubscriptionForm((form) => ({ ...form, intervalMonths: event.target.value }))}/>
+              <input inputMode="numeric" min="1" placeholder="Var X:e mÃ¥nad" value={subscriptionForm.intervalMonths} onChange={(event) => setSubscriptionForm((form) => ({ ...form, intervalMonths: event.target.value }))}/>
             )}
-            <button type="submit"><Plus size={16}/> {editingSubscriptionId ? "Spara ändring" : "Skapa ny utgift"}</button>
+            <button type="submit"><Plus size={16}/> {editingSubscriptionId ? "Spara Ã¤ndring" : "Skapa ny utgift"}</button>
             {editingSubscriptionId && <button className="secondary-action" onClick={cancelSubscriptionEdit} type="button">Avbryt</button>}
           </form>
-          <button className="wide-button action-wide" onClick={createSubscriptionExpenses} type="button">Skapa månadens fasta utgifter som transaktioner <ArrowRight size={15}/></button>
+          <button className="wide-button action-wide" onClick={createSubscriptionExpenses} type="button">Skapa mÃ¥nadens fasta utgifter som transaktioner <ArrowRight size={15}/></button>
           <SubscriptionsPanel subscriptions={scheduledSubscriptions} onNavigate={onNavigate} onGenerate={createSubscriptionExpenses} onEdit={editSubscription} onToggle={toggleSubscription} onRemove={removeSubscription} showAll />
         </SectionPanel>
       )}
 
-      {activeSection === "insights" && <SectionPanel title="AI Insights" description="Smarta sammanfattningar baserat på det du lagt in."><InsightsPanel insights={topInsights} onNavigate={onNavigate} affordabilityForm={affordabilityForm} onAffordabilityChange={setAffordabilityForm} affordabilityResult={affordabilityResult} expanded /></SectionPanel>}
+      {activeSection === "insights" && <SectionPanel title="AI Insights" description="Smarta sammanfattningar baserat pÃ¥ det du lagt in."><InsightsPanel insights={topInsights} onNavigate={onNavigate} affordabilityForm={affordabilityForm} onAffordabilityChange={setAffordabilityForm} affordabilityResult={affordabilityResult} expanded /></SectionPanel>}
 
       {activeSection === "reports" && (
-        <SectionPanel title="Rapporter" description={`Sammanfattning för ${monthFormatter.format(monthDate)}.`}>
+        <SectionPanel title="Rapporter" description={`Sammanfattning fÃ¶r ${monthFormatter.format(monthDate)}.`}>
           <div className="report-grid"><div><span>Inkomster</span><b>{kr(income)}</b></div><div><span>Reserverat</span><b>{kr(reservedTotal)}</b></div><div><span>Fria pengar</span><b>{kr(freeMoney)}</b></div><div><span>Faktiskt saldo</span><b>{kr(actualBalance)}</b></div></div>
           <article className="balance-analysis-panel">
             <button className="balance-analysis-toggle" onClick={() => setShowBalanceAnalysis((value) => !value)} type="button" aria-expanded={showBalanceAnalysis}>
               <div>
                 <span>Saldoanalys</span>
-                <b>VarfÃ¶r Ã¤r aktuellt saldo {kr(actualBalance)}?</b>
-                <small>HÃ¤r bryts saldot ner sÃ¥ du kan se exakt vad som drar pengar utanfÃ¶r budget kvar och fria pengar.</small>
+                <b>VarfÃƒÂ¶r ÃƒÂ¤r aktuellt saldo {kr(actualBalance)}?</b>
+                <small>HÃƒÂ¤r bryts saldot ner sÃƒÂ¥ du kan se exakt vad som drar pengar utanfÃƒÂ¶r budget kvar och fria pengar.</small>
               </div>
               <strong className={actualBalance >= 0 ? "plus" : "minus"}>{kr(actualBalance)}</strong>
             </button>
             {showBalanceAnalysis && (
               <div className="balance-analysis-details">
             <div className="balance-comparison-grid">
-              <div><span>Budget kvar</span><b>{kr(budgetRemainingTotal)}</b><small>Alla budgetar som inte Ã¤r slut</small></div>
+              <div><span>Budget kvar</span><b>{kr(budgetRemainingTotal)}</b><small>Alla budgetar som inte ÃƒÂ¤r slut</small></div>
               <div><span>Fria pengar</span><b>{kr(freeMoney)}</b><small>Pengar kvar att spendera fritt</small></div>
-              <div className={budgetOverspendTotal > 0 ? "warning" : "ok"}><span>Budget över gräns</span><b>{kr(budgetOverspendTotal)}</b><small>Dras från fria pengar</small></div>
+              <div className={budgetOverspendTotal > 0 ? "warning" : "ok"}><span>Budget Ã¶ver grÃ¤ns</span><b>{kr(budgetOverspendTotal)}</b><small>Dras frÃ¥n fria pengar</small></div>
               <div><span>Planerat kvar</span><b>{kr(plannedAvailableMoney)}</b><small>Budget kvar + fria pengar</small></div>
-              <div className={plannedVsActualDifference > 0 ? "warning" : "ok"}><span>Skillnad mot saldo</span><b>{kr(plannedVsActualDifference)}</b><small>{plannedVsActualDifference > 0 ? "Finns som dragningar/sparande i saldot" : "Plan och saldo ligger nära"}</small></div>
+              <div className={plannedVsActualDifference > 0 ? "warning" : "ok"}><span>Skillnad mot saldo</span><b>{kr(plannedVsActualDifference)}</b><small>{plannedVsActualDifference > 0 ? "Finns som dragningar/sparande i saldot" : "Plan och saldo ligger nÃ¤ra"}</small></div>
             </div>
             <div className="balance-breakdown-list">
               {balanceBreakdownRows.map((row) => (
                 <div className={`balance-breakdown-row ${row.tone}`} key={row.label}>
                   <span><b>{row.label}</b><small>{row.detail}</small></span>
-                  <strong>{row.amount > 0 ? "+" : row.amount < 0 ? "−" : ""}{kr(Math.abs(row.amount))}</strong>
+                  <strong>{row.amount > 0 ? "+" : row.amount < 0 ? "âˆ’" : ""}{kr(Math.abs(row.amount))}</strong>
                 </div>
               ))}
               {missingPostedSubscriptions.length > 0 && (
                 <div className="missing-fixed-list">
                   <div>
-                    <span>Ingår i fasta utgifter som borde vara dragna</span>
-                    <b>{missingPostedSubscriptions.length} poster · {kr(missingPostedFixedExpenses)}</b>
-                    <small>Om något här redan är betalt behöver transaktionen matcha namn, belopp och datum — eller så behöver fasta utgiften redigeras.</small>
+                    <span>IngÃ¥r i fasta utgifter som borde vara dragna</span>
+                    <b>{missingPostedSubscriptions.length} poster Â· {kr(missingPostedFixedExpenses)}</b>
+                    <small>Om nÃ¥got hÃ¤r redan Ã¤r betalt behÃ¶ver transaktionen matcha namn, belopp och datum â€” eller sÃ¥ behÃ¶ver fasta utgiften redigeras.</small>
                   </div>
                   {missingPostedSubscriptions.map((subscription) => (
                     <div className="missing-fixed-row" key={subscription.id}>
                       <span>
                         <b>{subscription.name}</b>
-                        <small>Dras {subscription.dueDate ? new Date(`${subscription.dueDate}T12:00:00`).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }) : "okänt datum"} · {subscription.scheduleLabel}</small>
+                        <small>Dras {subscription.dueDate ? new Date(`${subscription.dueDate}T12:00:00`).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }) : "okÃ¤nt datum"} Â· {subscription.scheduleLabel}</small>
                       </span>
                       <strong>{kr(subscription.amount)}</strong>
                     </div>
@@ -3610,13 +3565,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                   ))}
                 </div>
               </div>
-            ) : <EmptyState text="Inga utgifter att visa i cirkeldiagrammet ännu." />}
+            ) : <EmptyState text="Inga utgifter att visa i cirkeldiagrammet Ã¤nnu." />}
           </article>
         </SectionPanel>
       )}
 
       {activeSection === "settings" && (
-        <SectionPanel title="Inställningar" description="Hantera testdata och kontoinställningar.">
+        <SectionPanel title="InstÃ¤llningar" description="Hantera testdata och kontoinstÃ¤llningar.">
           {showAdminPanels && (
             <>
               <AdminOverviewPanel
@@ -3639,25 +3594,25 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             remoteReady={remoteReady}
           />
           <form className="profile-settings-panel" onSubmit={saveProfileName}>
-            <div><span>Profilnamn</span><b>Vad ska appen kalla dig?</b><small>Detta styr hälsningen på startsidan.</small></div>
+            <div><span>Profilnamn</span><b>Vad ska appen kalla dig?</b><small>Detta styr hÃ¤lsningen pÃ¥ startsidan.</small></div>
             <input value={profileNameForm} onChange={(event) => setProfileNameForm(event.target.value)} placeholder="Ditt namn" />
             <button type="submit"><Edit3 size={16}/> Spara namn</button>
           </form>
           <form className="profile-settings-panel" onSubmit={saveOpeningBalance}>
-            <div><span>Saldoavstämning</span><b>Banksaldo vid löneperiodens start</b><small>Används bara för aktuellt saldo. Fria pengar räknas fortfarande på inkomst, budgetar och köp.</small></div>
+            <div><span>SaldoavstÃ¤mning</span><b>Banksaldo vid lÃ¶neperiodens start</b><small>AnvÃ¤nds bara fÃ¶r aktuellt saldo. Fria pengar rÃ¤knas fortfarande pÃ¥ inkomst, budgetar och kÃ¶p.</small></div>
             <input inputMode="decimal" value={openingBalanceForm} onChange={(event) => setOpeningBalanceForm(event.target.value)} placeholder="Ex. 10000 eller -580" />
             <button type="submit"><WalletCards size={16}/> Spara saldo</button>
           </form>
           <FeedbackPanel form={feedbackForm} tickets={supportTickets} onChange={setFeedbackForm} onSubmit={submitFeedback} />
           {showAdminPanels && <SupportAdminPanel tickets={supportTickets} onStatusChange={changeTicketStatus} />}
           <PrivacyInfoPanel />
-          <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
+          <div className="settings-actions"><button onClick={resetDemo} type="button">Ã…terstÃ¤ll demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "StÃ¤ng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
           <div className="settings-status"><span>Profil</span><b>{displayName}</b></div>
           <div className="settings-status"><span>Inloggad som</span><b>{user.email ?? "Ditt konto"}</b></div>
-          <div className="settings-status"><span>Status</span><b>{remoteReady ? "Privat Supabase-synk aktiv" : "Lokal cache / väntar på Supabase"}</b></div>
-          <div className="settings-status"><span>Ingående saldo</span><b>{kr(data.openingBalance)}</b></div>
-          <div className="settings-status"><span>Layoutfärg</span><b>{layoutThemes.find((theme) => theme.id === layoutTheme)?.label ?? "Mörkblå"}</b></div>
-          <div className="settings-status"><span>Läge</span><b>{proActive ? "Pro-demo aktiv" : "Standardläge"}</b></div>
+          <div className="settings-status"><span>Status</span><b>{remoteReady ? "Privat Supabase-synk aktiv" : "Lokal cache / vÃ¤ntar pÃ¥ Supabase"}</b></div>
+          <div className="settings-status"><span>IngÃ¥ende saldo</span><b>{kr(data.openingBalance)}</b></div>
+          <div className="settings-status"><span>LayoutfÃ¤rg</span><b>{layoutThemes.find((theme) => theme.id === layoutTheme)?.label ?? "MÃ¶rkblÃ¥"}</b></div>
+          <div className="settings-status"><span>LÃ¤ge</span><b>{proActive ? "Pro-demo aktiv" : "StandardlÃ¤ge"}</b></div>
         </SectionPanel>
       )}
     </div>
@@ -3681,7 +3636,7 @@ function OnboardingPanel({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSkip: () => void;
 }) {
-  const budgetCategories = categories.filter((category) => !["Lön", "Fria köp", "Prenumerationer"].includes(category));
+  const budgetCategories = categories.filter((category) => !["LÃ¶n", "Fria kÃ¶p", "Prenumerationer"].includes(category));
   const previewIncome = parseMoney(form.income);
   const previewFixed = parseMoney(form.fixedAmount);
   const previewBudget = parseMoney(form.budgetAmount);
@@ -3696,32 +3651,32 @@ function OnboardingPanel({
     <section className="onboarding-panel">
       <div className="onboarding-copy">
         <span>Startguide</span>
-        <h2>Bygg din första plan</h2>
-        <p>Guiden hjälper dig skapa rätt grund så appen kan visa fria pengar utan att du behöver flytta pengar mellan konton.</p>
+        <h2>Bygg din fÃ¶rsta plan</h2>
+        <p>Guiden hjÃ¤lper dig skapa rÃ¤tt grund sÃ¥ appen kan visa fria pengar utan att du behÃ¶ver flytta pengar mellan konton.</p>
         <div className="onboarding-preview">
-          <small>Förhandsvisning</small>
+          <small>FÃ¶rhandsvisning</small>
           <strong>{kr(previewFreeMoney)}</strong>
-          <span>ungefär fria pengar efter det du fyllt i</span>
+          <span>ungefÃ¤r fria pengar efter det du fyllt i</span>
         </div>
         <ul className="onboarding-principles">
           <li>Budgetar reserverar pengar.</li>
-          <li>Fria köp minskar fria pengar direkt.</li>
-          <li>Ingående saldo hjälper saldot matcha banken.</li>
+          <li>Fria kÃ¶p minskar fria pengar direkt.</li>
+          <li>IngÃ¥ende saldo hjÃ¤lper saldot matcha banken.</li>
         </ul>
       </div>
       <form className="onboarding-form" onSubmit={onSubmit}>
         <div className="onboarding-step onboarding-step-primary">
-          <div><b>1. Lägg in lönen</b><small>Det här är basen. Appen räknar perioden från lönen den 25:e till nästa 24:e.</small></div>
-          <label><span>Månadslön</span><input inputMode="decimal" placeholder="25000" value={form.income} onChange={(event) => onChange({ ...form, income: event.target.value })}/></label>
+          <div><b>1. LÃ¤gg in lÃ¶nen</b><small>Det hÃ¤r Ã¤r basen. Appen rÃ¤knar perioden frÃ¥n lÃ¶nen den 25:e till nÃ¤sta 24:e.</small></div>
+          <label><span>MÃ¥nadslÃ¶n</span><input inputMode="decimal" placeholder="25000" value={form.income} onChange={(event) => onChange({ ...form, income: event.target.value })}/></label>
         </div>
 
         <div className="onboarding-step">
-          <div><b>2. Stäm av banksaldot</b><small>Skriv vad kontot hade vid löneperiodens start. Lämna tomt om du vill göra det senare.</small></div>
+          <div><b>2. StÃ¤m av banksaldot</b><small>Skriv vad kontot hade vid lÃ¶neperiodens start. LÃ¤mna tomt om du vill gÃ¶ra det senare.</small></div>
           <label><span>Banksaldo vid periodstart</span><input inputMode="decimal" placeholder="Ex. 10000 eller -580" value={form.openingBalance} onChange={(event) => onChange({ ...form, openingBalance: event.target.value })}/></label>
         </div>
 
         <div className="onboarding-step">
-          <div><b>3. Lägg in en fast utgift</b><small>Exempelvis hyra, försäkring eller abonnemang. Du kan lägga fler senare.</small></div>
+          <div><b>3. LÃ¤gg in en fast utgift</b><small>Exempelvis hyra, fÃ¶rsÃ¤kring eller abonnemang. Du kan lÃ¤gga fler senare.</small></div>
           <div className="onboarding-step-grid">
             <label><span>Namn</span><input placeholder="Hyra" value={form.fixedName} onChange={(event) => onChange({ ...form, fixedName: event.target.value })}/></label>
             <label><span>Belopp</span><input inputMode="decimal" placeholder="8500" value={form.fixedAmount} onChange={(event) => onChange({ ...form, fixedAmount: event.target.value })}/></label>
@@ -3730,7 +3685,7 @@ function OnboardingPanel({
         </div>
 
         <div className="onboarding-step">
-          <div><b>4. Skapa din första budget</b><small>Perfekt för mat, drivmedel eller annat du vill reservera pengar till.</small></div>
+          <div><b>4. Skapa din fÃ¶rsta budget</b><small>Perfekt fÃ¶r mat, drivmedel eller annat du vill reservera pengar till.</small></div>
           <div className="onboarding-step-grid two-columns">
             <label><span>Kategori</span><select value={form.budgetCategory} onChange={(event) => onChange({ ...form, budgetCategory: event.target.value })}>{budgetCategories.map((category) => <option key={category}>{category}</option>)}</select></label>
             <label><span>Budgetbelopp</span><input inputMode="decimal" placeholder="4000" value={form.budgetAmount} onChange={(event) => onChange({ ...form, budgetAmount: event.target.value })}/></label>
@@ -3738,8 +3693,8 @@ function OnboardingPanel({
         </div>
 
         <div className="onboarding-actions">
-          <button type="submit"><ShieldCheck size={16}/> Skapa min första plan</button>
-          <button className="secondary-action" onClick={onSkip} type="button">Hoppa över</button>
+          <button type="submit"><ShieldCheck size={16}/> Skapa min fÃ¶rsta plan</button>
+          <button className="secondary-action" onClick={onSkip} type="button">Hoppa Ã¶ver</button>
         </div>
       </form>
     </section>
@@ -3764,7 +3719,7 @@ function DataControlPanel({
       <div>
         <span>Data & backup</span>
         <b>Exportera eller radera testdata</b>
-        <small>Exporten laddar ner en JSON-fil med din nuvarande appdata. Radera kräver bekräftelsen RADERA.</small>
+        <small>Exporten laddar ner en JSON-fil med din nuvarande appdata. Radera krÃ¤ver bekrÃ¤ftelsen RADERA.</small>
       </div>
       <div className="data-control-actions">
         <button onClick={onExport} type="button"><Download size={16}/> Exportera min data</button>
@@ -3774,7 +3729,7 @@ function DataControlPanel({
         </label>
         <button className="danger-action" onClick={onDelete} type="button"><Trash2 size={16}/> Radera min data</button>
       </div>
-      <p>{remoteReady ? "Supabase-raderingen använder RLS och tar bara bort din användares rader." : "Just nu raderas lokal cache. Supabase är inte aktiv i appen."}</p>
+      <p>{remoteReady ? "Supabase-raderingen anvÃ¤nder RLS och tar bara bort din anvÃ¤ndares rader." : "Just nu raderas lokal cache. Supabase Ã¤r inte aktiv i appen."}</p>
     </article>
   );
 }
@@ -3798,24 +3753,24 @@ function FeedbackPanel({
         <div>
           <span>Support & feedback</span>
           <b>Kontakta support</b>
-          <small>Skicka problem, frågor eller förbättringar. Du får ett ärendenummer direkt.</small>
+          <small>Skicka problem, frÃ¥gor eller fÃ¶rbÃ¤ttringar. Du fÃ¥r ett Ã¤rendenummer direkt.</small>
         </div>
         <select value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as "bug" | "idea" | "question" | "other" })}>
           <option value="bug">Problem / bugg</option>
-          <option value="question">Fråga / support</option>
-          <option value="idea">Förbättringsidé</option>
+          <option value="question">FrÃ¥ga / support</option>
+          <option value="idea">FÃ¶rbÃ¤ttringsidÃ©</option>
           <option value="other">Annat</option>
         </select>
         <textarea
-          placeholder="Skriv vad du behöver hjälp med..."
+          placeholder="Skriv vad du behÃ¶ver hjÃ¤lp med..."
           value={form.message}
           onChange={(event) => onChange({ ...form, message: event.target.value })}
         />
-        <button type="submit">Skicka ärende</button>
+        <button type="submit">Skicka Ã¤rende</button>
       </form>
       <div className="support-ticket-list">
-        <h3>Mina ärenden</h3>
-        {visibleTickets.length ? visibleTickets.map((ticket) => <SupportTicketRow key={ticket.id} ticket={ticket} />) : <EmptyState text="Inga supportärenden ännu." />}
+        <h3>Mina Ã¤renden</h3>
+        {visibleTickets.length ? visibleTickets.map((ticket) => <SupportTicketRow key={ticket.id} ticket={ticket} />) : <EmptyState text="Inga supportÃ¤renden Ã¤nnu." />}
       </div>
     </article>
   );
@@ -3825,9 +3780,9 @@ function SupportTicketRow({ ticket }: { ticket: SupportTicket }) {
   return (
     <div className={`support-ticket-row support-${ticket.status}`}>
       <span>
-        <b>#{ticket.id} · {supportTypeLabel(ticket.type)}</b>
+        <b>#{ticket.id} Â· {supportTypeLabel(ticket.type)}</b>
         <small>{ticket.message}</small>
-        <small>{new Date(ticket.created_at).toLocaleString("sv-SE")} · {ticket.page ?? "Inställningar"}</small>
+        <small>{new Date(ticket.created_at).toLocaleString("sv-SE")} Â· {ticket.page ?? "InstÃ¤llningar"}</small>
       </span>
       <strong>{supportStatusLabel(ticket.status)}</strong>
     </div>
@@ -3845,8 +3800,8 @@ function SupportAdminPanel({
     <article className="support-admin-panel">
       <div>
         <span>Adminsupport</span>
-        <b>Alla supportärenden</b>
-        <small>Syns bara för admin. Här kan du följa upp och ändra status.</small>
+        <b>Alla supportÃ¤renden</b>
+        <small>Syns bara fÃ¶r admin. HÃ¤r kan du fÃ¶lja upp och Ã¤ndra status.</small>
       </div>
       <div className="support-admin-list">
         {tickets.length ? tickets.map((ticket) => (
@@ -3854,13 +3809,13 @@ function SupportAdminPanel({
             <SupportTicketRow ticket={ticket} />
             <select value={ticket.status} onChange={(event) => onStatusChange(ticket.id, event.target.value as SupportTicket["status"])}>
               <option value="new">Ny</option>
-              <option value="reviewed">Läst</option>
+              <option value="reviewed">LÃ¤st</option>
               <option value="planned">Planerad</option>
               <option value="done">Klar</option>
-              <option value="closed">Stängd</option>
+              <option value="closed">StÃ¤ngd</option>
             </select>
           </div>
-        )) : <EmptyState text="Inga supportärenden att visa." />}
+        )) : <EmptyState text="Inga supportÃ¤renden att visa." />}
       </div>
     </article>
   );
@@ -3868,8 +3823,8 @@ function SupportAdminPanel({
 
 function supportTypeLabel(type: SupportTicket["type"]) {
   if (type === "bug") return "Problem";
-  if (type === "idea") return "Idé";
-  if (type === "question") return "Fråga";
+  if (type === "idea") return "IdÃ©";
+  if (type === "question") return "FrÃ¥ga";
 
   return "Annat";
 }
@@ -3877,10 +3832,10 @@ function supportTypeLabel(type: SupportTicket["type"]) {
 function supportStatusLabel(status: SupportTicket["status"]) {
   const labels: Record<SupportTicket["status"], string> = {
     new: "Ny",
-    reviewed: "Läst",
+    reviewed: "LÃ¤st",
     planned: "Planerad",
     done: "Klar",
-    closed: "Stängd",
+    closed: "StÃ¤ngd",
   };
 
   return labels[status];
@@ -3891,14 +3846,14 @@ function PrivacyInfoPanel() {
     <article className="privacy-panel">
       <div>
         <span>Integritet & villkor</span>
-        <b>Beta-version, inte finansiell rådgivning</b>
-        <small>Den här appen hjälper dig planera din privata ekonomi, men ersätter inte professionell ekonomisk rådgivning.</small>
+        <b>Beta-version, inte finansiell rÃ¥dgivning</b>
+        <small>Den hÃ¤r appen hjÃ¤lper dig planera din privata ekonomi, men ersÃ¤tter inte professionell ekonomisk rÃ¥dgivning.</small>
       </div>
       <div className="privacy-grid">
-        <span><b>Data som sparas</b><small>Köp, budgetar, fasta utgifter, mål, resebudgetar, feedback och profilnamn.</small></span>
-        <span><b>Var data sparas</b><small>I Supabase på ditt inloggade konto, med RLS så användare bara ser sin egen data.</small></span>
-        <span><b>Din kontroll</b><small>Du kan exportera din data och radera appdata från Inställningar.</small></span>
-        <span><b>Beta</b><small>Funktioner kan ändras under testperioden när vi förbättrar appen.</small></span>
+        <span><b>Data som sparas</b><small>KÃ¶p, budgetar, fasta utgifter, mÃ¥l, resebudgetar, feedback och profilnamn.</small></span>
+        <span><b>Var data sparas</b><small>I Supabase pÃ¥ ditt inloggade konto, med RLS sÃ¥ anvÃ¤ndare bara ser sin egen data.</small></span>
+        <span><b>Din kontroll</b><small>Du kan exportera din data och radera appdata frÃ¥n InstÃ¤llningar.</small></span>
+        <span><b>Beta</b><small>Funktioner kan Ã¤ndras under testperioden nÃ¤r vi fÃ¶rbÃ¤ttrar appen.</small></span>
       </div>
     </article>
   );
@@ -3918,8 +3873,8 @@ function BetaStatusPanel({
       <div className="beta-status-hero">
         <div>
           <span>Beta-status</span>
-          <b>{remoteReady ? "Redo för fler testare" : "Nästan redo"}</b>
-          <small>{remoteReady ? "Synken är aktiv och appen sparar mot Supabase." : "Appen fungerar, men väntar på full Supabase-synk."}</small>
+          <b>{remoteReady ? "Redo fÃ¶r fler testare" : "NÃ¤stan redo"}</b>
+          <small>{remoteReady ? "Synken Ã¤r aktiv och appen sparar mot Supabase." : "Appen fungerar, men vÃ¤ntar pÃ¥ full Supabase-synk."}</small>
         </div>
         <strong>{readiness}%</strong>
       </div>
@@ -3965,8 +3920,8 @@ function AdminOverviewPanel({
       <div className="admin-overview-heading">
         <div>
           <span>Adminpanel</span>
-          <b>Beta-koll fÃ¶r Oskars Ekonomi</b>
-          <small>Syns bara fÃ¶r admin. HÃ¤r fÃ¥r du koll pÃ¥ anvÃ¤ndare, aktivitet och support.</small>
+          <b>Beta-koll fÃƒÂ¶r Oskars Ekonomi</b>
+          <small>Syns bara fÃƒÂ¶r admin. HÃƒÂ¤r fÃƒÂ¥r du koll pÃƒÂ¥ anvÃƒÂ¤ndare, aktivitet och support.</small>
         </div>
         <button onClick={onRefresh} disabled={loading} type="button">
           <RefreshCw size={15} className={loading ? "spin-icon" : ""}/>
@@ -3979,7 +3934,7 @@ function AdminOverviewPanel({
           <ShieldCheck size={18}/>
           <span>
             <b>Servernyckel saknas</b>
-            <small>{stats?.message ?? error ?? "LÃ¤gg till SUPABASE_SERVICE_ROLE_KEY i Vercel fÃ¶r att kunna visa totalt antal Auth-anvÃ¤ndare."}</small>
+            <small>{stats?.message ?? error ?? "LÃƒÂ¤gg till SUPABASE_SERVICE_ROLE_KEY i Vercel fÃƒÂ¶r att kunna visa totalt antal Auth-anvÃƒÂ¤ndare."}</small>
           </span>
         </div>
       )}
@@ -3987,20 +3942,20 @@ function AdminOverviewPanel({
       {error && !stats && (
         <div className="admin-config-warning admin-config-error">
           <ShieldCheck size={18}/>
-          <span><b>Kunde inte hÃ¤mta adminstatistik</b><small>{error}</small></span>
+          <span><b>Kunde inte hÃƒÂ¤mta adminstatistik</b><small>{error}</small></span>
         </div>
       )}
 
       <div className="admin-metric-grid">
-        <div><Users size={18}/><span>AnvÃ¤ndare</span><b>{stats?.users?.total ?? "â€”"}</b><small>Totalt skapade konton</small></div>
-        <div><Activity size={18}/><span>Aktiva 7 dagar</span><b>{stats?.users?.active7 ?? "â€”"}</b><small>Senaste inloggning</small></div>
-        <div><Users size={18}/><span>Nya 30 dagar</span><b>{stats?.users?.new30 ?? "â€”"}</b><small>Nya beta-anvÃ¤ndare</small></div>
-        <div><MessageSquare size={18}/><span>Support</span><b>{openTickets}</b><small>{totalTickets} Ã¤renden totalt</small></div>
+        <div><Users size={18}/><span>AnvÃƒÂ¤ndare</span><b>{stats?.users?.total ?? "Ã¢â‚¬â€"}</b><small>Totalt skapade konton</small></div>
+        <div><Activity size={18}/><span>Aktiva 7 dagar</span><b>{stats?.users?.active7 ?? "Ã¢â‚¬â€"}</b><small>Senaste inloggning</small></div>
+        <div><Users size={18}/><span>Nya 30 dagar</span><b>{stats?.users?.new30 ?? "Ã¢â‚¬â€"}</b><small>Nya beta-anvÃƒÂ¤ndare</small></div>
+        <div><MessageSquare size={18}/><span>Support</span><b>{openTickets}</b><small>{totalTickets} ÃƒÂ¤renden totalt</small></div>
       </div>
 
       <div className="admin-detail-grid">
         <section>
-          <div className="admin-section-title"><Database size={16}/><b>Appaktivitet</b><small>{stats?.app?.activeWriters30 ?? "â€”"} anvÃ¤ndare har lagt in data senaste 30 dagarna</small></div>
+          <div className="admin-section-title"><Database size={16}/><b>Appaktivitet</b><small>{stats?.app?.activeWriters30 ?? "Ã¢â‚¬â€"} anvÃƒÂ¤ndare har lagt in data senaste 30 dagarna</small></div>
           <div className="admin-table-list">
             {topTables.length ? topTables.map((row) => (
               <div key={row.table}>
@@ -4008,19 +3963,19 @@ function AdminOverviewPanel({
                 <b>{row.rows ?? 0}</b>
                 <small>{row.last30 ?? 0} nya 30 dagar</small>
               </div>
-            )) : <EmptyState text={loading ? "HÃ¤mtar tabellstatistik..." : "Tabellstatistik visas nÃ¤r servernyckeln Ã¤r konfigurerad."} />}
+            )) : <EmptyState text={loading ? "HÃƒÂ¤mtar tabellstatistik..." : "Tabellstatistik visas nÃƒÂ¤r servernyckeln ÃƒÂ¤r konfigurerad."} />}
           </div>
         </section>
 
         <section>
-          <div className="admin-section-title"><Users size={16}/><b>Senaste konton</b><small>{generatedAt ? `Uppdaterad ${generatedAt}` : "VÃ¤ntar pÃ¥ adminstatistik"}</small></div>
+          <div className="admin-section-title"><Users size={16}/><b>Senaste konton</b><small>{generatedAt ? `Uppdaterad ${generatedAt}` : "VÃƒÂ¤ntar pÃƒÂ¥ adminstatistik"}</small></div>
           <div className="admin-user-list">
             {stats?.recentUsers?.length ? stats.recentUsers.map((recentUser) => (
               <div key={recentUser.id}>
-                <span><b>{recentUser.name || recentUser.email || "Ny anvÃ¤ndare"}</b><small>{recentUser.email ?? "Ingen e-post"}</small></span>
-                <small>{recentUser.lastSignInAt ? `Aktiv ${new Date(recentUser.lastSignInAt).toLocaleDateString("sv-SE")}` : "Inte inloggad Ã¤n"}</small>
+                <span><b>{recentUser.name || recentUser.email || "Ny anvÃƒÂ¤ndare"}</b><small>{recentUser.email ?? "Ingen e-post"}</small></span>
+                <small>{recentUser.lastSignInAt ? `Aktiv ${new Date(recentUser.lastSignInAt).toLocaleDateString("sv-SE")}` : "Inte inloggad ÃƒÂ¤n"}</small>
               </div>
-            )) : <EmptyState text={loading ? "HÃ¤mtar anvÃ¤ndare..." : "Senaste konton visas nÃ¤r servernyckeln Ã¤r konfigurerad."} />}
+            )) : <EmptyState text={loading ? "HÃƒÂ¤mtar anvÃƒÂ¤ndare..." : "Senaste konton visas nÃƒÂ¤r servernyckeln ÃƒÂ¤r konfigurerad."} />}
           </div>
         </section>
       </div>
@@ -4040,8 +3995,8 @@ function LaunchChecklistPanel({
       <div className="launch-check-heading">
         <div>
           <span>Intern lanseringscheck</span>
-          <b>{readiness}% klart för publik lansering</b>
-          <small>Den här panelen visas bara för admin/betaägare, inte för vanliga användare.</small>
+          <b>{readiness}% klart fÃ¶r publik lansering</b>
+          <small>Den hÃ¤r panelen visas bara fÃ¶r admin/betaÃ¤gare, inte fÃ¶r vanliga anvÃ¤ndare.</small>
         </div>
         <strong>{readiness}%</strong>
       </div>
@@ -4070,9 +4025,9 @@ function ThemePicker({
   return (
     <div className="theme-picker">
       <div>
-        <span>Layoutfärg</span>
-        <b>Välj din stil</b>
-        <small>Färgen sparas för din användare i den här webbläsaren.</small>
+        <span>LayoutfÃ¤rg</span>
+        <b>VÃ¤lj din stil</b>
+        <small>FÃ¤rgen sparas fÃ¶r din anvÃ¤ndare i den hÃ¤r webblÃ¤saren.</small>
       </div>
       <div className="theme-options">
         {layoutThemes.map((theme) => (
@@ -4113,18 +4068,18 @@ function InsightsPanel({
   return (
     <article className={`panel insights-panel ${expanded ? "expanded" : ""}`}>
       <CardTitle><Sparkles size={18} className="purple-text"/> AI Insights</CardTitle>
-      <div className="insight-hero"><b>Din ekonomi är analyserad! 🎉</b><span>{insights[0]}</span></div>
+      <div className="insight-hero"><b>Din ekonomi Ã¤r analyserad! ðŸŽ‰</b><span>{insights[0]}</span></div>
       <div className="affordability-card">
         <div className="affordability-heading">
           <div>
-            <b>Har jag råd?</b>
-            <small>Skriv priset så räknar jag mot fria pengar och perioden som är kvar.</small>
+            <b>Har jag rÃ¥d?</b>
+            <small>Skriv priset sÃ¥ rÃ¤knar jag mot fria pengar och perioden som Ã¤r kvar.</small>
           </div>
-          <span>AI-råd</span>
+          <span>AI-rÃ¥d</span>
         </div>
         <div className="affordability-form">
           <label>
-            <span>Vad vill du köpa?</span>
+            <span>Vad vill du kÃ¶pa?</span>
             <input
               placeholder="Ex. nya skor"
               value={affordabilityForm.title}
@@ -4150,13 +4105,13 @@ function InsightsPanel({
             </ul>
           </div>
         ) : (
-          <div className="affordability-empty">Exempel: “AirPods” och “1990”.</div>
+          <div className="affordability-empty">Exempel: â€œAirPodsâ€ och â€œ1990â€.</div>
         )}
       </div>
       <div className="insight-list">
-        <button onClick={() => onNavigate("reports")} type="button"><i className="insight-icon green"><CircleCheck/></i><span><b>Månadsstatus</b><small>{insights[0]}</small></span><ChevronRight/></button>
+        <button onClick={() => onNavigate("reports")} type="button"><i className="insight-icon green"><CircleCheck/></i><span><b>MÃ¥nadsstatus</b><small>{insights[0]}</small></span><ChevronRight/></button>
         <button onClick={() => onNavigate("subscriptions")} type="button"><i className="insight-icon purple"><Lightbulb/></i><span><b>Sparpotential</b><small>{insights[1]}</small></span><ChevronRight/></button>
-        <button onClick={() => onNavigate("goals")} type="button"><i className="insight-icon blue"><Crosshair/></i><span><b>Måluppdatering</b><small>{insights[2]}</small></span><ChevronRight/></button>
+        <button onClick={() => onNavigate("goals")} type="button"><i className="insight-icon blue"><Crosshair/></i><span><b>MÃ¥luppdatering</b><small>{insights[2]}</small></span><ChevronRight/></button>
       </div>
       <button className="wide-button" onClick={() => onNavigate("insights")} type="button">Visa alla insights <ArrowRight size={15}/></button>
     </article>
@@ -4190,10 +4145,10 @@ function SubscriptionsPanel({
           <Logo title={item.name} tone={item.name === "Spotify" ? "spotify" : item.name === "Netflix" ? "black" : "white"} />
           <span className="row-copy">
             <b>{item.name}</b>
-            <small>{item.plan} · {item.scheduleLabel ?? "Varje månad"} · dag {item.day}</small>
-            <small>{item.isDueThisPeriod && item.dueDate ? `Dras denna period: ${new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : item.nextDueDate ? `Nästa dragning: ${new Date(`${item.nextDueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : "Ingen aktiv dragning"}</small>
+            <small>{item.plan} Â· {item.scheduleLabel ?? "Varje mÃ¥nad"} Â· dag {item.day}</small>
+            <small>{item.isDueThisPeriod && item.dueDate ? `Dras denna period: ${new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : item.nextDueDate ? `NÃ¤sta dragning: ${new Date(`${item.nextDueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : "Ingen aktiv dragning"}</small>
           </span>
-          <span className="row-value"><b>{kr(item.amount)}</b><small>{item.active ? (item.isDueThisPeriod ? "Räknas nu" : "Kommande") : "Pausad"}</small></span>
+          <span className="row-value"><b>{kr(item.amount)}</b><small>{item.active ? (item.isDueThisPeriod ? "RÃ¤knas nu" : "Kommande") : "Pausad"}</small></span>
           <span className="row-actions"><button onClick={() => onEdit(item)} type="button">Redigera</button><button onClick={() => onToggle(item.id)} type="button">{item.active ? "Pausa" : "Aktivera"}</button><button onClick={() => onRemove(item.id)} type="button"><Trash2 size={14}/></button></span>
         </div>
       ))}</div>
@@ -4234,8 +4189,8 @@ function GoalPanel({
   return (
     <section className="goal-card panel">
       <div className="goal-copy">
-        <h3>Dina mål</h3>
-        <b>{goals.length ? `${goals.length} aktiva mål` : "Inga mål ännu"}</b>
+        <h3>Dina mÃ¥l</h3>
+        <b>{goals.length ? `${goals.length} aktiva mÃ¥l` : "Inga mÃ¥l Ã¤nnu"}</b>
         <strong>{goalProgress}%</strong>
         <span>{kr(goalSavedTotal)} av {kr(goalsTargetTotal)}</span>
         <div className="goal-progress"><i style={{ width: `${goalProgress}%` }}/></div>
@@ -4252,7 +4207,7 @@ function GoalPanel({
 
             return (
               <div className="goal-row" key={goal.id}>
-                <span><b>{goal.title}</b><small>{kr(savedAmount)} av {kr(goal.target)}{linkedSaving || usesSavingsPool ? " · kopplat" : ""}</small></span>
+                <span><b>{goal.title}</b><small>{kr(savedAmount)} av {kr(goal.target)}{linkedSaving || usesSavingsPool ? " Â· kopplat" : ""}</small></span>
                 <div className="mini-progress"><i style={{ width: `${progress}%` }}/></div>
                 <strong>{progress}%</strong>
                 {showSavingsDetails && (
@@ -4263,7 +4218,7 @@ function GoalPanel({
                 )}
               </div>
             );
-          }) : <EmptyState text="Skapa ditt första mål ovanför." />}
+          }) : <EmptyState text="Skapa ditt fÃ¶rsta mÃ¥l ovanfÃ¶r." />}
         </div>
         {showSavingsDetails && (
           <div className="savings-list">
@@ -4276,11 +4231,11 @@ function GoalPanel({
                   {onRemoveSavings && <button onClick={() => onRemoveSavings(saving.id)} type="button"><Trash2 size={14}/></button>}
                 </span>
               </div>
-            )) : <EmptyState text="Inga sparkonton ännu. Lägg till ett ovanför." />}
+            )) : <EmptyState text="Inga sparkonton Ã¤nnu. LÃ¤gg till ett ovanfÃ¶r." />}
           </div>
         )}
-        <p>Du är på god väg! Fortsätt spara för att nå ditt mål.</p>
-        <button className="inline-link" onClick={() => onNavigate("goals")} type="button">Ändra sparmål</button>
+        <p>Du Ã¤r pÃ¥ god vÃ¤g! FortsÃ¤tt spara fÃ¶r att nÃ¥ ditt mÃ¥l.</p>
+        <button className="inline-link" onClick={() => onNavigate("goals")} type="button">Ã„ndra sparmÃ¥l</button>
       </div>
       <button className="goal-image" onClick={() => onNavigate("goals")} type="button"><span><Crosshair size={27}/></span></button>
     </section>

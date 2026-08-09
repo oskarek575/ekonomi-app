@@ -1,6 +1,6 @@
 "use client";
 
-import { Category } from "../../types/database";
+import { Category } from "../../../types/database";
 
 type Props = {
   beskrivning: string;

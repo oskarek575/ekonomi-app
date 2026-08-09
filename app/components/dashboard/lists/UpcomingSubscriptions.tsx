@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-import { getSubscriptions } from "../../lib/api";
-import { Subscription } from "../../types/database";
+import { getSubscriptions } from "../../../lib/api";
+import { Subscription } from "../../../types/database";
 
 export default function UpcomingSubscriptions() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
