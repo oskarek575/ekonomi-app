@@ -34,6 +34,7 @@ type LoansSectionProps = {
   loanRows: LoanSectionRow[];
   loanForm: LoanForm;
   editingLoanId: string | null;
+  saving: boolean;
   onLoanFormChange: Dispatch<SetStateAction<LoanForm>>;
   onSaveLoan: (event: FormEvent<HTMLFormElement>) => void;
   onResetLoanForm: () => void;
@@ -55,6 +56,7 @@ export default function LoansSection({
   loanRows,
   loanForm,
   editingLoanId,
+  saving,
   onLoanFormChange,
   onSaveLoan,
   onResetLoanForm,
@@ -129,7 +131,7 @@ export default function LoansSection({
         <input inputMode="decimal" placeholder="Månadsbetalning" value={loanForm.monthlyPayment} onChange={(event) => onLoanFormChange((form) => ({ ...form, monthlyPayment: event.target.value }))}/>
         <input inputMode="decimal" placeholder="Ränta %, t.ex. 5,2" value={loanForm.interestRate} onChange={(event) => onLoanFormChange((form) => ({ ...form, interestRate: event.target.value }))}/>
         <input inputMode="numeric" min="1" max="28" placeholder="Dras dag" value={loanForm.paymentDay} onChange={(event) => onLoanFormChange((form) => ({ ...form, paymentDay: event.target.value }))}/>
-        <button type="submit"><Plus size={16}/> {editingLoanId ? "Spara lån" : "Lägg till"}</button>
+        <button disabled={saving} type="submit"><Plus size={16}/> {saving ? "Sparar..." : editingLoanId ? "Spara l?n" : "L?gg till"}</button>
         {editingLoanId && <button className="secondary-action" onClick={onResetLoanForm} type="button">Avbryt</button>}
       </form>
     </>

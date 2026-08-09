@@ -888,6 +888,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
   const [isStandaloneApp, setIsStandaloneApp] = useState(false);
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
+  const [submittingAction, setSubmittingAction] = useState("");
   const [proActive, setProActive] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
@@ -919,8 +920,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     budgetAmount: "",
   });
   const [dangerConfirm, setDangerConfirm] = useState("");
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncError, setSyncError] = useState("");
   const goalEditorRef = useRef<HTMLFormElement | null>(null);
   const savingsEditorRef = useRef<HTMLFormElement | null>(null);
+  const lastSubmitRef = useRef<{ key: string; at: number } | null>(null);
   const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
   const userThemeStorageKey = user ? `${themeStorageKey}-${user.id}` : themeStorageKey;
   const userOnboardingStorageKey = user ? `${onboardingStorageKey}-${user.id}` : onboardingStorageKey;
@@ -1051,9 +1055,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     async function loadSupabaseData() {
       if (!user) {
         setRemoteReady(false);
+        setSyncLoading(false);
+        setSyncError("");
         setNotice("Logga in för att synka säkert med Supabase.");
         return;
       }
+
+      setSyncLoading(true);
+      setSyncError("");
 
       try {
         const periodRange = getFinancialPeriod(month);
@@ -1156,11 +1165,16 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           })) : current.travelBudgets,
         }));
         setRemoteReady(true);
+        setSyncError("");
         setNotice("Synkad med Supabase.");
       } catch (error) {
         console.error(error);
+        const message = getReadableError(error);
         setRemoteReady(false);
+        setSyncError(message);
         setNotice("Kunde inte nå Supabase, använder lokal cache.");
+      } finally {
+        setSyncLoading(false);
       }
     }
 
@@ -1396,6 +1410,19 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setNotice(message);
   }
 
+  function isDuplicateSubmit(key: string) {
+    const now = Date.now();
+    const lastSubmit = lastSubmitRef.current;
+
+    if (lastSubmit?.key === key && now - lastSubmit.at < 1200) {
+      show("Vänta en sekund, jag håller redan på att spara.");
+      return true;
+    }
+
+    lastSubmitRef.current = { key, at: now };
+    return false;
+  }
+
   function scrollToEditor(ref: { current: HTMLFormElement | null }) {
     window.setTimeout(() => {
       ref.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1446,6 +1473,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function addTransaction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingAction || isDuplicateSubmit("transaction")) return;
     const amount = parseMoney(transactionForm.amount);
 
     if (!transactionForm.title.trim()) {
@@ -1458,87 +1486,93 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
-    const expenseSource: PurchaseSource = transactionForm.type === "expense" && (
-      transactionForm.category === "Fria köp" || !budgetCategorySet.has(normalizeCategory(transactionForm.category))
-    )
-      ? "free"
-      : "budget";
-    const transaction = {
-      title: transactionForm.title.trim(),
-      amount,
-      category: transactionForm.category,
-      type: transactionForm.type,
-      source: transactionForm.type === "expense" ? expenseSource : undefined,
-      date: transactionForm.date,
-    };
+    setSubmittingAction("transaction");
 
-    if (editingTransactionId) {
-      const previousTransaction = data.transactions.find((item) => item.id === editingTransactionId) ?? null;
-      const nextTransaction: Transaction = { id: editingTransactionId, ...transaction, subscriptionId: previousTransaction?.subscriptionId };
-      const savingsAdjustments = getSavingsAdjustments(previousTransaction, nextTransaction, data.savings);
-      const remoteId = toRemoteId(editingTransactionId);
-      if (remoteReady && remoteId) {
-        try {
-          await updateRemotePurchase(
-            remoteId,
-            transaction.title,
-            transaction.amount,
-            transaction.category,
-            toDateTime(transaction.date),
-            transaction.source
-          );
-        } catch (error) {
-          console.error(error);
-          setRemoteReady(false);
-          show("Kunde inte uppdatera i Supabase, ändringen sparades lokalt.");
+    try {
+      const expenseSource: PurchaseSource = transactionForm.type === "expense" && (
+        transactionForm.category === "Fria köp" || !budgetCategorySet.has(normalizeCategory(transactionForm.category))
+      )
+        ? "free"
+        : "budget";
+      const transaction = {
+        title: transactionForm.title.trim(),
+        amount,
+        category: transactionForm.category,
+        type: transactionForm.type,
+        source: transactionForm.type === "expense" ? expenseSource : undefined,
+        date: transactionForm.date,
+      };
+
+      if (editingTransactionId) {
+        const previousTransaction = data.transactions.find((item) => item.id === editingTransactionId) ?? null;
+        const nextTransaction: Transaction = { id: editingTransactionId, ...transaction, subscriptionId: previousTransaction?.subscriptionId };
+        const savingsAdjustments = getSavingsAdjustments(previousTransaction, nextTransaction, data.savings);
+        const remoteId = toRemoteId(editingTransactionId);
+        if (remoteReady && remoteId) {
+          try {
+            await updateRemotePurchase(
+              remoteId,
+              transaction.title,
+              transaction.amount,
+              transaction.category,
+              toDateTime(transaction.date),
+              transaction.source
+            );
+          } catch (error) {
+            console.error(error);
+            setRemoteReady(false);
+            show("Kunde inte uppdatera i Supabase, ändringen sparades lokalt.");
+          }
         }
-      }
-      await syncRemoteSavingsAdjustments(savingsAdjustments);
-      setData((current) => ({
-        ...current,
-        savings: applySavingsAdjustments(current.savings, savingsAdjustments),
-        transactions: current.transactions.map((item) =>
-          item.id === editingTransactionId ? { ...item, ...transaction, subscriptionId: item.subscriptionId } : item
-        ),
-      }));
-      setEditingTransactionId(null);
-      show("Transaktionen är uppdaterad.");
-    } else {
-      let id = crypto.randomUUID();
-      let savedRemotely = false;
-      let remoteFailed = false;
+        await syncRemoteSavingsAdjustments(savingsAdjustments);
+        setData((current) => ({
+          ...current,
+          savings: applySavingsAdjustments(current.savings, savingsAdjustments),
+          transactions: current.transactions.map((item) =>
+            item.id === editingTransactionId ? { ...item, ...transaction, subscriptionId: item.subscriptionId } : item
+          ),
+        }));
+        setEditingTransactionId(null);
+        show("Transaktionen är uppdaterad.");
+      } else {
+        let id = crypto.randomUUID();
+        let savedRemotely = false;
+        let remoteFailed = false;
 
-      if (remoteReady) {
-        try {
-          const created = await addRemotePurchase(
-            transaction.title,
-            transaction.amount,
-            transaction.category,
-            undefined,
-            toDateTime(transaction.date),
-            transaction.source
-          ) as RemotePurchase;
-          id = String(created.id);
-          savedRemotely = true;
-        } catch (error) {
-          console.error(error);
-          remoteFailed = true;
-          setRemoteReady(false);
+        if (remoteReady) {
+          try {
+            const created = await addRemotePurchase(
+              transaction.title,
+              transaction.amount,
+              transaction.category,
+              undefined,
+              toDateTime(transaction.date),
+              transaction.source
+            ) as RemotePurchase;
+            id = String(created.id);
+            savedRemotely = true;
+          } catch (error) {
+            console.error(error);
+            remoteFailed = true;
+            setRemoteReady(false);
+          }
         }
+
+        const nextTransaction: Transaction = { id, ...transaction };
+        const savingsAdjustments = getSavingsAdjustments(null, nextTransaction, data.savings);
+        await syncRemoteSavingsAdjustments(savingsAdjustments);
+        setData((current) => ({
+          ...current,
+          savings: applySavingsAdjustments(current.savings, savingsAdjustments),
+          transactions: [nextTransaction, ...current.transactions],
+        }));
+        show(savedRemotely || !remoteFailed ? (transaction.type === "income" ? "Inkomst tillagd." : "Köp sparat.") : "Köp sparat lokalt, men Supabase svarade inte.");
       }
 
-      const nextTransaction: Transaction = { id, ...transaction };
-      const savingsAdjustments = getSavingsAdjustments(null, nextTransaction, data.savings);
-      await syncRemoteSavingsAdjustments(savingsAdjustments);
-      setData((current) => ({
-        ...current,
-        savings: applySavingsAdjustments(current.savings, savingsAdjustments),
-        transactions: [nextTransaction, ...current.transactions],
-      }));
-      show(savedRemotely || !remoteFailed ? (transaction.type === "income" ? "Inkomst tillagd." : "Köp sparat.") : "Köp sparat lokalt, men Supabase svarade inte.");
+      setTransactionForm((form) => ({ ...form, title: "", amount: "" }));
+    } finally {
+      setSubmittingAction("");
     }
-
-    setTransactionForm((form) => ({ ...form, title: "", amount: "" }));
   }
 
   function editTransaction(transaction: Transaction) {
@@ -1583,56 +1617,67 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function addBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const limit = Number(budgetForm.limit);
-    if (limit <= 0) return;
+    if (submittingAction || isDuplicateSubmit("budget")) return;
+    const limit = parseMoney(budgetForm.limit);
+
+    if (!Number.isFinite(limit) || limit <= 0) {
+      show("Skriv en giltig budget, till exempel 4000 eller 4000,50.");
+      return;
+    }
+
+    setSubmittingAction("budget");
     const duplicateBudget = data.budgets.find((budget) =>
       budget.category === budgetForm.category
       && budget.id !== editingBudgetId
     );
 
-    if (editingBudgetId) {
-      if (duplicateBudget) {
-        show("Det finns redan en budget för den kategorin.");
-        return;
-      }
+    try {
+      if (editingBudgetId) {
+        if (duplicateBudget) {
+          show("Det finns redan en budget för den kategorin.");
+          return;
+        }
 
-      const remoteId = toRemoteId(editingBudgetId);
-      if (remoteReady && remoteId) {
-        await updateRemoteBudget(remoteId, budgetForm.category, limit);
-      }
-      setData((current) => ({
-        ...current,
-        budgets: current.budgets.map((budget) =>
-          budget.id === editingBudgetId ? { ...budget, category: budgetForm.category, limit } : budget
-        ),
-      }));
-      setEditingBudgetId(null);
-      show("Budgeten är uppdaterad.");
-    } else {
-      let id = crypto.randomUUID();
-
-      if (duplicateBudget) {
-        id = duplicateBudget.id;
-        const remoteId = toRemoteId(duplicateBudget.id);
+        const remoteId = toRemoteId(editingBudgetId);
         if (remoteReady && remoteId) {
           await updateRemoteBudget(remoteId, budgetForm.category, limit);
         }
-      } else if (remoteReady) {
-        const created = await addRemoteBudget(budgetForm.category, limit) as RemoteBudget;
-        id = String(created.id);
+        setData((current) => ({
+          ...current,
+          budgets: current.budgets.map((budget) =>
+            budget.id === editingBudgetId ? { ...budget, category: budgetForm.category, limit } : budget
+          ),
+        }));
+        setEditingBudgetId(null);
+        show("Budgeten är uppdaterad.");
+      } else {
+        let id = crypto.randomUUID();
+
+        if (duplicateBudget) {
+          id = duplicateBudget.id;
+          const remoteId = toRemoteId(duplicateBudget.id);
+          if (remoteReady && remoteId) {
+            await updateRemoteBudget(remoteId, budgetForm.category, limit);
+          }
+        } else if (remoteReady) {
+          const created = await addRemoteBudget(budgetForm.category, limit) as RemoteBudget;
+          id = String(created.id);
+        }
+
+        setData((current) => ({
+          ...current,
+          budgets: [
+            ...current.budgets.filter((budget) => budget.category !== budgetForm.category),
+            { id, category: budgetForm.category, limit },
+          ],
+        }));
+        show("Budgeten är sparad.");
       }
 
-      setData((current) => ({
-        ...current,
-        budgets: [
-          ...current.budgets.filter((budget) => budget.category !== budgetForm.category),
-          { id, category: budgetForm.category, limit },
-        ],
-      }));
-      show("Budgeten är sparad.");
+      setBudgetForm((form) => ({ ...form, limit: "" }));
+    } finally {
+      setSubmittingAction("");
     }
-
-    setBudgetForm((form) => ({ ...form, limit: "" }));
   }
 
   function editBudget(budget: Budget) {
@@ -1663,13 +1708,22 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function addSubscription(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingAction || isDuplicateSubmit("subscription")) return;
     const amount = parseMoney(subscriptionForm.amount);
     const day = clampPaymentDay(Number(subscriptionForm.day));
     const intervalMonths = subscriptionForm.frequency === "custom"
       ? Math.max(1, Math.round(Number(subscriptionForm.intervalMonths)))
       : getSubscriptionIntervalMonths({ frequency: subscriptionForm.frequency });
 
-    if (!subscriptionForm.name.trim() || amount <= 0) return;
+    if (!subscriptionForm.name.trim()) {
+      show("Skriv namn på den fasta utgiften först.");
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      show("Skriv ett giltigt belopp för den fasta utgiften.");
+      return;
+    }
 
     const nextSubscription = {
       name: subscriptionForm.name.trim(),
@@ -1680,66 +1734,83 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       intervalMonths,
       startDate: subscriptionForm.startDate || formatDateInput(new Date()),
     };
+    const duplicateSubscription = data.subscriptions.find((subscription) =>
+      subscription.id !== editingSubscriptionId
+      && normalizeCategory(subscription.name) === normalizeCategory(nextSubscription.name)
+      && subscription.amount === nextSubscription.amount
+      && subscription.day === nextSubscription.day
+    );
 
-    if (editingSubscriptionId) {
-      const remoteId = toRemoteId(editingSubscriptionId);
-      if (remoteReady && remoteId) {
-        const existing = data.subscriptions.find((subscription) => subscription.id === editingSubscriptionId);
-        await updateRemoteSubscription(
-          remoteId,
-          nextSubscription.name,
-          nextSubscription.amount,
-          nextSubscription.plan,
-          nextSubscription.day,
-          existing?.active ?? true,
-          {
-            frequency: nextSubscription.frequency,
-            interval_months: nextSubscription.intervalMonths,
-            start_date: nextSubscription.startDate,
-          }
-        );
-      }
-      setData((current) => ({
-        ...current,
-        subscriptions: current.subscriptions.map((subscription) =>
-          subscription.id === editingSubscriptionId ? { ...subscription, ...nextSubscription } : subscription
-        ),
-      }));
-      setEditingSubscriptionId(null);
-      show("Den fasta utgiften är uppdaterad.");
-    } else {
-      let id = crypto.randomUUID();
-
-      if (remoteReady) {
-        const created = await addRemoteSubscription(
-          nextSubscription.name,
-          nextSubscription.amount,
-          nextSubscription.plan,
-          nextSubscription.day,
-          {
-            frequency: nextSubscription.frequency,
-            interval_months: nextSubscription.intervalMonths,
-            start_date: nextSubscription.startDate,
-          }
-        ) as RemoteSubscription;
-        id = String(created.id);
-      }
-
-      setData((current) => ({
-        ...current,
-        subscriptions: [
-          ...current.subscriptions,
-          {
-            id,
-            ...nextSubscription,
-            active: true,
-          },
-        ],
-      }));
-      show("Den fasta utgiften är tillagd och fria pengar räknades om.");
+    if (duplicateSubscription) {
+      show("Det finns redan en fast utgift med samma namn, belopp och dag.");
+      return;
     }
 
-    setSubscriptionForm(defaultSubscriptionForm());
+    setSubmittingAction("subscription");
+
+    try {
+      if (editingSubscriptionId) {
+        const remoteId = toRemoteId(editingSubscriptionId);
+        if (remoteReady && remoteId) {
+          const existing = data.subscriptions.find((subscription) => subscription.id === editingSubscriptionId);
+          await updateRemoteSubscription(
+            remoteId,
+            nextSubscription.name,
+            nextSubscription.amount,
+            nextSubscription.plan,
+            nextSubscription.day,
+            existing?.active ?? true,
+            {
+              frequency: nextSubscription.frequency,
+              interval_months: nextSubscription.intervalMonths,
+              start_date: nextSubscription.startDate,
+            }
+          );
+        }
+        setData((current) => ({
+          ...current,
+          subscriptions: current.subscriptions.map((subscription) =>
+            subscription.id === editingSubscriptionId ? { ...subscription, ...nextSubscription } : subscription
+          ),
+        }));
+        setEditingSubscriptionId(null);
+        show("Den fasta utgiften är uppdaterad.");
+      } else {
+        let id = crypto.randomUUID();
+
+        if (remoteReady) {
+          const created = await addRemoteSubscription(
+            nextSubscription.name,
+            nextSubscription.amount,
+            nextSubscription.plan,
+            nextSubscription.day,
+            {
+              frequency: nextSubscription.frequency,
+              interval_months: nextSubscription.intervalMonths,
+              start_date: nextSubscription.startDate,
+            }
+          ) as RemoteSubscription;
+          id = String(created.id);
+        }
+
+        setData((current) => ({
+          ...current,
+          subscriptions: [
+            ...current.subscriptions,
+            {
+              id,
+              ...nextSubscription,
+              active: true,
+            },
+          ],
+        }));
+        show("Den fasta utgiften är tillagd och fria pengar räknades om.");
+      }
+
+      setSubscriptionForm(defaultSubscriptionForm());
+    } finally {
+      setSubmittingAction("");
+    }
   }
 
   function editSubscription(subscription: Subscription) {
@@ -1805,6 +1876,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   async function createSubscriptionExpenses() {
+    if (submittingAction || isDuplicateSubmit("subscription-expenses")) return;
+    setSubmittingAction("subscription-expenses");
+
+    try {
     const existingKeys = new Set(monthTransactions
       .filter((item) => item.category === "Prenumerationer" || item.subscriptionId)
       .flatMap((item) => [
@@ -1842,6 +1917,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     setData((current) => ({ ...current, transactions: [...savedTransactions, ...current.transactions] }));
     show(newTransactions.length ? `${newTransactions.length} fasta utgifter skapades som transaktioner.` : "Alla månadens fasta utgifter finns redan.");
+    } finally {
+      setSubmittingAction("");
+    }
   }
 
   async function addCategory(event: FormEvent<HTMLFormElement>) {
@@ -1893,6 +1971,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function saveGoal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingAction || isDuplicateSubmit("goal")) return;
     const title = goalForm.title.trim();
     const saved = goalForm.saved.trim() ? parseMoney(goalForm.saved) : 0;
     const target = parseMoney(goalForm.target);
@@ -1908,34 +1987,48 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
-    let id = editingGoalId ?? crypto.randomUUID();
+    const duplicateGoal = data.goals.find((goal) =>
+      goal.id !== editingGoalId && normalizeCategory(goal.title) === normalizeCategory(title)
+    );
 
-    if (remoteReady) {
-      try {
-        if (editingGoalId) {
-          const remoteId = toRemoteId(editingGoalId);
-          if (remoteId) {
-            await updateRemoteGoal(remoteId, { title, saved, target });
-          }
-        } else {
-          const created = await addRemoteGoal({ title, saved, target }) as RemoteGoal;
-          id = String(created.id);
-        }
-      } catch (error) {
-        console.error(error);
-        setRemoteReady(false);
-      }
+    if (duplicateGoal) {
+      show("Det finns redan ett mål med det namnet.");
+      return;
     }
 
-    setData((current) => ({
-      ...current,
-      goals: editingGoalId
-        ? current.goals.map((goal) => goal.id === editingGoalId ? { ...goal, title, saved, target, linkedSavingsId } : goal)
-        : [...current.goals, { id, title, saved, target, linkedSavingsId }],
-    }));
-    setGoalForm({ title: "", saved: "", target: "", linkedSavingsId: "" });
-    setEditingGoalId(null);
-    show(editingGoalId ? "Målet är uppdaterat." : "Nytt mål är skapat.");
+    let id = editingGoalId ?? crypto.randomUUID();
+    setSubmittingAction("goal");
+
+    try {
+      if (remoteReady) {
+        try {
+          if (editingGoalId) {
+            const remoteId = toRemoteId(editingGoalId);
+            if (remoteId) {
+              await updateRemoteGoal(remoteId, { title, saved, target });
+            }
+          } else {
+            const created = await addRemoteGoal({ title, saved, target }) as RemoteGoal;
+            id = String(created.id);
+          }
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      setData((current) => ({
+        ...current,
+        goals: editingGoalId
+          ? current.goals.map((goal) => goal.id === editingGoalId ? { ...goal, title, saved, target, linkedSavingsId } : goal)
+          : [...current.goals, { id, title, saved, target, linkedSavingsId }],
+      }));
+      setGoalForm({ title: "", saved: "", target: "", linkedSavingsId: "" });
+      setEditingGoalId(null);
+      show(editingGoalId ? "Målet är uppdaterat." : "Nytt mål är skapat.");
+    } finally {
+      setSubmittingAction("");
+    }
   }
 
   function editGoal(goal: Goal) {
@@ -1971,6 +2064,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function addSavings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingAction || isDuplicateSubmit("savings")) return;
     const name = savingsForm.name.trim();
     const amount = savingsForm.amount.trim() ? parseMoney(savingsForm.amount) : 0;
 
@@ -2000,77 +2094,83 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
-    if (remoteReady && !data.categories.includes(name)) {
-      try {
-        await addRemoteCategory(name, categoryColors[name] ?? "#22c55e", "💰");
-      } catch (error) {
-        console.error(error);
-        setRemoteReady(false);
-      }
-    }
+    setSubmittingAction("savings");
 
-    let newRemoteId: string | null = null;
-    const savingsDate = defaultDateForPeriod(month);
-    const linkedSavingsTransaction = editedSaving ? findLinkedSavingsTransaction(editedSaving, data.transactions) : null;
-    const savingsSource: PurchaseSource = budgetCategorySet.has(normalizeCategory(name)) ? "budget" : "free";
-    const savingsTitle = getSavingsTransactionTitle(name);
-
-    if (remoteReady) {
-      try {
-        if (editingSavingsId) {
-          const remoteId = toRemoteId(editingSavingsId);
-          if (remoteId) {
-            await updateRemoteSavingsAccount(remoteId, { name, amount });
-          }
-          const linkedRemoteId = linkedSavingsTransaction ? toRemoteId(linkedSavingsTransaction.id) : null;
-          if (linkedRemoteId && linkedSavingsTransaction && linkedSavingsTransaction.category !== name) {
-            await updateRemotePurchase(
-              linkedRemoteId,
-              savingsTitle,
-              linkedSavingsTransaction.amount,
-              name,
-              toDateTime(linkedSavingsTransaction.date),
-              linkedSavingsTransaction.source ?? savingsSource
-            );
-          }
-        } else {
-          const created = await addRemoteSavingsAccount({ name, amount }) as RemoteSavingsAccount;
-          newRemoteId = String(created.id);
+    try {
+      if (remoteReady && !data.categories.includes(name)) {
+        try {
+          await addRemoteCategory(name, categoryColors[name] ?? "#22c55e", "💰");
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
         }
-      } catch (error) {
-        console.error(error);
-        setRemoteReady(false);
       }
-    }
 
-    setData((current) => {
-      const savings = editingSavingsId
-        ? current.savings.map((saving) =>
-            saving.id === editingSavingsId ? { ...saving, name, amount } : saving
-          )
-        : [...current.savings, { id: newRemoteId ?? crypto.randomUUID(), name, amount, createdAt: savingsDate }];
+      let newRemoteId: string | null = null;
+      const savingsDate = defaultDateForPeriod(month);
+      const linkedSavingsTransaction = editedSaving ? findLinkedSavingsTransaction(editedSaving, data.transactions) : null;
+      const savingsSource: PurchaseSource = budgetCategorySet.has(normalizeCategory(name)) ? "budget" : "free";
+      const savingsTitle = getSavingsTransactionTitle(name);
 
-      return {
-        ...current,
-        savings,
-        transactions: editingSavingsId && linkedSavingsTransaction
-          ? current.transactions.map((transaction) =>
-              transaction.id === linkedSavingsTransaction.id
-                ? {
-                    ...transaction,
-                    title: savingsTitle,
-                    category: name,
-                  }
-                : transaction
+      if (remoteReady) {
+        try {
+          if (editingSavingsId) {
+            const remoteId = toRemoteId(editingSavingsId);
+            if (remoteId) {
+              await updateRemoteSavingsAccount(remoteId, { name, amount });
+            }
+            const linkedRemoteId = linkedSavingsTransaction ? toRemoteId(linkedSavingsTransaction.id) : null;
+            if (linkedRemoteId && linkedSavingsTransaction && linkedSavingsTransaction.category !== name) {
+              await updateRemotePurchase(
+                linkedRemoteId,
+                savingsTitle,
+                linkedSavingsTransaction.amount,
+                name,
+                toDateTime(linkedSavingsTransaction.date),
+                linkedSavingsTransaction.source ?? savingsSource
+              );
+            }
+          } else {
+            const created = await addRemoteSavingsAccount({ name, amount }) as RemoteSavingsAccount;
+            newRemoteId = String(created.id);
+          }
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      setData((current) => {
+        const savings = editingSavingsId
+          ? current.savings.map((saving) =>
+              saving.id === editingSavingsId ? { ...saving, name, amount } : saving
             )
-          : current.transactions,
-        categories: current.categories.includes(name) ? current.categories : [...current.categories, name],
-      };
-    });
+          : [...current.savings, { id: newRemoteId ?? crypto.randomUUID(), name, amount, createdAt: savingsDate }];
 
-    setSavingsForm({ name: "", amount: "" });
-    setEditingSavingsId(null);
-    show(editingSavingsId ? "Sparkontot är uppdaterat." : `Sparkontot ${name} är skapat.`);
+        return {
+          ...current,
+          savings,
+          transactions: editingSavingsId && linkedSavingsTransaction
+            ? current.transactions.map((transaction) =>
+                transaction.id === linkedSavingsTransaction.id
+                  ? {
+                      ...transaction,
+                      title: savingsTitle,
+                      category: name,
+                    }
+                  : transaction
+              )
+            : current.transactions,
+          categories: current.categories.includes(name) ? current.categories : [...current.categories, name],
+        };
+      });
+
+      setSavingsForm({ name: "", amount: "" });
+      setEditingSavingsId(null);
+      show(editingSavingsId ? "Sparkontot är uppdaterat." : `Sparkontot ${name} är skapat.`);
+    } finally {
+      setSubmittingAction("");
+    }
   }
 
   function editSavings(saving: SavingsAccount) {
@@ -2203,6 +2303,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function saveLoan(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingAction || isDuplicateSubmit("loan")) return;
     const name = loanForm.name.trim();
     const remainingAmount = parseMoney(loanForm.remainingAmount);
     const monthlyPayment = parseMoney(loanForm.monthlyPayment);
@@ -2219,6 +2320,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
+    const duplicateLoan = data.loans.find((loan) =>
+      loan.id !== editingLoanId && normalizeCategory(loan.name) === normalizeCategory(name)
+    );
+
+    if (duplicateLoan) {
+      show("Det finns redan ett lån med det namnet.");
+      return;
+    }
+
     const input = {
       name,
       remaining_amount: remainingAmount,
@@ -2229,64 +2339,70 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     const previousLoan = editingLoanId
       ? data.loans.find((loan) => loan.id === editingLoanId)
       : undefined;
-    const syncedSubscription = await upsertLoanSubscription({
-      name,
-      amount: monthlyPayment,
-      day: paymentDay,
-      previousName: previousLoan?.name,
-    });
+    setSubmittingAction("loan");
 
-    if (editingLoanId) {
-      const remoteId = toRemoteId(editingLoanId);
-      if (remoteReady && remoteId) {
-        try {
-          await updateRemoteLoan(remoteId, input);
-        } catch (error) {
-          console.error(error);
-          setRemoteReady(false);
+    try {
+      const syncedSubscription = await upsertLoanSubscription({
+        name,
+        amount: monthlyPayment,
+        day: paymentDay,
+        previousName: previousLoan?.name,
+      });
+
+      if (editingLoanId) {
+        const remoteId = toRemoteId(editingLoanId);
+        if (remoteReady && remoteId) {
+          try {
+            await updateRemoteLoan(remoteId, input);
+          } catch (error) {
+            console.error(error);
+            setRemoteReady(false);
+          }
         }
+
+        setData((current) => ({
+          ...current,
+          loans: current.loans.map((loan) =>
+            loan.id === editingLoanId
+              ? { ...loan, name, remainingAmount, monthlyPayment, interestRate, paymentDay }
+              : loan
+          ),
+          subscriptions: syncedSubscription.existingId
+            ? current.subscriptions.map((subscription) =>
+                subscription.id === syncedSubscription.existingId ? syncedSubscription.subscription : subscription
+              )
+            : [...current.subscriptions, syncedSubscription.subscription],
+        }));
+        show("Lånet är uppdaterat.");
+      } else {
+        let id = crypto.randomUUID();
+
+        if (remoteReady) {
+          try {
+            const created = await addRemoteLoan(input) as RemoteLoan;
+            id = String(created.id);
+          } catch (error) {
+            console.error(error);
+            setRemoteReady(false);
+          }
+        }
+
+        setData((current) => ({
+          ...current,
+          loans: [...current.loans, { id, name, remainingAmount, monthlyPayment, interestRate, paymentDay }],
+          subscriptions: syncedSubscription.existingId
+            ? current.subscriptions.map((subscription) =>
+                subscription.id === syncedSubscription.existingId ? syncedSubscription.subscription : subscription
+              )
+            : [...current.subscriptions, syncedSubscription.subscription],
+        }));
+        show("Lånet är tillagt.");
       }
 
-      setData((current) => ({
-        ...current,
-        loans: current.loans.map((loan) =>
-          loan.id === editingLoanId
-            ? { ...loan, name, remainingAmount, monthlyPayment, interestRate, paymentDay }
-            : loan
-        ),
-        subscriptions: syncedSubscription.existingId
-          ? current.subscriptions.map((subscription) =>
-              subscription.id === syncedSubscription.existingId ? syncedSubscription.subscription : subscription
-            )
-          : [...current.subscriptions, syncedSubscription.subscription],
-      }));
-      show("Lånet är uppdaterat.");
-    } else {
-      let id = crypto.randomUUID();
-
-      if (remoteReady) {
-        try {
-          const created = await addRemoteLoan(input) as RemoteLoan;
-          id = String(created.id);
-        } catch (error) {
-          console.error(error);
-          setRemoteReady(false);
-        }
-      }
-
-      setData((current) => ({
-        ...current,
-        loans: [...current.loans, { id, name, remainingAmount, monthlyPayment, interestRate, paymentDay }],
-        subscriptions: syncedSubscription.existingId
-          ? current.subscriptions.map((subscription) =>
-              subscription.id === syncedSubscription.existingId ? syncedSubscription.subscription : subscription
-            )
-          : [...current.subscriptions, syncedSubscription.subscription],
-      }));
-      show("Lånet är tillagt.");
+      resetLoanForm();
+    } finally {
+      setSubmittingAction("");
     }
-
-    resetLoanForm();
   }
 
   function editLoan(loan: Loan) {
@@ -2343,9 +2459,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function saveTravelBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingAction || isDuplicateSubmit("travel-budget")) return;
     const budget = parseMoney(travelForm.budget);
+    const name = travelForm.name.trim();
 
-    if (!travelForm.name.trim()) {
+    if (!name) {
       show("Skriv ett namn på resan först.");
       return;
     }
@@ -2360,77 +2478,92 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
-    if (editingTravelId) {
-      const remoteId = toRemoteId(editingTravelId);
-      let syncedId: string | null = null;
+    const duplicateTravel = data.travelBudgets.find((travel) =>
+      travel.id !== editingTravelId && normalizeCategory(travel.name) === normalizeCategory(name)
+    );
 
-      if (remoteReady) {
-        try {
-          if (remoteId) {
-            await updateRemoteTravelBudget(remoteId, {
-              name: travelForm.name.trim(),
-              budget,
-              start_date: travelForm.startDate,
-              end_date: travelForm.endDate,
-              separate_from_free_money: travelForm.separateFromFreeMoney,
-            });
-          } else {
+    if (duplicateTravel) {
+      show("Det finns redan en resebudget med det namnet.");
+      return;
+    }
+
+    setSubmittingAction("travel-budget");
+
+    try {
+      if (editingTravelId) {
+        const remoteId = toRemoteId(editingTravelId);
+        let syncedId: string | null = null;
+
+        if (remoteReady) {
+          try {
+            if (remoteId) {
+              await updateRemoteTravelBudget(remoteId, {
+                name,
+                budget,
+                start_date: travelForm.startDate,
+                end_date: travelForm.endDate,
+                separate_from_free_money: travelForm.separateFromFreeMoney,
+              });
+            } else {
+              const created = await addRemoteTravelBudget({
+                name,
+                budget,
+                start_date: travelForm.startDate,
+                end_date: travelForm.endDate,
+                separate_from_free_money: travelForm.separateFromFreeMoney,
+              }) as RemoteTravelBudget;
+              syncedId = String(created.id);
+            }
+          } catch (error) {
+            console.error(error);
+            setRemoteReady(false);
+          }
+        }
+
+        setData((current) => ({
+          ...current,
+          travelBudgets: current.travelBudgets.map((travel) =>
+            travel.id === editingTravelId
+              ? { ...travel, id: syncedId ?? travel.id, name, budget, startDate: travelForm.startDate, endDate: travelForm.endDate, separateFromFreeMoney: travelForm.separateFromFreeMoney }
+              : travel
+          ),
+        }));
+        if (syncedId) {
+          setActiveTravelId(syncedId);
+        }
+        setEditingTravelId(null);
+        show("Resebudgeten är uppdaterad.");
+      } else {
+        let id = crypto.randomUUID();
+
+        if (remoteReady) {
+          try {
             const created = await addRemoteTravelBudget({
-              name: travelForm.name.trim(),
+              name,
               budget,
               start_date: travelForm.startDate,
               end_date: travelForm.endDate,
               separate_from_free_money: travelForm.separateFromFreeMoney,
             }) as RemoteTravelBudget;
-            syncedId = String(created.id);
+            id = String(created.id);
+          } catch (error) {
+            console.error(error);
+            setRemoteReady(false);
           }
-        } catch (error) {
-          console.error(error);
-          setRemoteReady(false);
         }
+
+        setData((current) => ({
+          ...current,
+          travelBudgets: [{ id, name, budget, startDate: travelForm.startDate, endDate: travelForm.endDate, separateFromFreeMoney: travelForm.separateFromFreeMoney, purchases: [] }, ...current.travelBudgets],
+        }));
+        setActiveTravelId(id);
+        show("Resebudgeten är skapad.");
       }
 
-      setData((current) => ({
-        ...current,
-        travelBudgets: current.travelBudgets.map((travel) =>
-          travel.id === editingTravelId
-            ? { ...travel, id: syncedId ?? travel.id, name: travelForm.name.trim(), budget, startDate: travelForm.startDate, endDate: travelForm.endDate, separateFromFreeMoney: travelForm.separateFromFreeMoney }
-            : travel
-        ),
-      }));
-      if (syncedId) {
-        setActiveTravelId(syncedId);
-      }
-      setEditingTravelId(null);
-      show("Resebudgeten är uppdaterad.");
-    } else {
-      let id = crypto.randomUUID();
-
-      if (remoteReady) {
-        try {
-          const created = await addRemoteTravelBudget({
-            name: travelForm.name.trim(),
-            budget,
-            start_date: travelForm.startDate,
-            end_date: travelForm.endDate,
-            separate_from_free_money: travelForm.separateFromFreeMoney,
-          }) as RemoteTravelBudget;
-          id = String(created.id);
-        } catch (error) {
-          console.error(error);
-          setRemoteReady(false);
-        }
-      }
-
-      setData((current) => ({
-        ...current,
-        travelBudgets: [{ id, name: travelForm.name.trim(), budget, startDate: travelForm.startDate, endDate: travelForm.endDate, separateFromFreeMoney: travelForm.separateFromFreeMoney, purchases: [] }, ...current.travelBudgets],
-      }));
-      setActiveTravelId(id);
-      show("Resebudgeten är skapad.");
+      setTravelForm(defaultTravelForm());
+    } finally {
+      setSubmittingAction("");
     }
-
-    setTravelForm(defaultTravelForm());
   }
 
   function editTravelBudget(travel: TravelBudget) {
@@ -2466,6 +2599,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function addTravelPurchase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingAction || isDuplicateSubmit("travel-purchase")) return;
 
     if (!activeTravelBudget) {
       show("Skapa en resebudget först.");
@@ -2483,31 +2617,49 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
-    let purchase: TravelPurchase = { id: crypto.randomUUID(), title: travelPurchaseForm.title.trim(), amount, category: travelPurchaseForm.category, date: travelPurchaseForm.date };
-    const remoteTravelId = toRemoteId(activeTravelBudget.id);
+    const title = travelPurchaseForm.title.trim();
+    const duplicatePurchase = activeTravelBudget.purchases.find((purchase) =>
+      normalizeCategory(purchase.title) === normalizeCategory(title)
+      && purchase.amount === amount
+      && purchase.date === travelPurchaseForm.date
+    );
 
-    if (remoteReady && remoteTravelId) {
-      try {
-        const created = await addRemoteTravelPurchase({
-          travel_budget_id: remoteTravelId,
-          title: purchase.title,
-          amount: purchase.amount,
-          category: purchase.category,
-          purchase_date: purchase.date,
-        }) as RemoteTravelPurchase;
-        purchase = { ...purchase, id: String(created.id) };
-      } catch (error) {
-        console.error(error);
-        setRemoteReady(false);
-      }
+    if (duplicatePurchase) {
+      show("Det reseköpet finns redan på den här resan.");
+      return;
     }
 
-    setData((current) => ({
-      ...current,
-      travelBudgets: current.travelBudgets.map((travel) => travel.id === activeTravelBudget.id ? { ...travel, purchases: [purchase, ...travel.purchases] } : travel),
-    }));
-    setTravelPurchaseForm((form) => ({ ...form, title: "", amount: "" }));
-    show(activeTravelBudget.separateFromFreeMoney ? "Reseköpet sparades i resebudgeten." : "Reseköpet sparades och påverkar fria pengar.");
+    setSubmittingAction("travel-purchase");
+
+    try {
+      let purchase: TravelPurchase = { id: crypto.randomUUID(), title, amount, category: travelPurchaseForm.category, date: travelPurchaseForm.date };
+      const remoteTravelId = toRemoteId(activeTravelBudget.id);
+
+      if (remoteReady && remoteTravelId) {
+        try {
+          const created = await addRemoteTravelPurchase({
+            travel_budget_id: remoteTravelId,
+            title: purchase.title,
+            amount: purchase.amount,
+            category: purchase.category,
+            purchase_date: purchase.date,
+          }) as RemoteTravelPurchase;
+          purchase = { ...purchase, id: String(created.id) };
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      setData((current) => ({
+        ...current,
+        travelBudgets: current.travelBudgets.map((travel) => travel.id === activeTravelBudget.id ? { ...travel, purchases: [purchase, ...travel.purchases] } : travel),
+      }));
+      setTravelPurchaseForm((form) => ({ ...form, title: "", amount: "" }));
+      show(activeTravelBudget.separateFromFreeMoney ? "Reseköpet sparades i resebudgeten." : "Reseköpet sparades och påverkar fria pengar.");
+    } finally {
+      setSubmittingAction("");
+    }
   }
 
   async function removeTravelPurchase(travelId: string, purchaseId: string) {
@@ -2653,10 +2805,30 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function finishOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingAction || isDuplicateSubmit("onboarding")) return;
     const incomeAmount = parseMoney(onboardingForm.income);
     const openingBalanceAmount = onboardingForm.openingBalance.trim() ? parseMoney(onboardingForm.openingBalance) : 0;
     const fixedAmount = parseMoney(onboardingForm.fixedAmount);
     const budgetAmount = parseMoney(onboardingForm.budgetAmount);
+
+    if (!Number.isFinite(openingBalanceAmount)) {
+      show("Skriv ett giltigt banksaldo vid periodstart, eller lämna rutan tom.");
+      return;
+    }
+
+    if (onboardingForm.fixedAmount.trim() && (!Number.isFinite(fixedAmount) || fixedAmount <= 0)) {
+      show("Skriv ett giltigt belopp för den fasta utgiften, eller lämna rutan tom.");
+      return;
+    }
+
+    if (onboardingForm.budgetAmount.trim() && (!Number.isFinite(budgetAmount) || budgetAmount <= 0)) {
+      show("Skriv ett giltigt budgetbelopp, eller lämna rutan tom.");
+      return;
+    }
+
+    setSubmittingAction("onboarding");
+
+    try {
     const nextTransactions: Transaction[] = [];
     const nextSubscriptions: Subscription[] = [];
     const nextBudgets: Budget[] = [];
@@ -2682,11 +2854,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       }
 
       nextTransactions.push({ id, ...transaction });
-    }
-
-    if (!Number.isFinite(openingBalanceAmount)) {
-      show("Skriv ett giltigt banksaldo vid periodstart, eller lämna rutan tom.");
-      return;
     }
 
     if (remoteReady) {
@@ -2756,6 +2923,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setOnboardingForm({ income: "", openingBalance: "", fixedName: "", fixedAmount: "", fixedDay: "1", budgetCategory: "Mat & Livsmedel", budgetAmount: "" });
     completeOnboarding();
     show("Startguiden är klar. Din första ekonomiplan är skapad.");
+    } finally {
+      setSubmittingAction("");
+    }
   }
 
   function exportUserData() {
@@ -3083,10 +3253,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       <div className="notice-bar">{notice}</div>
 
+      <SyncStatusPanel
+        loading={syncLoading}
+        error={syncError}
+        remoteReady={remoteReady}
+        lastLocalSave={lastLocalSave}
+      />
+
       {needsOnboarding && (
         <OnboardingPanel
           categories={data.categories}
           form={onboardingForm}
+          saving={submittingAction === "onboarding"}
           onChange={setOnboardingForm}
           onSubmit={finishOnboarding}
           onSkip={skipOnboarding}
@@ -3141,7 +3319,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 <span className="form-hint">{transactionCategoryHasBudget ? "Budgeterad kategori" : "Dras från fria pengar"}</span>
               )}
               <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
-              <button type="submit"><Plus size={17}/> {editingTransactionId ? "Spara ändring" : "Spara"}</button>
+              <button disabled={submittingAction === "transaction"} type="submit"><Plus size={17}/> {submittingAction === "transaction" ? "Sparar..." : editingTransactionId ? "Spara ändring" : "Spara"}</button>
               {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
             </form>
             <div className="quick-chip-row" aria-label="Snabba val">
@@ -3234,7 +3412,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </select>
             {transactionForm.type === "expense" && <span className="form-hint">{transactionCategoryHasBudget ? "Budgeterad kategori" : "Dras från fria pengar"}</span>}
             <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
-            <button type="submit"><Plus size={16}/> {editingTransactionId ? "Spara ändring" : "Skapa köp"}</button>
+            <button disabled={submittingAction === "transaction"} type="submit"><Plus size={16}/> {submittingAction === "transaction" ? "Sparar..." : editingTransactionId ? "Spara ändring" : "Skapa köp"}</button>
             {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
           </form>
           <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök transaktion..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option>Alla</option>{data.categories.map((category) => <option key={category}>{category}</option>)}</select></div>
@@ -3269,7 +3447,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <div><span>Fria pengar</span><strong>{kr(freeMoney)}</strong></div>
             <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>−</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>−</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>{budgetOverspendTotal > 0 && <><i>−</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget över</small></span></>}<i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span></div>
           </div>
-          <form className="management-form budget-form" onSubmit={addBudget}><select value={budgetForm.category} onChange={(event) => setBudgetForm((form) => ({ ...form, category: event.target.value }))}>{data.categories.filter((category) => !["Lön", "Fria köp", "Prenumerationer"].includes(category)).map((category) => <option key={category}>{category}</option>)}</select><input inputMode="numeric" placeholder="Månadsbudget" value={budgetForm.limit} onChange={(event) => setBudgetForm((form) => ({ ...form, limit: event.target.value }))}/><button type="submit"><Plus size={16}/> {editingBudgetId ? "Spara ändring" : "Spara budget"}</button>{editingBudgetId && <button className="secondary-action" onClick={cancelBudgetEdit} type="button">Avbryt</button>}</form>
+          <form className="management-form budget-form" onSubmit={addBudget}><select value={budgetForm.category} onChange={(event) => setBudgetForm((form) => ({ ...form, category: event.target.value }))}>{data.categories.filter((category) => !["Lön", "Fria köp", "Prenumerationer"].includes(category)).map((category) => <option key={category}>{category}</option>)}</select><input inputMode="decimal" placeholder="Månadsbudget" value={budgetForm.limit} onChange={(event) => setBudgetForm((form) => ({ ...form, limit: event.target.value }))}/><button disabled={submittingAction === "budget"} type="submit"><Plus size={16}/> {submittingAction === "budget" ? "Sparar..." : editingBudgetId ? "Spara ändring" : "Spara budget"}</button>{editingBudgetId && <button className="secondary-action" onClick={cancelBudgetEdit} type="button">Avbryt</button>}</form>
           <div className="data-table">{budgetRows.map((budget) => <div className="table-row budget-table-row" key={budget.id}><span><b>{budget.category}</b><small>{kr(budget.used)} använt · {budget.overspent ? `${kr(budget.overspent)} över budget` : `${kr(budget.remaining)} kvar inom budgeten`}</small></span><div className="table-progress"><i style={{ width: `${budget.pct}%` }}/></div><strong>{kr(budget.limit)} reserverat</strong><span className="row-actions"><button onClick={() => editBudget(budget)} type="button">Redigera</button><button onClick={() => removeBudget(budget.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
@@ -3386,7 +3564,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               </select>
               <input inputMode="decimal" placeholder="Manuellt sparat om inget sparkonto finns" value={goalForm.saved} onChange={(event) => setGoalForm((goal) => ({ ...goal, saved: event.target.value }))}/>
               <input inputMode="decimal" placeholder="Målsumma" value={goalForm.target} onChange={(event) => setGoalForm((goal) => ({ ...goal, target: event.target.value }))}/>
-              <button type="submit"><Edit3 size={16}/> {editingGoalId ? "Spara mål" : "Skapa mål"}</button>
+              <button disabled={submittingAction === "goal"} type="submit"><Edit3 size={16}/> {submittingAction === "goal" ? "Sparar..." : editingGoalId ? "Spara mål" : "Skapa mål"}</button>
               {editingGoalId && <button className="secondary-action" onClick={cancelGoalEdit} type="button">Avbryt</button>}
             </form>
 
@@ -3394,7 +3572,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <div><span>Sparkonto</span><b>{editingSavingsId ? "Redigera sparkonto" : "Skapa sparkonto"}</b></div>
               <input placeholder="Sparkonto, t.ex. Resa 2027" value={savingsForm.name} onChange={(event) => setSavingsForm((form) => ({ ...form, name: event.target.value }))}/>
               <input inputMode="decimal" placeholder={editingSavingsId ? "Totalt saldo" : "Startsaldo, t.ex. 0"} value={savingsForm.amount} onChange={(event) => setSavingsForm((form) => ({ ...form, amount: event.target.value }))}/>
-              <button type="submit"><Plus size={16}/> {editingSavingsId ? "Spara sparkonto" : "Skapa sparkonto"}</button>
+              <button disabled={submittingAction === "savings"} type="submit"><Plus size={16}/> {submittingAction === "savings" ? "Sparar..." : editingSavingsId ? "Spara sparkonto" : "Skapa sparkonto"}</button>
               {editingSavingsId && <button className="secondary-action" onClick={cancelSavingsEdit} type="button">Avbryt</button>}
             </form>
           </section>
@@ -3413,6 +3591,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             loanRows={loanRows}
             loanForm={loanForm}
             editingLoanId={editingLoanId}
+            saving={submittingAction === "loan"}
             onLoanFormChange={setLoanForm}
             onSaveLoan={saveLoan}
             onResetLoanForm={resetLoanForm}
@@ -3453,7 +3632,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <input type="date" value={travelForm.startDate} onChange={(event) => setTravelForm((form) => ({ ...form, startDate: event.target.value }))}/>
               <input type="date" value={travelForm.endDate} onChange={(event) => setTravelForm((form) => ({ ...form, endDate: event.target.value }))}/>
               <label className="toggle-row"><input checked={travelForm.separateFromFreeMoney} type="checkbox" onChange={(event) => setTravelForm((form) => ({ ...form, separateFromFreeMoney: event.target.checked }))}/><span>Resan är redan avsatt</span></label>
-              <button type="submit"><Plus size={16}/> {editingTravelId ? "Spara resa" : "Skapa resa"}</button>
+              <button disabled={submittingAction === "travel-budget"} type="submit"><Plus size={16}/> {submittingAction === "travel-budget" ? "Sparar..." : editingTravelId ? "Spara resa" : "Skapa resa"}</button>
               {editingTravelId && <button className="secondary-action" onClick={cancelTravelEdit} type="button">Avbryt</button>}
             </form>
 
@@ -3465,7 +3644,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                   {["Mat", "Aktiviteter", "Transport", "Shopping", "Boende", "Övrigt"].map((category) => <option key={category}>{category}</option>)}
                 </select>
                 <input type="date" value={travelPurchaseForm.date} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, date: event.target.value }))}/>
-                <button type="submit"><Plus size={16}/> Lägg till reseköp</button>
+                <button disabled={submittingAction === "travel-purchase"} type="submit"><Plus size={16}/> {submittingAction === "travel-purchase" ? "Sparar..." : "Lägg till reseköp"}</button>
               </form>
             )}
           </div>
@@ -3534,10 +3713,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             {subscriptionForm.frequency === "custom" && (
               <input inputMode="numeric" min="1" placeholder="Var X:e månad" value={subscriptionForm.intervalMonths} onChange={(event) => setSubscriptionForm((form) => ({ ...form, intervalMonths: event.target.value }))}/>
             )}
-            <button type="submit"><Plus size={16}/> {editingSubscriptionId ? "Spara ändring" : "Skapa ny utgift"}</button>
+            <button disabled={submittingAction === "subscription"} type="submit"><Plus size={16}/> {submittingAction === "subscription" ? "Sparar..." : editingSubscriptionId ? "Spara ändring" : "Skapa ny utgift"}</button>
             {editingSubscriptionId && <button className="secondary-action" onClick={cancelSubscriptionEdit} type="button">Avbryt</button>}
           </form>
-          <button className="wide-button action-wide" onClick={createSubscriptionExpenses} type="button">Skapa månadens fasta utgifter som transaktioner <ArrowRight size={15}/></button>
+          <button className="wide-button action-wide" disabled={submittingAction === "subscription-expenses"} onClick={createSubscriptionExpenses} type="button">{submittingAction === "subscription-expenses" ? "Skapar..." : "Skapa månadens fasta utgifter som transaktioner"} <ArrowRight size={15}/></button>
           <SubscriptionsPanel subscriptions={scheduledSubscriptions} onNavigate={onNavigate} onGenerate={createSubscriptionExpenses} onEdit={editSubscription} onToggle={toggleSubscription} onRemove={removeSubscription} showAll />
         </SectionPanel>
       )}
@@ -3683,15 +3862,43 @@ function SectionPanel({ title, description, children }: { title: string; descrip
   return <section className="panel section-panel"><div className="section-heading"><h2>{title}</h2><p>{description}</p></div>{children}</section>;
 }
 
+function SyncStatusPanel({
+  loading,
+  error,
+  remoteReady,
+  lastLocalSave,
+}: {
+  loading: boolean;
+  error: string;
+  remoteReady: boolean;
+  lastLocalSave: string | null;
+}) {
+  if (!loading && !error && remoteReady) return null;
+
+  const savedLabel = lastLocalSave
+    ? new Date(lastLocalSave).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" })
+    : "inte registrerad ännu";
+
+  return (
+    <article className={`sync-status-panel ${error ? "sync-error" : loading ? "sync-loading" : "sync-local"}`}>
+      <span>{loading ? "Synkar" : error ? "Offlineläge" : "Lokal cache"}</span>
+      <b>{loading ? "Hämtar din senaste data..." : error ? "Supabase svarar inte just nu" : "Datan sparas lokalt tills synken är tillbaka"}</b>
+      <small>{error || `Senaste lokala sparning: ${savedLabel}`}</small>
+    </article>
+  );
+}
+
 function OnboardingPanel({
   categories,
   form,
+  saving,
   onChange,
   onSubmit,
   onSkip,
 }: {
   categories: string[];
   form: { income: string; openingBalance: string; fixedName: string; fixedAmount: string; fixedDay: string; budgetCategory: string; budgetAmount: string };
+  saving: boolean;
   onChange: (form: { income: string; openingBalance: string; fixedName: string; fixedAmount: string; fixedDay: string; budgetCategory: string; budgetAmount: string }) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSkip: () => void;
@@ -3753,7 +3960,7 @@ function OnboardingPanel({
         </div>
 
         <div className="onboarding-actions">
-          <button type="submit"><ShieldCheck size={16}/> Skapa min första plan</button>
+          <button disabled={saving} type="submit"><ShieldCheck size={16}/> {saving ? "Skapar..." : "Skapa min första plan"}</button>
           <button className="secondary-action" onClick={onSkip} type="button">Hoppa över</button>
         </div>
       </form>
