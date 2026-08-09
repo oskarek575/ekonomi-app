@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-const fallbackAdminEmails = ["oskarek575@gmail.com", "oskarcool1337@gmail.com"];
+const fallbackAdminEmails = ["oskarek575@gmail.com"];
 const appTables = [
   "profile",
   "kop",

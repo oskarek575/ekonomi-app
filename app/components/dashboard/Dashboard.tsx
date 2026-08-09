@@ -281,8 +281,7 @@ type LayoutTheme = "blue" | "green" | "purple" | "rose" | "orange";
 const storageKey = "oskars-ekonomi-v2";
 const themeStorageKey = "oskars-ekonomi-theme";
 const onboardingStorageKey = "oskars-ekonomi-onboarding";
-const adminStorageKey = "oskars-ekonomi-admin";
-const fallbackAdminEmails = ["oskarek575@gmail.com", "oskarcool1337@gmail.com"];
+const fallbackAdminEmails = ["oskarek575@gmail.com"];
 const salaryDay = 25;
 const monthFormatter = new Intl.DateTimeFormat("sv-SE", { month: "long", year: "numeric" });
 const dateFormatter = new Intl.DateTimeFormat("sv-SE", { day: "numeric", month: "short" });
@@ -967,7 +966,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [openingBalanceForm, setOpeningBalanceForm] = useState("");
   const [layoutTheme, setLayoutTheme] = useState<LayoutTheme>("blue");
   const [lastLocalSave, setLastLocalSave] = useState<string | null>(null);
-  const [localAdminEnabled, setLocalAdminEnabled] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [onboardingForm, setOnboardingForm] = useState({
     income: "",
@@ -989,7 +987,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const displayName = getUserDisplayName(user);
   const greeting = getTimeGreeting();
   const initials = getInitials(displayName);
-  const showAdminPanels = isAdminUser(user) || localAdminEnabled;
+  const showAdminPanels = isAdminUser(user);
 
   const loadAdminStats = useCallback(async () => {
     if (!showAdminPanels) return;
@@ -1039,7 +1037,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   useEffect(() => {
     if (authLoading || !user) return;
 
-    setLocalAdminEnabled(window.localStorage.getItem(adminStorageKey) === "true");
     setProfileNameForm(getUserDisplayName(user));
 
     const savedTheme = window.localStorage.getItem(userThemeStorageKey) as LayoutTheme | null;
