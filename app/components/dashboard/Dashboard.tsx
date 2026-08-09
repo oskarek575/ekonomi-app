@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, CSSProperties, FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import packageInfo from "../../../package.json";
 import {
@@ -255,6 +255,13 @@ type AuthUser = User | null;
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
+type AppExportPayload = {
+  app?: string;
+  version?: string;
+  exportedAt?: string;
+  month?: string;
+  data?: Partial<FinanceData>;
 };
 type LayoutTheme = "blue" | "green" | "purple" | "rose" | "orange";
 
@@ -889,6 +896,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [isStandaloneApp, setIsStandaloneApp] = useState(false);
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [submittingAction, setSubmittingAction] = useState("");
+  const [errorReports, setErrorReports] = useState(0);
   const [proActive, setProActive] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
@@ -924,7 +932,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [syncError, setSyncError] = useState("");
   const goalEditorRef = useRef<HTMLFormElement | null>(null);
   const savingsEditorRef = useRef<HTMLFormElement | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
   const lastSubmitRef = useRef<{ key: string; at: number } | null>(null);
+  const lastErrorReportRef = useRef<{ message: string; at: number } | null>(null);
   const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
   const userThemeStorageKey = user ? `${themeStorageKey}-${user.id}` : themeStorageKey;
   const userOnboardingStorageKey = user ? `${onboardingStorageKey}-${user.id}` : onboardingStorageKey;
@@ -951,6 +961,28 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }
   }, [showAdminPanels]);
 
+  const reportAppError = useCallback(async (error: unknown, context: string) => {
+    const message = getReadableError(error);
+    const now = Date.now();
+    const lastReport = lastErrorReportRef.current;
+
+    if (lastReport?.message === message && now - lastReport.at < 60000) return;
+
+    lastErrorReportRef.current = { message, at: now };
+    setErrorReports((count) => count + 1);
+
+    try {
+      await addRemoteFeedback({
+        type: "bug",
+        message: `[Automatisk fellogg] ${context}: ${message}`,
+        page: activeSection,
+        app_version: packageInfo.version,
+      });
+    } catch (feedbackError) {
+      console.error(feedbackError);
+    }
+  }, [activeSection]);
+
   useEffect(() => {
     const standalone =
       window.matchMedia("(display-mode: standalone)").matches ||
@@ -976,6 +1008,25 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       window.removeEventListener("appinstalled", handleInstalled);
     };
   }, []);
+
+  useEffect(() => {
+    if (!user || !remoteReady) return;
+
+    const handleError = (event: ErrorEvent) => {
+      void reportAppError(event.error ?? event.message, "Browserfel");
+    };
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      void reportAppError(event.reason, "Ohanterat async-fel");
+    };
+
+    window.addEventListener("error", handleError);
+    window.addEventListener("unhandledrejection", handleRejection);
+
+    return () => {
+      window.removeEventListener("error", handleError);
+      window.removeEventListener("unhandledrejection", handleRejection);
+    };
+  }, [remoteReady, reportAppError, user]);
 
   useEffect(() => {
     let active = true;
@@ -2951,6 +3002,51 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show("Exporten är nedladdad.");
   }
 
+  async function importUserData(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    try {
+      const payload = JSON.parse(await file.text()) as AppExportPayload;
+      const importedData = payload.data;
+
+      if (payload.app !== "Oskars Ekonomi" || !importedData) {
+        show("Det här ser inte ut som en export från Oskars Ekonomi.");
+        return;
+      }
+
+      const restoredData: FinanceData = {
+        ...defaultData,
+        ...importedData,
+        openingBalance: Number(importedData.openingBalance ?? 0),
+        transactions: Array.isArray(importedData.transactions) ? importedData.transactions : [],
+        budgets: Array.isArray(importedData.budgets) ? importedData.budgets : [],
+        subscriptions: Array.isArray(importedData.subscriptions) ? importedData.subscriptions : [],
+        goals: Array.isArray(importedData.goals) ? importedData.goals : [],
+        savings: Array.isArray(importedData.savings) ? importedData.savings : [],
+        loans: Array.isArray(importedData.loans) ? importedData.loans : [],
+        travelBudgets: Array.isArray(importedData.travelBudgets) ? importedData.travelBudgets : [],
+        categories: Array.from(new Set([
+          ...defaultData.categories,
+          ...(Array.isArray(importedData.categories) ? importedData.categories : []),
+          ...(Array.isArray(importedData.savings) ? importedData.savings.map((saving) => saving.name) : []),
+        ])).filter(Boolean),
+      };
+
+      setData(restoredData);
+      if (payload.month) setMonth(payload.month);
+      completeOnboarding();
+      show(remoteReady
+        ? "Backupen är importerad lokalt. Export/import mot Supabase gör vi med extra bekräftelse senare."
+        : "Backupen är importerad.");
+    } catch (error) {
+      console.error(error);
+      show("Kunde inte läsa backupfilen. Kontrollera att du valt rätt JSON-export.");
+    }
+  }
+
   async function deleteAllUserData() {
     if (dangerConfirm.trim().toUpperCase() !== "RADERA") {
       show("Skriv RADERA i rutan för att bekräfta.");
@@ -3821,11 +3917,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           />
           <DataControlPanel
             confirmValue={dangerConfirm}
+            importFileRef={importFileRef}
             onConfirmChange={setDangerConfirm}
             onDelete={deleteAllUserData}
             onExport={exportUserData}
+            onImport={importUserData}
             remoteReady={remoteReady}
           />
+          <ChangelogPanel />
           <form className="profile-settings-panel" onSubmit={saveProfileName}>
             <div><span>Profilnamn</span><b>Vad ska appen kalla dig?</b><small>Detta styr hälsningen på startsidan.</small></div>
             <input value={profileNameForm} onChange={(event) => setProfileNameForm(event.target.value)} placeholder="Ditt namn" />
@@ -3849,6 +3948,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           <div className="settings-status"><span>Profil</span><b>{displayName}</b></div>
           <div className="settings-status"><span>Inloggad som</span><b>{user.email ?? "Ditt konto"}</b></div>
           <div className="settings-status"><span>Status</span><b>{remoteReady ? "Privat Supabase-synk aktiv" : "Lokal cache / väntar på Supabase"}</b></div>
+          <div className="settings-status"><span>Fellogg</span><b>{errorReports ? `${errorReports} fel rapporterade denna session` : "Inga appfel rapporterade denna session"}</b></div>
           <div className="settings-status"><span>Ingående saldo</span><b>{kr(data.openingBalance)}</b></div>
           <div className="settings-status"><span>Layoutfärg</span><b>{layoutThemes.find((theme) => theme.id === layoutTheme)?.label ?? "Mörkblå"}</b></div>
           <div className="settings-status"><span>Läge</span><b>{proActive ? "Pro-demo aktiv" : "Standardläge"}</b></div>
@@ -4001,15 +4101,19 @@ function PwaInstallPanel({
 
 function DataControlPanel({
   confirmValue,
+  importFileRef,
   onConfirmChange,
   onDelete,
   onExport,
+  onImport,
   remoteReady,
 }: {
   confirmValue: string;
+  importFileRef: React.RefObject<HTMLInputElement | null>;
   onConfirmChange: (value: string) => void;
   onDelete: () => void;
   onExport: () => void;
+  onImport: (event: ChangeEvent<HTMLInputElement>) => void;
   remoteReady: boolean;
 }) {
   return (
@@ -4021,6 +4125,8 @@ function DataControlPanel({
       </div>
       <div className="data-control-actions">
         <button onClick={onExport} type="button"><Download size={16}/> Exportera min data</button>
+        <button className="secondary-action" onClick={() => importFileRef.current?.click()} type="button"><Download size={16}/> Importera backup</button>
+        <input accept="application/json,.json" className="hidden-file-input" onChange={onImport} ref={importFileRef} type="file" />
         <label>
           <span>Skriv RADERA</span>
           <input value={confirmValue} onChange={(event) => onConfirmChange(event.target.value)} placeholder="RADERA" />
@@ -4080,6 +4186,28 @@ function FeedbackPanel({
         <h3>Mina ärenden</h3>
         {visibleTickets.length ? visibleTickets.map((ticket) => <SupportTicketRow key={ticket.id} ticket={ticket} />) : <EmptyState text="Inga supportärenden ännu." />}
       </div>
+    </article>
+  );
+}
+
+function ChangelogPanel() {
+  const changes = [
+    "Tryggare sparande med bättre validering och skydd mot dubbelklick.",
+    "Tydligare synkstatus när Supabase laddar eller inte svarar.",
+    "Mobilapp-panel, PWA-installation och bättre supportflöde.",
+    "Backup-export och import av JSON för säkrare beta-test.",
+  ];
+
+  return (
+    <article className="changelog-panel">
+      <div>
+        <span>Nytt i version {packageInfo.version}</span>
+        <b>Betaappen är stabilare</b>
+        <small>Den här rutan visas i inställningar så testare snabbt förstår vad som ändrats efter en uppdatering.</small>
+      </div>
+      <ul>
+        {changes.map((change) => <li key={change}>{change}</li>)}
+      </ul>
     </article>
   );
 }
