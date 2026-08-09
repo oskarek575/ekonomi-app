@@ -40,11 +40,9 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 ```
 
-## Publicera
+## Beta-installation på telefon
 
-Publicera som en vanlig Next.js-app, till exempel på Vercel.
-
-När appen ligger på en HTTPS-adress kan den installeras på mobilen:
+När appen ligger på en HTTPS-adress kan testare installera den på mobilen:
 
 ### iPhone
 
@@ -57,6 +55,24 @@ När appen ligger på en HTTPS-adress kan den installeras på mobilen:
 1. Öppna appens webbadress i Chrome.
 2. Tryck på menyn.
 3. Välj “Installera app” eller “Lägg till på startskärmen”.
+
+I appen finns även en mobilapp-panel under Inställningar som visar om appen redan körs installerad eller om användaren behöver följa installationsguiden.
+
+## Support och feedback
+
+Testare kan skicka supportärenden direkt från Inställningar. Varje ärende sparas med:
+
+- typ av ärende
+- meddelande
+- vilken sida användaren var på
+- appversion
+- status
+
+Om Supabase-tabellen för feedback inte går att nå öppnar appen ett förifyllt mejl till supportadressen som fallback.
+
+## Publicera
+
+Publicera som en vanlig Next.js-app, till exempel på Vercel.
 
 ## Kontroll inför release
 

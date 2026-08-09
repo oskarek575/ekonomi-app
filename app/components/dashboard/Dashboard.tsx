@@ -252,6 +252,10 @@ type DashboardProps = {
 };
 
 type AuthUser = User | null;
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+};
 type LayoutTheme = "blue" | "green" | "purple" | "rose" | "orange";
 
 const storageKey = "oskars-ekonomi-v2";
@@ -881,6 +885,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
   const [adminStatsLoading, setAdminStatsLoading] = useState(false);
   const [adminStatsError, setAdminStatsError] = useState("");
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [isStandaloneApp, setIsStandaloneApp] = useState(false);
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [proActive, setProActive] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
@@ -939,6 +946,32 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       setAdminStatsLoading(false);
     }
   }, [showAdminPanels]);
+
+  useEffect(() => {
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      ("standalone" in window.navigator && Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone));
+
+    setIsStandaloneApp(standalone);
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as InstallPromptEvent);
+    };
+    const handleInstalled = () => {
+      setInstallPrompt(null);
+      setIsStandaloneApp(true);
+      show("Appen är installerad på hemskärmen.");
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -2586,8 +2619,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     },
     {
       title: "Mobil/PWA",
-      status: "info",
-      detail: "Fortsätt testa på iPhone/Android under betan.",
+      status: isStandaloneApp ? "ok" : "info",
+      detail: isStandaloneApp ? "Appen körs som installerad mobilapp." : "Installationsguide och PWA-manifest finns för iPhone/Android.",
     },
     {
       title: "Juridik",
@@ -2597,7 +2630,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     {
       title: "Feedbackflöde",
       status: "ok",
-      detail: "Testare kan rapportera problem och föreslå förbättringar direkt i appen.",
+      detail: "Testare kan skicka ärenden med status, sida och appversion direkt i appen.",
     },
     {
       title: "Senaste build",
@@ -2906,6 +2939,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show(savedRemotely || !remoteReady ? "Ingående saldo är sparat." : "Ingående saldo sparades lokalt. Kör senaste Supabase-SQL om det inte synkas mellan enheter.");
   }
 
+  async function installApp() {
+    if (!installPrompt) {
+      show("På iPhone: öppna i Safari, tryck Dela och välj Lägg till på hemskärmen.");
+      return;
+    }
+
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    show(choice.outcome === "accepted" ? "Appen installeras på hemskärmen." : "Installationen avbröts.");
+  }
+
   async function submitFeedback(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = feedbackForm.message.trim();
@@ -2914,6 +2959,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       show("Skriv lite mer feedback först.");
       return;
     }
+
+    setFeedbackSubmitting(true);
 
     try {
       const created = await addRemoteFeedback({
@@ -2931,6 +2978,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       const body = encodeURIComponent(`${message}\n\nSida: ${activeSection}\nVersion: ${packageInfo.version}\nAnvändare: ${user?.email ?? "okänd"}`);
       window.location.href = `mailto:oskarek575@gmail.com?subject=${subject}&body=${body}`;
       show("Feedback-tabellen kunde inte nås, så jag öppnade mail som fallback.");
+    } finally {
+      setFeedbackSubmitting(false);
     }
   }
 
@@ -3586,6 +3635,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </>
           )}
           <ThemePicker selectedTheme={layoutTheme} onSelect={setLayoutTheme} />
+          <PwaInstallPanel
+            canInstall={Boolean(installPrompt)}
+            isStandalone={isStandaloneApp}
+            onInstall={installApp}
+          />
           <DataControlPanel
             confirmValue={dangerConfirm}
             onConfirmChange={setDangerConfirm}
@@ -3603,7 +3657,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <input inputMode="decimal" value={openingBalanceForm} onChange={(event) => setOpeningBalanceForm(event.target.value)} placeholder="Ex. 10000 eller -580" />
             <button type="submit"><WalletCards size={16}/> Spara saldo</button>
           </form>
-          <FeedbackPanel form={feedbackForm} tickets={supportTickets} onChange={setFeedbackForm} onSubmit={submitFeedback} />
+          <FeedbackPanel
+            form={feedbackForm}
+            tickets={supportTickets}
+            submitting={feedbackSubmitting}
+            onChange={setFeedbackForm}
+            onSubmit={submitFeedback}
+          />
           {showAdminPanels && <SupportAdminPanel tickets={supportTickets} onStatusChange={changeTicketStatus} />}
           <PrivacyInfoPanel />
           <div className="settings-actions"><button onClick={resetDemo} type="button">Återställ demodata</button><button onClick={toggleProDemo} type="button">{proActive ? "Stäng av Pro-demo" : "Aktivera Pro-demo"}</button><button className="secondary-action" onClick={handleSignOut} type="button">Logga ut</button></div>
@@ -3701,6 +3761,37 @@ function OnboardingPanel({
   );
 }
 
+function PwaInstallPanel({
+  canInstall,
+  isStandalone,
+  onInstall,
+}: {
+  canInstall: boolean;
+  isStandalone: boolean;
+  onInstall: () => void;
+}) {
+  return (
+    <article className="pwa-install-panel">
+      <div>
+        <span>Mobilapp</span>
+        <b>{isStandalone ? "Installerad på hemskärmen" : "Lägg appen på hemskärmen"}</b>
+        <small>
+          {isStandalone
+            ? "Du kör redan appen i helskärmsläge, precis som en vanlig mobilapp."
+            : "Installera betaappen på iPhone eller Android så den känns snabbare och enklare att öppna."}
+        </small>
+      </div>
+      <div className="pwa-install-actions">
+        <button onClick={onInstall} disabled={isStandalone} type="button">
+          <Download size={16}/>
+          {isStandalone ? "Redan installerad" : canInstall ? "Installera appen" : "Visa guide"}
+        </button>
+        <small>iPhone: Safari → Dela → Lägg till på hemskärmen. Android: Chrome → Installera app.</small>
+      </div>
+    </article>
+  );
+}
+
 function DataControlPanel({
   confirmValue,
   onConfirmChange,
@@ -3737,15 +3828,18 @@ function DataControlPanel({
 function FeedbackPanel({
   form,
   tickets,
+  submitting,
   onChange,
   onSubmit,
 }: {
   form: { type: "bug" | "idea" | "question" | "other"; message: string };
   tickets: SupportTicket[];
+  submitting: boolean;
   onChange: (form: { type: "bug" | "idea" | "question" | "other"; message: string }) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const visibleTickets = tickets.slice(0, 5);
+  const latestTicket = tickets[0];
 
   return (
     <article className="feedback-panel support-center-panel">
@@ -3753,7 +3847,7 @@ function FeedbackPanel({
         <div>
           <span>Support & feedback</span>
           <b>Kontakta support</b>
-          <small>Skicka problem, frågor eller förbättringar. Du får ett ärendenummer direkt.</small>
+          <small>Skicka problem, frågor eller förbättringar. Ärendet sparas med appversion och sida så det blir lättare att felsöka.</small>
         </div>
         <select value={form.type} onChange={(event) => onChange({ ...form, type: event.target.value as "bug" | "idea" | "question" | "other" })}>
           <option value="bug">Problem / bugg</option>
@@ -3766,8 +3860,15 @@ function FeedbackPanel({
           value={form.message}
           onChange={(event) => onChange({ ...form, message: event.target.value })}
         />
-        <button type="submit">Skicka ärende</button>
+        <button disabled={submitting} type="submit">{submitting ? "Skickar..." : "Skicka ärende"}</button>
       </form>
+      {latestTicket && (
+        <div className="support-summary-card">
+          <span>Senaste ärende</span>
+          <b>#{latestTicket.id} · {supportStatusLabel(latestTicket.status)}</b>
+          <small>{supportTypeLabel(latestTicket.type)} · {latestTicket.page ?? "Okänd sida"} · v{latestTicket.app_version ?? packageInfo.version}</small>
+        </div>
+      )}
       <div className="support-ticket-list">
         <h3>Mina ärenden</h3>
         {visibleTickets.length ? visibleTickets.map((ticket) => <SupportTicketRow key={ticket.id} ticket={ticket} />) : <EmptyState text="Inga supportärenden ännu." />}
