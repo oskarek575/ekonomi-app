@@ -3,7 +3,7 @@
 import {
   BarChart3, BellRing, Boxes, ChevronDown, CircleDollarSign,
   CreditCard, Crown, LayoutDashboard, Plane, Settings, Sparkles,
-  Target, TrendingUp, WalletCards,
+  Target, WalletCards,
 } from "lucide-react";
 
 export type AppSection =
@@ -27,7 +27,7 @@ const links = [
   ["Budget", "budgets", WalletCards],
   ["Kategorier", "categories", Boxes],
   ["Mål", "goals", Target],
-  ["Investeringar", "investments", TrendingUp],
+  ["Lån", "investments", CreditCard],
   ["Resebudget", "travel", Plane],
   ["Fasta utgifter", "subscriptions", BellRing],
   ["AI Insights", "insights", Sparkles],

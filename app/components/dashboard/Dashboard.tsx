@@ -5,8 +5,8 @@ import type { User } from "@supabase/supabase-js";
 import packageInfo from "../../../package.json";
 import {
   Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
-  ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
-  Database, Download, LineChart, MessageSquare, PiggyBank, Plane, Plus,
+  ChevronDown, ChevronRight, CircleCheck, CreditCard, Crosshair, Edit3, Lightbulb,
+  Database, Download, MessageSquare, PiggyBank, Plane, Plus,
   RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Users, WalletCards,
 } from "lucide-react";
 import {
@@ -15,6 +15,7 @@ import {
   addFeedback as addRemoteFeedback,
   addGoal as addRemoteGoal,
   addInvestment as addRemoteInvestment,
+  addLoan as addRemoteLoan,
   addPurchase as addRemotePurchase,
   addSavingsAccount as addRemoteSavingsAccount,
   addSubscription as addRemoteSubscription,
@@ -24,6 +25,7 @@ import {
   deleteCategoryByName as deleteRemoteCategoryByName,
   deleteGoal as deleteRemoteGoal,
   deleteInvestment as deleteRemoteInvestment,
+  deleteLoan as deleteRemoteLoan,
   deletePurchase as deleteRemotePurchase,
   deleteSavingsAccount as deleteRemoteSavingsAccount,
   deleteSubscription as deleteRemoteSubscription,
@@ -36,6 +38,7 @@ import {
   getCategories,
   getGoals,
   getInvestments,
+  getLoans,
   getPurchasesByDateRange,
   getFeedbackTickets,
   getProfile,
@@ -49,6 +52,7 @@ import {
   updateBudget as updateRemoteBudget,
   updateGoal as updateRemoteGoal,
   updateInvestment as updateRemoteInvestment,
+  updateLoan as updateRemoteLoan,
   updatePurchase as updateRemotePurchase,
   updateSavingsAccount as updateRemoteSavingsAccount,
   updateProfileName,
@@ -125,6 +129,15 @@ type Investment = {
   priceUpdatedAt?: string | null;
 };
 
+type Loan = {
+  id: string;
+  name: string;
+  remainingAmount: number;
+  monthlyPayment: number;
+  interestRate: number;
+  paymentDay: number;
+};
+
 type TravelPurchase = {
   id: string;
   title: string;
@@ -159,6 +172,7 @@ type FinanceData = {
   goals: Goal[];
   savings: SavingsAccount[];
   investments: Investment[];
+  loans: Loan[];
   travelBudgets: TravelBudget[];
 };
 
@@ -221,6 +235,15 @@ type RemoteInvestment = {
   current_price: number;
   currency: string;
   price_updated_at?: string | null;
+};
+
+type RemoteLoan = {
+  id: number;
+  name: string;
+  remaining_amount: number;
+  monthly_payment: number;
+  interest_rate: number;
+  payment_day: number;
 };
 
 type MarketQuote = {
@@ -348,6 +371,7 @@ const defaultData: FinanceData = {
   goals: [],
   savings: [],
   investments: [],
+  loans: [],
   travelBudgets: [
     {
       id: "tr1",
@@ -434,6 +458,38 @@ function formatInvestmentUpdatedAt(investment: Investment) {
     hour: "2-digit",
     minute: "2-digit",
   })}`;
+}
+
+function estimateLoanMonths(loan: Pick<Loan, "remainingAmount" | "monthlyPayment" | "interestRate">) {
+  if (loan.remainingAmount <= 0) return 0;
+  if (loan.monthlyPayment <= 0) return Infinity;
+
+  const monthlyRate = Math.max(0, loan.interestRate) / 100 / 12;
+
+  if (!monthlyRate) {
+    return Math.ceil(loan.remainingAmount / loan.monthlyPayment);
+  }
+
+  const monthlyInterest = loan.remainingAmount * monthlyRate;
+  if (loan.monthlyPayment <= monthlyInterest) return Infinity;
+
+  return Math.ceil(
+    Math.log(loan.monthlyPayment / (loan.monthlyPayment - loan.remainingAmount * monthlyRate))
+    / Math.log(1 + monthlyRate)
+  );
+}
+
+function formatLoanTime(months: number) {
+  if (!Number.isFinite(months)) return "Betalningen täcker inte räntan";
+  if (months <= 0) return "Klart";
+
+  const years = Math.floor(months / 12);
+  const restMonths = months % 12;
+
+  if (!years) return `${months} mån`;
+  if (!restMonths) return `${years} år`;
+
+  return `${years} år ${restMonths} mån`;
 }
 
 function parseMoney(value: string) {
@@ -932,6 +988,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     currentPrice: "",
     currency: "SEK",
   });
+  const [loanForm, setLoanForm] = useState({
+    name: "",
+    remainingAmount: "",
+    monthlyPayment: "",
+    interestRate: "",
+    paymentDay: "25",
+  });
   const [travelForm, setTravelForm] = useState(defaultTravelForm);
   const [travelPurchaseForm, setTravelPurchaseForm] = useState({
     title: "",
@@ -952,6 +1015,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
   const [editingInvestmentId, setEditingInvestmentId] = useState<string | null>(null);
+  const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
   const [refreshingInvestmentIds, setRefreshingInvestmentIds] = useState<string[]>([]);
   const [refreshingAllInvestments, setRefreshingAllInvestments] = useState(false);
   const [editingTravelId, setEditingTravelId] = useState<string | null>(null);
@@ -1057,6 +1121,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         goals: savedGoals,
         savings: parsed.savings ?? [],
         investments: parsed.investments ?? [],
+        loans: parsed.loans ?? [],
         travelBudgets: parsed.travelBudgets ?? defaultData.travelBudgets,
         categories: Array.from(new Set([
           ...defaultData.categories,
@@ -1092,7 +1157,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       try {
         const periodRange = getFinancialPeriod(month);
-        const [profile, purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, investmentRows, travelRows] = await Promise.all([
+        const [profile, purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, investmentRows, loanRowsData, travelRows] = await Promise.all([
           getProfile().catch(() => null),
           getPurchasesByDateRange(periodRange.start, periodRange.end) as Promise<RemotePurchase[]>,
           getBudgets() as Promise<RemoteBudget[]>,
@@ -1101,6 +1166,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           getGoals().catch(() => []) as Promise<RemoteGoal[]>,
           getSavingsAccounts().catch(() => []) as Promise<RemoteSavingsAccount[]>,
           getInvestments().catch(() => []) as Promise<RemoteInvestment[]>,
+          getLoans().catch(() => []) as Promise<RemoteLoan[]>,
           getTravelBudgets().catch(() => []) as Promise<RemoteTravelBudget[]>,
         ]);
 
@@ -1177,6 +1243,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             currency: investment.currency,
             priceUpdatedAt: investment.price_updated_at,
           })) : current.investments,
+          loans: loanRowsData.length ? loanRowsData.map((loan) => ({
+            id: String(loan.id),
+            name: loan.name,
+            remainingAmount: Number(loan.remaining_amount),
+            monthlyPayment: Number(loan.monthly_payment),
+            interestRate: Number(loan.interest_rate),
+            paymentDay: Number(loan.payment_day),
+          })) : current.loans,
           travelBudgets: travelRows.length ? travelRows.map((travel) => ({
             id: String(travel.id),
             name: travel.name,
@@ -1372,6 +1446,23 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         return `${parts}${item.color} ${start}% ${end}%,`;
       }, "conic-gradient(").replace(/,$/, ")")
     : "conic-gradient(#26323e 0 100%)";
+  const loanRows = data.loans.map((loan) => {
+    const monthsLeft = estimateLoanMonths(loan);
+    const monthlyInterest = loan.remainingAmount * Math.max(0, loan.interestRate) / 100 / 12;
+    const amortization = Math.max(loan.monthlyPayment - monthlyInterest, 0);
+    const progressPct = Number.isFinite(monthsLeft)
+      ? Math.max(3, Math.min(100, Math.round((amortization / Math.max(loan.monthlyPayment, 1)) * 100)))
+      : 3;
+
+    return { ...loan, monthsLeft, monthlyInterest, amortization, progressPct };
+  });
+  const totalLoanDebt = loanRows.reduce((sum, loan) => sum + loan.remainingAmount, 0);
+  const totalLoanMonthlyPayment = loanRows.reduce((sum, loan) => sum + loan.monthlyPayment, 0);
+  const totalLoanMonthlyInterest = loanRows.reduce((sum, loan) => sum + loan.monthlyInterest, 0);
+  const debtToIncomePct = income ? Math.round((totalLoanMonthlyPayment / income) * 100) : 0;
+  const fastestLoan = loanRows
+    .filter((loan) => Number.isFinite(loan.monthsLeft))
+    .sort((a, b) => a.monthsLeft - b.monthsLeft)[0];
   const affordabilityAmount = parseMoney(affordabilityForm.amount);
   const affordabilityResult = getAffordabilityResult({
     title: affordabilityForm.title,
@@ -2433,22 +2524,115 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     refreshAllInvestmentPricesRef.current = refreshAllInvestmentPrices;
   });
 
-  useEffect(() => {
-    if (activeSection !== "investments" || !data.investments.length) return;
+  function resetLoanForm() {
+    setLoanForm({
+      name: "",
+      remainingAmount: "",
+      monthlyPayment: "",
+      interestRate: "",
+      paymentDay: "25",
+    });
+    setEditingLoanId(null);
+  }
 
-    const staleInvestments = data.investments.filter(isInvestmentPriceStale);
-    if (!staleInvestments.length) return;
+  async function saveLoan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = loanForm.name.trim();
+    const remainingAmount = parseMoney(loanForm.remainingAmount);
+    const monthlyPayment = parseMoney(loanForm.monthlyPayment);
+    const interestRate = loanForm.interestRate.trim() ? parseMoney(loanForm.interestRate) : 0;
+    const paymentDay = clampPaymentDay(Number(loanForm.paymentDay));
 
-    const autoRefreshKey = staleInvestments
-      .map((investment) => `${investment.id}:${investment.priceUpdatedAt ?? "never"}`)
-      .sort()
-      .join("|");
+    if (!name) {
+      show("Skriv namn på lånet först.");
+      return;
+    }
 
-    if (investmentAutoRefreshKey.current === autoRefreshKey) return;
+    if (!Number.isFinite(remainingAmount) || remainingAmount < 0 || !Number.isFinite(monthlyPayment) || monthlyPayment <= 0 || !Number.isFinite(interestRate) || interestRate < 0) {
+      show("Skriv giltig skuld, månadsbetalning och ränta.");
+      return;
+    }
 
-    investmentAutoRefreshKey.current = autoRefreshKey;
-    void refreshAllInvestmentPricesRef.current(staleInvestments, { auto: true, silent: true });
-  }, [activeSection, data.investments]);
+    const input = {
+      name,
+      remaining_amount: remainingAmount,
+      monthly_payment: monthlyPayment,
+      interest_rate: interestRate,
+      payment_day: paymentDay,
+    };
+
+    if (editingLoanId) {
+      const remoteId = toRemoteId(editingLoanId);
+      if (remoteReady && remoteId) {
+        try {
+          await updateRemoteLoan(remoteId, input);
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      setData((current) => ({
+        ...current,
+        loans: current.loans.map((loan) =>
+          loan.id === editingLoanId
+            ? { ...loan, name, remainingAmount, monthlyPayment, interestRate, paymentDay }
+            : loan
+        ),
+      }));
+      show("Lånet är uppdaterat.");
+    } else {
+      let id = crypto.randomUUID();
+
+      if (remoteReady) {
+        try {
+          const created = await addRemoteLoan(input) as RemoteLoan;
+          id = String(created.id);
+        } catch (error) {
+          console.error(error);
+          setRemoteReady(false);
+        }
+      }
+
+      setData((current) => ({
+        ...current,
+        loans: [...current.loans, { id, name, remainingAmount, monthlyPayment, interestRate, paymentDay }],
+      }));
+      show("Lånet är tillagt.");
+    }
+
+    resetLoanForm();
+  }
+
+  function editLoan(loan: Loan) {
+    setEditingLoanId(loan.id);
+    setLoanForm({
+      name: loan.name,
+      remainingAmount: String(loan.remainingAmount),
+      monthlyPayment: String(loan.monthlyPayment),
+      interestRate: String(loan.interestRate),
+      paymentDay: String(loan.paymentDay),
+    });
+    show("Redigerar lån.");
+  }
+
+  async function removeLoan(id: string) {
+    const remoteId = toRemoteId(id);
+    if (remoteReady && remoteId) {
+      try {
+        await deleteRemoteLoan(remoteId);
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
+    setData((current) => ({ ...current, loans: current.loans.filter((loan) => loan.id !== id) }));
+    if (editingLoanId === id) {
+      resetLoanForm();
+    }
+    show("Lånet togs bort.");
+  }
 
   async function saveTravelBudget(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2909,7 +3093,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     window.localStorage.removeItem(userStorageKey);
     window.localStorage.removeItem(`${userStorageKey}-saved-at`);
     window.localStorage.removeItem(userOnboardingStorageKey);
-    setData({ ...defaultData, transactions: [], budgets: [], subscriptions: [], goals: [], savings: [], investments: [], travelBudgets: [] });
+    setData({ ...defaultData, transactions: [], budgets: [], subscriptions: [], goals: [], savings: [], investments: [], loans: [], travelBudgets: [] });
     setDangerConfirm("");
     setOnboardingDismissed(false);
     show("Din appdata är raderad för den här användaren.");
@@ -3495,103 +3679,71 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       )}
 
       {activeSection === "investments" && (
-        <SectionPanel title="Investeringar" description="Följ portföljen med fördröjd kursdata eller manuell kurs. Ingen köp- eller säljfunktion.">
-          <section className="investment-hero panel">
+        <SectionPanel title="Lån" description="Se hur mycket du är skyldig, vad lånen kostar varje månad och ungefär när de är färdigbetalda.">
+          <section className="loan-hero panel">
             <div>
-              <span>Portföljvärde</span>
-              <h2>{kr(portfolioValue)}</h2>
-              <p>Investerat {kr(portfolioInvested)} · {portfolioProfit >= 0 ? "+" : ""}{kr(portfolioProfit)} ({portfolioProfitPct.toFixed(1).replace(".", ",")}%)</p>
-              <small>Kurser kan vara fördröjda och är endast för översikt, inte investeringsrådgivning.</small>
+              <span>Total skuld</span>
+              <h2>{kr(totalLoanDebt)}</h2>
+              <p>{data.loans.length ? `${data.loans.length} lån · ${kr(totalLoanMonthlyPayment)} per månad` : "Lägg in första lånet för att få kontroll."}</p>
+              <small>Lån påverkar inte fria pengar automatiskt ännu. Lägg månadsbetalningen som fast utgift om den ska reserveras i budgeten.</small>
             </div>
-            <div className="investment-donut" style={{ background: investmentDonutGradient }}>
-              <div><LineChart size={30}/><strong>{investmentRows.length}</strong><span>innehav</span></div>
+            <div className="loan-payoff-card">
+              <span>Månadsbelastning</span>
+              <strong>{income ? `${debtToIncomePct}%` : "0%"}</strong>
+              <small>av registrerad inkomst</small>
             </div>
           </section>
 
-          <section className="investment-metric-grid">
-            <div><span>Värde</span><b>{kr(portfolioValue)}</b><small>Aktuell portfölj</small></div>
-            <div><span>Investerat</span><b>{kr(portfolioInvested)}</b><small>Totalt inköpsvärde</small></div>
-            <div><span>Resultat</span><b className={portfolioProfit >= 0 ? "plus" : "minus"}>{portfolioProfit >= 0 ? "+" : ""}{kr(portfolioProfit)}</b><small>{portfolioProfitPct.toFixed(1).replace(".", ",")}%</small></div>
-            <div><span>Bäst just nu</span><b>{portfolioBest?.name ?? "Inget ännu"}</b><small>{portfolioBest ? `${portfolioBest.profitPct.toFixed(1).replace(".", ",")}%` : "Lägg till innehav"}</small></div>
+          <section className="loan-metric-grid">
+            <div><span>Total skuld</span><b>{kr(totalLoanDebt)}</b><small>Kvar att betala</small></div>
+            <div><span>Betalas per månad</span><b>{kr(totalLoanMonthlyPayment)}</b><small>Alla lån tillsammans</small></div>
+            <div><span>Ränta / månad</span><b>{kr(totalLoanMonthlyInterest)}</b><small>Ungefärlig räntekostnad</small></div>
+            <div><span>Närmast klart</span><b>{fastestLoan?.name ?? "Inget lån"}</b><small>{fastestLoan ? formatLoanTime(fastestLoan.monthsLeft) : "Lägg till lån"}</small></div>
           </section>
 
-          <section className="investment-sync-bar panel">
-            <div>
-              <span>Kursdata</span>
-              <b>{staleInvestmentCount ? `${staleInvestmentCount} innehav behöver uppdateras` : "Alla kurser är uppdaterade"}</b>
-              <small>{latestInvestmentUpdate ? `Senaste hämtning ${new Date(latestInvestmentUpdate).toLocaleString("sv-SE", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. Kurser kan vara ca 15 minuter fördröjda.` : "Sök efter t.ex. Investor, Apple eller Microsoft så fyller appen symbolen automatiskt."}</small>
-            </div>
-            <button disabled={!data.investments.length || refreshingAllInvestments} onClick={() => refreshAllInvestmentPrices(data.investments)} type="button">
-              <RefreshCw className={refreshingAllInvestments ? "spin" : undefined} size={16}/> {refreshingAllInvestments ? "Uppdaterar..." : "Uppdatera alla"}
-            </button>
-          </section>
-
-          <section className="investment-layout">
-            <article className="investment-panel">
-              <CardTitle>Innehav</CardTitle>
-              <div className="investment-list">
-                {investmentRows.length ? investmentRows.map((investment) => (
-                  <div className="investment-row" key={investment.id}>
-                    <span className="investment-logo">{investment.symbol.slice(0, 3).toUpperCase()}</span>
+          <section className="loan-layout">
+            <article className="loan-panel">
+              <CardTitle>Dina lån</CardTitle>
+              <div className="loan-list">
+                {loanRows.length ? loanRows.map((loan) => (
+                  <div className="loan-row" key={loan.id}>
+                    <span className="loan-logo"><CreditCard size={18}/></span>
                     <div>
-                      <b>{investment.name}</b>
-                      <small>{investment.symbol} · {investment.type === "stock" ? "Aktie" : investment.type === "fund" ? "Fond" : investment.type === "crypto" ? "Krypto" : "Annat"}</small>
+                      <b>{loan.name}</b>
+                      <small>{kr(loan.remainingAmount)} kvar · {loan.interestRate.toString().replace(".", ",")}% ränta · dras dag {loan.paymentDay}</small>
+                      <div className="loan-progress"><i style={{ width: `${loan.progressPct}%` }}/></div>
                     </div>
-                    <span><b>{kr(investment.value)}</b><small>{investment.quantity.toLocaleString("sv-SE")} st · {kr(investment.currentPrice)}</small><small className={isInvestmentPriceStale(investment) ? "quote-stale" : "quote-fresh"}>{formatInvestmentUpdatedAt(investment)}</small></span>
-                    <strong className={investment.profit >= 0 ? "plus" : "minus"}>{investment.profit >= 0 ? "+" : ""}{kr(investment.profit)}</strong>
+                    <span><b>{kr(loan.monthlyPayment)}/mån</b><small>{formatLoanTime(loan.monthsLeft)}</small></span>
+                    <strong>{kr(loan.amortization)}<small>amortering/mån</small></strong>
                     <span className="row-actions">
-                      <button disabled={refreshingInvestmentIds.includes(investment.id)} onClick={() => refreshInvestmentPrice(investment)} type="button">{refreshingInvestmentIds.includes(investment.id) ? "Hämtar..." : "Uppdatera kurs"}</button>
-                      <button onClick={() => editInvestment(investment)} type="button">Redigera</button>
-                      <button onClick={() => removeInvestment(investment.id)} type="button"><Trash2 size={14}/></button>
+                      <button onClick={() => editLoan(loan)} type="button">Redigera</button>
+                      <button onClick={() => removeLoan(loan.id)} type="button"><Trash2 size={14}/></button>
                     </span>
                   </div>
-                )) : <EmptyState text="Lägg till ditt första innehav. Testa att söka på Investor, Apple eller Microsoft." />}
+                )) : <EmptyState text="Lägg till första lånet för att se skuld, månadsbetalning och ungefärlig tid kvar." />}
               </div>
             </article>
 
-            <article className="investment-panel">
-              <CardTitle>Fördelning</CardTitle>
-              <div className="investment-allocation">
-                <div className="investment-donut small" style={{ background: investmentDonutGradient }}>
-                  <div><strong>{portfolioValue ? "100%" : "0%"}</strong><span>portfölj</span></div>
-                </div>
-                <div className="category-list">
-                  {investmentDistribution.length ? investmentDistribution.map((item) => (
-                    <button className="category-item" key={item.name} type="button">
-                      <i style={{ background: item.color }}/>
-                      <span>{item.name}</span>
-                      <b>{kr(item.value)}</b>
-                      <small>{item.pct}%</small>
-                    </button>
-                  )) : <EmptyState text="Fördelning visas när du lagt till innehav." />}
-                </div>
+            <article className="loan-panel">
+              <CardTitle>Så läser du lån</CardTitle>
+              <div className="loan-help-list">
+                <div><b>Skuld</b><small>Det belopp som är kvar att betala tillbaka.</small></div>
+                <div><b>Månadsbetalning</b><small>Det du faktiskt betalar varje månad.</small></div>
+                <div><b>Tid kvar</b><small>En uppskattning baserat på dagens skuld, ränta och betalning.</small></div>
+                <div><b>Fria pengar</b><small>Vill du att lånet reserveras automatiskt, lägg även betalningen som fast utgift.</small></div>
               </div>
             </article>
           </section>
 
-          <form className="investment-form" onSubmit={saveInvestment}>
-            <div><span>Portfölj</span><b>{editingInvestmentId ? "Redigera innehav" : "Lägg till innehav"}</b></div>
-            <label className="investment-search-field">
-              <span>Sök värdepapper</span>
-              <input list="known-securities" placeholder="Skriv t.ex. Investor, Apple eller Microsoft" value={investmentForm.assetSearch} onChange={(event) => updateInvestmentSearch(event.target.value)}/>
-              <small>{investmentForm.symbol ? `Vald symbol: ${investmentForm.symbol}` : "Hittar vi värdepappret fyller appen symbolen automatiskt."}</small>
-            </label>
-            <datalist id="known-securities">
-              {knownSecurities.map((security) => <option key={security.symbol} value={security.name}>{security.symbol}</option>)}
-            </datalist>
-            <input placeholder="Namn, t.ex. Investor B" value={investmentForm.name} onChange={(event) => setInvestmentForm((form) => ({ ...form, name: event.target.value }))}/>
-            <select value={investmentForm.type} onChange={(event) => setInvestmentForm((form) => ({ ...form, type: event.target.value as InvestmentType }))}>
-              <option value="stock">Aktie</option>
-              <option value="fund">Fond</option>
-              <option value="crypto">Krypto</option>
-              <option value="other">Annat</option>
-            </select>
-            <input inputMode="decimal" placeholder="Antal" value={investmentForm.quantity} onChange={(event) => setInvestmentForm((form) => ({ ...form, quantity: event.target.value }))}/>
-            <input inputMode="decimal" placeholder="Inköpspris" value={investmentForm.averagePrice} onChange={(event) => setInvestmentForm((form) => ({ ...form, averagePrice: event.target.value }))}/>
-            <input inputMode="decimal" placeholder="Aktuell kurs (kan hämtas automatiskt)" value={investmentForm.currentPrice} onChange={(event) => setInvestmentForm((form) => ({ ...form, currentPrice: event.target.value }))}/>
-            <input placeholder="Valuta" value={investmentForm.currency} onChange={(event) => setInvestmentForm((form) => ({ ...form, currency: event.target.value.toUpperCase() }))}/>
-            <button type="submit"><Plus size={16}/> {editingInvestmentId ? "Spara innehav" : "Lägg till"}</button>
-            {editingInvestmentId && <button className="secondary-action" onClick={resetInvestmentForm} type="button">Avbryt</button>}
+          <form className="loan-form" onSubmit={saveLoan}>
+            <div><span>Lån</span><b>{editingLoanId ? "Redigera lån" : "Lägg till lån"}</b></div>
+            <input placeholder="Namn, t.ex. Billån" value={loanForm.name} onChange={(event) => setLoanForm((form) => ({ ...form, name: event.target.value }))}/>
+            <input inputMode="decimal" placeholder="Kvar att betala" value={loanForm.remainingAmount} onChange={(event) => setLoanForm((form) => ({ ...form, remainingAmount: event.target.value }))}/>
+            <input inputMode="decimal" placeholder="Månadsbetalning" value={loanForm.monthlyPayment} onChange={(event) => setLoanForm((form) => ({ ...form, monthlyPayment: event.target.value }))}/>
+            <input inputMode="decimal" placeholder="Ränta %, t.ex. 5,2" value={loanForm.interestRate} onChange={(event) => setLoanForm((form) => ({ ...form, interestRate: event.target.value }))}/>
+            <input inputMode="numeric" min="1" max="28" placeholder="Dras dag" value={loanForm.paymentDay} onChange={(event) => setLoanForm((form) => ({ ...form, paymentDay: event.target.value }))}/>
+            <button type="submit"><Plus size={16}/> {editingLoanId ? "Spara lån" : "Lägg till"}</button>
+            {editingLoanId && <button className="secondary-action" onClick={resetLoanForm} type="button">Avbryt</button>}
           </form>
         </SectionPanel>
       )}

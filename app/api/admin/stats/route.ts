@@ -10,6 +10,7 @@ const appTables = [
   "subscriptions",
   "goals",
   "savings_accounts",
+  "loans",
   "investments",
   "travel_budgets",
   "travel_purchases",

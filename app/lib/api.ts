@@ -37,6 +37,14 @@ export type InvestmentInput = {
   price_updated_at?: string | null;
 };
 
+export type LoanInput = {
+  name: string;
+  remaining_amount: number;
+  monthly_payment: number;
+  interest_rate: number;
+  payment_day: number;
+};
+
 export type FeedbackInput = {
   type: "bug" | "idea" | "question" | "other";
   message: string;
@@ -826,6 +834,47 @@ export async function deleteInvestment(id: number) {
   if (error) throw error;
 }
 
+export async function getLoans() {
+  const { data, error } = await supabase
+    .from("loans")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function addLoan(input: LoanInput) {
+  const { data, error } = await supabase
+    .from("loans")
+    .insert([input])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function updateLoan(id: number, input: LoanInput) {
+  const { error } = await supabase
+    .from("loans")
+    .update(input)
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
+export async function deleteLoan(id: number) {
+  const { error } = await supabase
+    .from("loans")
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+}
+
 export async function deleteCurrentUserData() {
   const user = await getCurrentUser();
   if (!user) throw new Error("Du behöver vara inloggad för att radera din data.");
@@ -834,6 +883,7 @@ export async function deleteCurrentUserData() {
     "feedback",
     "travel_purchases",
     "travel_budgets",
+    "loans",
     "investments",
     "kop",
     "budgets",
