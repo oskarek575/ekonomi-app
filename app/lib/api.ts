@@ -26,17 +26,6 @@ export type TravelPurchaseInput = {
   purchase_date: string;
 };
 
-export type InvestmentInput = {
-  name: string;
-  symbol: string;
-  type: "stock" | "fund" | "crypto" | "other";
-  quantity: number;
-  average_price: number;
-  current_price: number;
-  currency: string;
-  price_updated_at?: string | null;
-};
-
 export type LoanInput = {
   name: string;
   remaining_amount: number;
@@ -793,47 +782,6 @@ export async function deleteTravelPurchase(id: number) {
   if (error) throw error;
 }
 
-export async function getInvestments() {
-  const { data, error } = await supabase
-    .from("investments")
-    .select("*")
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
-
-  return data;
-}
-
-export async function addInvestment(input: InvestmentInput) {
-  const { data, error } = await supabase
-    .from("investments")
-    .insert([input])
-    .select()
-    .single();
-
-  if (error) throw error;
-
-  return data;
-}
-
-export async function updateInvestment(id: number, input: InvestmentInput) {
-  const { error } = await supabase
-    .from("investments")
-    .update(input)
-    .eq("id", id);
-
-  if (error) throw error;
-}
-
-export async function deleteInvestment(id: number) {
-  const { error } = await supabase
-    .from("investments")
-    .delete()
-    .eq("id", id);
-
-  if (error) throw error;
-}
-
 export async function getLoans() {
   const { data, error } = await supabase
     .from("loans")
@@ -884,7 +832,6 @@ export async function deleteCurrentUserData() {
     "travel_purchases",
     "travel_budgets",
     "loans",
-    "investments",
     "kop",
     "budgets",
     "categories",

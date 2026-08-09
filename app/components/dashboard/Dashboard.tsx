@@ -14,7 +14,6 @@ import {
   addCategory as addRemoteCategory,
   addFeedback as addRemoteFeedback,
   addGoal as addRemoteGoal,
-  addInvestment as addRemoteInvestment,
   addLoan as addRemoteLoan,
   addPurchase as addRemotePurchase,
   addSavingsAccount as addRemoteSavingsAccount,
@@ -24,7 +23,6 @@ import {
   deleteBudget as deleteRemoteBudget,
   deleteCategoryByName as deleteRemoteCategoryByName,
   deleteGoal as deleteRemoteGoal,
-  deleteInvestment as deleteRemoteInvestment,
   deleteLoan as deleteRemoteLoan,
   deletePurchase as deleteRemotePurchase,
   deleteSavingsAccount as deleteRemoteSavingsAccount,
@@ -37,7 +35,6 @@ import {
   getBudgets,
   getCategories,
   getGoals,
-  getInvestments,
   getLoans,
   getPurchasesByDateRange,
   getFeedbackTickets,
@@ -51,7 +48,6 @@ import {
   signUpWithEmail,
   updateBudget as updateRemoteBudget,
   updateGoal as updateRemoteGoal,
-  updateInvestment as updateRemoteInvestment,
   updateLoan as updateRemoteLoan,
   updatePurchase as updateRemotePurchase,
   updateSavingsAccount as updateRemoteSavingsAccount,
@@ -115,20 +111,6 @@ type SavingsAccount = {
   createdAt?: string;
 };
 
-type InvestmentType = "stock" | "fund" | "crypto" | "other";
-
-type Investment = {
-  id: string;
-  name: string;
-  symbol: string;
-  type: InvestmentType;
-  quantity: number;
-  averagePrice: number;
-  currentPrice: number;
-  currency: string;
-  priceUpdatedAt?: string | null;
-};
-
 type Loan = {
   id: string;
   name: string;
@@ -171,7 +153,6 @@ type FinanceData = {
   categories: string[];
   goals: Goal[];
   savings: SavingsAccount[];
-  investments: Investment[];
   loans: Loan[];
   travelBudgets: TravelBudget[];
 };
@@ -225,18 +206,6 @@ type RemoteSavingsAccount = {
   created_at?: string;
 };
 
-type RemoteInvestment = {
-  id: number;
-  name: string;
-  symbol: string;
-  type: InvestmentType;
-  quantity: number;
-  average_price: number;
-  current_price: number;
-  currency: string;
-  price_updated_at?: string | null;
-};
-
 type RemoteLoan = {
   id: number;
   name: string;
@@ -244,23 +213,6 @@ type RemoteLoan = {
   monthly_payment: number;
   interest_rate: number;
   payment_day: number;
-};
-
-type MarketQuote = {
-  price?: number;
-  currency?: string;
-  updatedAt?: string;
-  delayed?: boolean;
-  source?: string;
-  error?: string;
-};
-
-type KnownSecurity = {
-  name: string;
-  symbol: string;
-  type: InvestmentType;
-  currency: string;
-  aliases: string[];
 };
 
 type SupportTicket = {
@@ -371,7 +323,6 @@ const defaultData: FinanceData = {
   ],
   goals: [],
   savings: [],
-  investments: [],
   loans: [],
   travelBudgets: [
     {
@@ -389,76 +340,6 @@ const defaultData: FinanceData = {
 function kr(value: number) {
   if (!Number.isFinite(value)) return "0 kr";
   return `${Math.round(value).toLocaleString("sv-SE")} kr`;
-}
-
-const marketRefreshIntervalMs = 15 * 60 * 1000;
-
-const knownSecurities: KnownSecurity[] = [
-  { name: "Investor B", symbol: "inve-b.st", type: "stock", currency: "SEK", aliases: ["investor", "investor b", "inve b", "inve-b"] },
-  { name: "Volvo B", symbol: "volv-b.st", type: "stock", currency: "SEK", aliases: ["volvo", "volvo b"] },
-  { name: "Industrivärden C", symbol: "indu-c.st", type: "stock", currency: "SEK", aliases: ["industrivärden", "industrivarden", "industrivärden c"] },
-  { name: "Evolution", symbol: "evo.st", type: "stock", currency: "SEK", aliases: ["evolution", "evolution gaming"] },
-  { name: "Atlas Copco B", symbol: "atco-b.st", type: "stock", currency: "SEK", aliases: ["atlas copco", "atlas copco b"] },
-  { name: "SEB A", symbol: "seb-a.st", type: "stock", currency: "SEK", aliases: ["seb", "seb a"] },
-  { name: "Swedbank A", symbol: "swed-a.st", type: "stock", currency: "SEK", aliases: ["swedbank", "swedbank a"] },
-  { name: "Apple", symbol: "aapl.us", type: "stock", currency: "USD", aliases: ["apple", "aapl"] },
-  { name: "Microsoft", symbol: "msft.us", type: "stock", currency: "USD", aliases: ["microsoft", "msft"] },
-  { name: "Tesla", symbol: "tsla.us", type: "stock", currency: "USD", aliases: ["tesla", "tsla"] },
-  { name: "Nvidia", symbol: "nvda.us", type: "stock", currency: "USD", aliases: ["nvidia", "nvda"] },
-  { name: "Alphabet A", symbol: "googl.us", type: "stock", currency: "USD", aliases: ["google", "alphabet", "alphabet a", "googl"] },
-  { name: "Amazon", symbol: "amzn.us", type: "stock", currency: "USD", aliases: ["amazon", "amzn"] },
-  { name: "Meta Platforms", symbol: "meta.us", type: "stock", currency: "USD", aliases: ["meta", "facebook"] },
-];
-
-function normalizeSecurityText(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function looksLikeMarketSymbol(value: string) {
-  const normalized = normalizeSecurityText(value);
-
-  return /^[a-z0-9-]{1,12}\.[a-z]{2,5}$/.test(normalized);
-}
-
-function findKnownSecurity(value: string) {
-  const normalized = normalizeSecurityText(value);
-  if (!normalized) return undefined;
-
-  return knownSecurities.find((security) =>
-    security.symbol === normalized ||
-    security.aliases.some((alias) => normalizeSecurityText(alias) === normalized)
-  ) ?? knownSecurities.find((security) =>
-    security.name.toLowerCase().includes(normalized) ||
-    security.aliases.some((alias) => normalizeSecurityText(alias).includes(normalized))
-  );
-}
-
-function investmentPriceUpdatedAtMs(investment: Investment) {
-  if (!investment.priceUpdatedAt) return 0;
-  const timestamp = new Date(investment.priceUpdatedAt).getTime();
-
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function isInvestmentPriceStale(investment: Investment) {
-  const updatedAt = investmentPriceUpdatedAtMs(investment);
-
-  if (!updatedAt) return true;
-
-  return Date.now() - updatedAt >= marketRefreshIntervalMs;
-}
-
-function formatInvestmentUpdatedAt(investment: Investment) {
-  const updatedAt = investmentPriceUpdatedAtMs(investment);
-
-  if (!updatedAt) return "Kurs ej hämtad";
-
-  return `Uppdaterad ${new Date(updatedAt).toLocaleString("sv-SE", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })}`;
 }
 
 function estimateLoanMonths(loan: Pick<Loan, "remainingAmount" | "monthlyPayment" | "interestRate">) {
@@ -979,16 +860,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [categoryName, setCategoryName] = useState("");
   const [goalForm, setGoalForm] = useState({ title: "", saved: "", target: "", linkedSavingsId: "" });
   const [savingsForm, setSavingsForm] = useState({ name: "", amount: "" });
-  const [investmentForm, setInvestmentForm] = useState({
-    assetSearch: "",
-    name: "",
-    symbol: "",
-    type: "stock" as InvestmentType,
-    quantity: "",
-    averagePrice: "",
-    currentPrice: "",
-    currency: "SEK",
-  });
   const [loanForm, setLoanForm] = useState({
     name: "",
     remainingAmount: "",
@@ -1015,10 +886,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [editingSubscriptionId, setEditingSubscriptionId] = useState<string | null>(null);
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [editingSavingsId, setEditingSavingsId] = useState<string | null>(null);
-  const [editingInvestmentId, setEditingInvestmentId] = useState<string | null>(null);
   const [editingLoanId, setEditingLoanId] = useState<string | null>(null);
-  const [refreshingInvestmentIds, setRefreshingInvestmentIds] = useState<string[]>([]);
-  const [refreshingAllInvestments, setRefreshingAllInvestments] = useState(false);
   const [editingTravelId, setEditingTravelId] = useState<string | null>(null);
   const [activeTravelId, setActiveTravelId] = useState<string | null>(null);
   const [remoteReady, setRemoteReady] = useState(false);
@@ -1043,10 +911,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     budgetAmount: "",
   });
   const [dangerConfirm, setDangerConfirm] = useState("");
-  const investmentAutoRefreshKey = useRef("");
   const goalEditorRef = useRef<HTMLFormElement | null>(null);
   const savingsEditorRef = useRef<HTMLFormElement | null>(null);
-  const refreshAllInvestmentPricesRef = useRef<(investments?: Investment[], options?: { onlyStale?: boolean; silent?: boolean; auto?: boolean }) => Promise<void>>(async () => {});
   const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
   const userThemeStorageKey = user ? `${themeStorageKey}-${user.id}` : themeStorageKey;
   const userOnboardingStorageKey = user ? `${onboardingStorageKey}-${user.id}` : onboardingStorageKey;
@@ -1121,7 +987,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ...parsed,
         goals: savedGoals,
         savings: parsed.savings ?? [],
-        investments: parsed.investments ?? [],
         loans: parsed.loans ?? [],
         travelBudgets: parsed.travelBudgets ?? defaultData.travelBudgets,
         categories: Array.from(new Set([
@@ -1158,7 +1023,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       try {
         const periodRange = getFinancialPeriod(month);
-        const [profile, purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, investmentRows, loanRowsData, travelRows] = await Promise.all([
+        const [profile, purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, loanRowsData, travelRows] = await Promise.all([
           getProfile().catch(() => null),
           getPurchasesByDateRange(periodRange.start, periodRange.end) as Promise<RemotePurchase[]>,
           getBudgets() as Promise<RemoteBudget[]>,
@@ -1166,7 +1031,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           getSubscriptions() as Promise<RemoteSubscription[]>,
           getGoals().catch(() => []) as Promise<RemoteGoal[]>,
           getSavingsAccounts().catch(() => []) as Promise<RemoteSavingsAccount[]>,
-          getInvestments().catch(() => []) as Promise<RemoteInvestment[]>,
           getLoans().catch(() => []) as Promise<RemoteLoan[]>,
           getTravelBudgets().catch(() => []) as Promise<RemoteTravelBudget[]>,
         ]);
@@ -1233,17 +1097,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             amount: Number(saving.amount),
             createdAt: saving.created_at?.slice(0, 10),
           })) : current.savings,
-          investments: investmentRows.length ? investmentRows.map((investment) => ({
-            id: String(investment.id),
-            name: investment.name,
-            symbol: investment.symbol,
-            type: investment.type,
-            quantity: Number(investment.quantity),
-            averagePrice: Number(investment.average_price),
-            currentPrice: Number(investment.current_price),
-            currency: investment.currency,
-            priceUpdatedAt: investment.price_updated_at,
-          })) : current.investments,
           loans: loanRowsData.length ? loanRowsData.map((loan) => ({
             id: String(loan.id),
             name: loan.name,
@@ -1412,41 +1265,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const savingsThisPeriod = monthTransactions
     .filter(isAppSavingsTransaction)
     .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const investmentRows = data.investments.map((investment) => {
-    const invested = investment.quantity * investment.averagePrice;
-    const value = investment.quantity * investment.currentPrice;
-    const profit = value - invested;
-    const profitPct = invested ? (profit / invested) * 100 : 0;
-
-    return { ...investment, invested, value, profit, profitPct };
-  });
-  const portfolioValue = investmentRows.reduce((sum, investment) => sum + investment.value, 0);
-  const portfolioInvested = investmentRows.reduce((sum, investment) => sum + investment.invested, 0);
-  const portfolioProfit = portfolioValue - portfolioInvested;
-  const portfolioProfitPct = portfolioInvested ? (portfolioProfit / portfolioInvested) * 100 : 0;
-  const portfolioBest = investmentRows.length
-    ? [...investmentRows].sort((a, b) => b.profitPct - a.profitPct)[0]
-    : null;
-  const staleInvestmentCount = data.investments.filter(isInvestmentPriceStale).length;
-  const latestInvestmentUpdate = data.investments
-    .map(investmentPriceUpdatedAtMs)
-    .filter((timestamp) => timestamp > 0)
-    .sort((a, b) => b - a)[0];
-  const investmentDistribution = investmentRows
-    .map((investment) => ({
-      name: investment.name,
-      value: investment.value,
-      pct: portfolioValue ? Math.round((investment.value / portfolioValue) * 100) : 0,
-      color: categoryColors[investment.name] ?? categoryColors[investment.type] ?? "#38bdf8",
-    }))
-    .filter((item) => item.value > 0);
-  const investmentDonutGradient = investmentDistribution.length
-    ? investmentDistribution.reduce((parts, item, index) => {
-        const start = investmentDistribution.slice(0, index).reduce((sum, row) => sum + row.pct, 0);
-        const end = Math.min(100, start + item.pct);
-        return `${parts}${item.color} ${start}% ${end}%,`;
-      }, "conic-gradient(").replace(/,$/, ")")
-    : "conic-gradient(#26323e 0 100%)";
   const loanRows = data.loans.map((loan) => {
     const monthsLeft = estimateLoanMonths(loan);
     const monthlyInterest = loan.remainingAmount * Math.max(0, loan.interestRate) / 100 / 12;
@@ -2270,266 +2088,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     show(linkedSavingsTransaction ? "Sparkontot och kopplad spartransaktion togs bort." : "Sparkontot togs bort.");
   }
 
-  function resetInvestmentForm() {
-    setInvestmentForm({
-      assetSearch: "",
-      name: "",
-      symbol: "",
-      type: "stock",
-      quantity: "",
-      averagePrice: "",
-      currentPrice: "",
-      currency: "SEK",
-    });
-    setEditingInvestmentId(null);
-  }
-
-  function updateInvestmentSearch(value: string) {
-    const matchedSecurity = findKnownSecurity(value);
-    const symbol = looksLikeMarketSymbol(value) ? normalizeSecurityText(value) : matchedSecurity?.symbol;
-
-    setInvestmentForm((form) => ({
-      ...form,
-      assetSearch: value,
-      name: matchedSecurity?.name ?? form.name,
-      symbol: symbol ?? form.symbol,
-      type: matchedSecurity?.type ?? form.type,
-      currency: matchedSecurity?.currency ?? form.currency,
-    }));
-  }
-
-  async function saveInvestment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const matchedSecurity = findKnownSecurity(investmentForm.assetSearch || investmentForm.name || investmentForm.symbol);
-    const manualSymbol = looksLikeMarketSymbol(investmentForm.assetSearch) ? normalizeSecurityText(investmentForm.assetSearch) : investmentForm.symbol.trim().toLowerCase();
-    const name = (investmentForm.name.trim() || matchedSecurity?.name || investmentForm.assetSearch.trim()).trim();
-    const symbol = (matchedSecurity?.symbol ?? manualSymbol).trim();
-    const quantity = parseMoney(investmentForm.quantity);
-    const averagePrice = parseMoney(investmentForm.averagePrice);
-    let currentPrice = investmentForm.currentPrice.trim() ? parseMoney(investmentForm.currentPrice) : NaN;
-
-    if (!name || !symbol) {
-      show("Sök fram ett värdepapper eller skriv en giltig symbol, till exempel inve-b.st.");
-      return;
-    }
-
-    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
-      try {
-        const response = await fetch(`/api/market-quote?symbol=${encodeURIComponent(symbol)}`, { cache: "no-store" });
-        const quote = await response.json() as MarketQuote;
-
-        if (response.ok && quote.price && quote.price > 0) {
-          currentPrice = quote.price;
-        }
-      } catch (error) {
-        console.error(error);
-      }
-    }
-
-    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(averagePrice) || averagePrice < 0 || !Number.isFinite(currentPrice) || currentPrice <= 0) {
-      show("Skriv giltigt antal och inköpspris. Aktuell kurs kan hämtas automatiskt om symbolen hittas.");
-      return;
-    }
-
-    const input = {
-      name,
-      symbol,
-      type: matchedSecurity?.type ?? investmentForm.type,
-      quantity,
-      average_price: averagePrice,
-      current_price: currentPrice,
-      currency: (matchedSecurity?.currency ?? investmentForm.currency.trim()) || "SEK",
-      price_updated_at: new Date().toISOString(),
-    };
-
-    if (editingInvestmentId) {
-      const remoteId = toRemoteId(editingInvestmentId);
-      if (remoteReady && remoteId) {
-        try {
-          await updateRemoteInvestment(remoteId, input);
-        } catch (error) {
-          console.error(error);
-          setRemoteReady(false);
-        }
-      }
-
-      setData((current) => ({
-        ...current,
-        investments: current.investments.map((investment) =>
-          investment.id === editingInvestmentId
-            ? {
-                ...investment,
-                name,
-                symbol,
-                type: input.type,
-                quantity,
-                averagePrice,
-                currentPrice,
-                currency: input.currency,
-                priceUpdatedAt: input.price_updated_at,
-              }
-            : investment
-        ),
-      }));
-      show("Investeringen är uppdaterad.");
-    } else {
-      let id = crypto.randomUUID();
-
-      if (remoteReady) {
-        try {
-          const created = await addRemoteInvestment(input) as RemoteInvestment;
-          id = String(created.id);
-        } catch (error) {
-          console.error(error);
-          setRemoteReady(false);
-        }
-      }
-
-      setData((current) => ({
-        ...current,
-        investments: [
-          ...current.investments,
-          {
-            id,
-            name,
-            symbol,
-            type: input.type,
-            quantity,
-            averagePrice,
-            currentPrice,
-            currency: input.currency,
-            priceUpdatedAt: input.price_updated_at,
-          },
-        ],
-      }));
-      show("Investeringen är tillagd.");
-    }
-
-    resetInvestmentForm();
-  }
-
-  function editInvestment(investment: Investment) {
-    setEditingInvestmentId(investment.id);
-    setInvestmentForm({
-      assetSearch: `${investment.name} (${investment.symbol})`,
-      name: investment.name,
-      symbol: investment.symbol,
-      type: investment.type,
-      quantity: String(investment.quantity),
-      averagePrice: String(investment.averagePrice),
-      currentPrice: String(investment.currentPrice),
-      currency: investment.currency,
-    });
-    show("Redigerar investering.");
-  }
-
-  async function removeInvestment(id: string) {
-    const remoteId = toRemoteId(id);
-    if (remoteReady && remoteId) {
-      try {
-        await deleteRemoteInvestment(remoteId);
-      } catch (error) {
-        console.error(error);
-        setRemoteReady(false);
-      }
-    }
-
-    setData((current) => ({ ...current, investments: current.investments.filter((investment) => investment.id !== id) }));
-    if (editingInvestmentId === id) {
-      resetInvestmentForm();
-    }
-    show("Investeringen togs bort.");
-  }
-
-  async function refreshInvestmentPrice(investment: Investment, options: { silent?: boolean } = {}) {
-    setRefreshingInvestmentIds((ids) => Array.from(new Set([...ids, investment.id])));
-
-    try {
-      const response = await fetch(`/api/market-quote?symbol=${encodeURIComponent(investment.symbol)}`, { cache: "no-store" });
-      const quote = await response.json() as MarketQuote;
-
-      if (!response.ok || !quote.price) {
-        if (!options.silent) {
-          show(quote.error ?? "Kunde inte hämta kurs. Testa manuell kurs.");
-        }
-        return false;
-      }
-
-      const updatedInvestment = {
-        ...investment,
-        currentPrice: quote.price,
-        currency: quote.currency ?? investment.currency,
-        priceUpdatedAt: quote.updatedAt ?? new Date().toISOString(),
-      };
-      const remoteId = toRemoteId(investment.id);
-
-      if (remoteReady && remoteId) {
-        try {
-          await updateRemoteInvestment(remoteId, {
-            name: updatedInvestment.name,
-            symbol: updatedInvestment.symbol,
-            type: updatedInvestment.type,
-            quantity: updatedInvestment.quantity,
-            average_price: updatedInvestment.averagePrice,
-            current_price: updatedInvestment.currentPrice,
-            currency: updatedInvestment.currency,
-            price_updated_at: updatedInvestment.priceUpdatedAt,
-          });
-        } catch (error) {
-          console.error(error);
-          setRemoteReady(false);
-        }
-      }
-
-      setData((current) => ({
-        ...current,
-        investments: current.investments.map((item) => item.id === investment.id ? updatedInvestment : item),
-      }));
-      if (!options.silent) {
-        show(`Kurs uppdaterad för ${investment.name}${quote.delayed ? " (ca 15 min fördröjd)." : "."}`);
-      }
-      return true;
-    } catch (error) {
-      console.error(error);
-      if (!options.silent) {
-        show("Kursdata kunde inte hämtas just nu.");
-      }
-      return false;
-    } finally {
-      setRefreshingInvestmentIds((ids) => ids.filter((id) => id !== investment.id));
-    }
-  }
-
-  async function refreshAllInvestmentPrices(investments = data.investments, options: { onlyStale?: boolean; silent?: boolean; auto?: boolean } = {}) {
-    const targets = options.onlyStale ? investments.filter(isInvestmentPriceStale) : investments;
-
-    if (!targets.length) {
-      if (!options.silent) {
-        show("Alla kurser är redan uppdaterade.");
-      }
-      return;
-    }
-
-    setRefreshingAllInvestments(true);
-    const results = await Promise.all(targets.map((investment) => refreshInvestmentPrice(investment, { silent: true })));
-    const successCount = results.filter(Boolean).length;
-    setRefreshingAllInvestments(false);
-
-    if (!options.silent) {
-      show(successCount
-        ? `${successCount} av ${targets.length} kurser uppdaterades. Kursdata kan vara ca 15 min fördröjd.`
-        : "Kunde inte uppdatera kurserna just nu.");
-    }
-
-    if (options.auto && successCount) {
-      show(`${successCount} kurser uppdaterades automatiskt.`);
-    }
-  }
-
-  useEffect(() => {
-    refreshAllInvestmentPricesRef.current = refreshAllInvestmentPrices;
-  });
-
   async function upsertLoanSubscription(input: {
     name: string;
     amount: number;
@@ -3208,7 +2766,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     window.localStorage.removeItem(userStorageKey);
     window.localStorage.removeItem(`${userStorageKey}-saved-at`);
     window.localStorage.removeItem(userOnboardingStorageKey);
-    setData({ ...defaultData, transactions: [], budgets: [], subscriptions: [], goals: [], savings: [], investments: [], loans: [], travelBudgets: [] });
+    setData({ ...defaultData, transactions: [], budgets: [], subscriptions: [], goals: [], savings: [], loans: [], travelBudgets: [] });
     setDangerConfirm("");
     setOnboardingDismissed(false);
     show("Din appdata är raderad för den här användaren.");
@@ -3793,7 +3351,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         </SectionPanel>
       )}
 
-      {activeSection === "investments" && (
+      {activeSection === "loans" && (
         <SectionPanel title="Lån" description="Se hur mycket du är skyldig, vad lånen kostar varje månad och ungefär när de är färdigbetalda.">
           <section className="loan-hero panel">
             <div>

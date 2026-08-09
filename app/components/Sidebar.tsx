@@ -13,7 +13,7 @@ export type AppSection =
   | "budgets"
   | "categories"
   | "goals"
-  | "investments"
+  | "loans"
   | "travel"
   | "subscriptions"
   | "insights"
@@ -27,7 +27,7 @@ const links = [
   ["Budget", "budgets", WalletCards],
   ["Kategorier", "categories", Boxes],
   ["Mål", "goals", Target],
-  ["Lån", "investments", CreditCard],
+  ["Lån", "loans", CreditCard],
   ["Resebudget", "travel", Plane],
   ["Fasta utgifter", "subscriptions", BellRing],
   ["AI Insights", "insights", Sparkles],

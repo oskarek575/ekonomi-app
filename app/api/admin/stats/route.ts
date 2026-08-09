@@ -11,7 +11,6 @@ const appTables = [
   "goals",
   "savings_accounts",
   "loans",
-  "investments",
   "travel_budgets",
   "travel_purchases",
   "feedback",
