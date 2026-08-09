@@ -90,11 +90,11 @@ export async function GET(request: Request) {
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
 
   if (!supabaseUrl || !anonKey) {
-    return NextResponse.json({ error: "Supabase Ã¤r inte konfigurerat." }, { status: 503 });
+    return NextResponse.json({ error: "Supabase är inte konfigurerat." }, { status: 503 });
   }
 
   if (!token) {
-    return NextResponse.json({ error: "Du behÃ¶ver vara inloggad som admin." }, { status: 401 });
+    return NextResponse.json({ error: "Du behöver vara inloggad som admin." }, { status: 401 });
   }
 
   const authClient = createClient(supabaseUrl, anonKey);
@@ -102,13 +102,13 @@ export async function GET(request: Request) {
   const email = authData.user?.email?.toLowerCase();
 
   if (authError || !email || !getAdminEmails().includes(email)) {
-    return NextResponse.json({ error: "Du har inte adminbehÃ¶righet." }, { status: 403 });
+    return NextResponse.json({ error: "Du har inte adminbehörighet." }, { status: 403 });
   }
 
   if (!serviceRoleKey) {
     return NextResponse.json({
       configured: false,
-      message: "LÃ¤gg till SUPABASE_SERVICE_ROLE_KEY i Vercel fÃ¶r att visa auth-statistik.",
+      message: "Lägg till SUPABASE_SERVICE_ROLE_KEY i Vercel för att visa auth-statistik.",
       generatedAt: new Date().toISOString(),
     });
   }

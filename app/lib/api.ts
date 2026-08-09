@@ -889,7 +889,7 @@ export async function getAdminStats() {
   if (sessionError) throw sessionError;
 
   const token = sessionData.session?.access_token;
-  if (!token) throw new Error("Du behÃ¶ver vara inloggad som admin.");
+  if (!token) throw new Error("Du behöver vara inloggad som admin.");
 
   const response = await fetch("/api/admin/stats", {
     headers: {
@@ -899,7 +899,7 @@ export async function getAdminStats() {
   const payload = await response.json();
 
   if (!response.ok) {
-    throw new Error(payload.error ?? "Kunde inte hÃ¤mta adminstatistik.");
+    throw new Error(payload.error ?? "Kunde inte hämta adminstatistik.");
   }
 
   return payload as AdminStats;
