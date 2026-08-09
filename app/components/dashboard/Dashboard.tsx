@@ -966,6 +966,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [openingBalanceForm, setOpeningBalanceForm] = useState("");
   const [layoutTheme, setLayoutTheme] = useState<LayoutTheme>("blue");
   const [lastLocalSave, setLastLocalSave] = useState<string | null>(null);
+  const [showBalanceAnalysis, setShowBalanceAnalysis] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [onboardingForm, setOnboardingForm] = useState({
     income: "",
@@ -3718,14 +3719,16 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         <SectionPanel title="Rapporter" description={`Sammanfattning för ${monthFormatter.format(monthDate)}.`}>
           <div className="report-grid"><div><span>Inkomster</span><b>{kr(income)}</b></div><div><span>Reserverat</span><b>{kr(reservedTotal)}</b></div><div><span>Fria pengar</span><b>{kr(freeMoney)}</b></div><div><span>Faktiskt saldo</span><b>{kr(actualBalance)}</b></div></div>
           <article className="balance-analysis-panel">
-            <div className="balance-analysis-heading">
+            <button className="balance-analysis-toggle" onClick={() => setShowBalanceAnalysis((value) => !value)} type="button" aria-expanded={showBalanceAnalysis}>
               <div>
                 <span>Saldoanalys</span>
                 <b>VarfÃ¶r Ã¤r aktuellt saldo {kr(actualBalance)}?</b>
                 <small>HÃ¤r bryts saldot ner sÃ¥ du kan se exakt vad som drar pengar utanfÃ¶r budget kvar och fria pengar.</small>
               </div>
               <strong className={actualBalance >= 0 ? "plus" : "minus"}>{kr(actualBalance)}</strong>
-            </div>
+            </button>
+            {showBalanceAnalysis && (
+              <div className="balance-analysis-details">
             <div className="balance-comparison-grid">
               <div><span>Budget kvar</span><b>{kr(budgetRemainingTotal)}</b><small>Alla budgetar som inte Ã¤r slut</small></div>
               <div><span>Fria pengar</span><b>{kr(freeMoney)}</b><small>Pengar kvar att spendera fritt</small></div>
@@ -3763,6 +3766,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 <strong>{kr(actualBalance)}</strong>
               </div>
             </div>
+              </div>
+            )}
           </article>
           <article className="report-category-panel">
             <CardTitle>Utgifter per kategori</CardTitle>
