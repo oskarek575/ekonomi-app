@@ -306,6 +306,7 @@ const themeStorageKey = "oskars-ekonomi-theme";
 const onboardingStorageKey = "oskars-ekonomi-onboarding";
 const fallbackAdminEmails = ["oskarek575@gmail.com"];
 const salaryDay = 25;
+const loanSubscriptionPlan = "Lån";
 const monthFormatter = new Intl.DateTimeFormat("sv-SE", { month: "long", year: "numeric" });
 const dateFormatter = new Intl.DateTimeFormat("sv-SE", { day: "numeric", month: "short" });
 
@@ -1460,9 +1461,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const totalLoanMonthlyPayment = loanRows.reduce((sum, loan) => sum + loan.monthlyPayment, 0);
   const totalLoanMonthlyInterest = loanRows.reduce((sum, loan) => sum + loan.monthlyInterest, 0);
   const debtToIncomePct = income ? Math.round((totalLoanMonthlyPayment / income) * 100) : 0;
-  const fastestLoan = loanRows
-    .filter((loan) => Number.isFinite(loan.monthsLeft))
-    .sort((a, b) => a.monthsLeft - b.monthsLeft)[0];
+  const fastestLoan = loanRows.length
+    ? [...loanRows].sort((a, b) => {
+        const aMonths = Number.isFinite(a.monthsLeft) ? a.monthsLeft : Number.MAX_SAFE_INTEGER;
+        const bMonths = Number.isFinite(b.monthsLeft) ? b.monthsLeft : Number.MAX_SAFE_INTEGER;
+
+        return aMonths - bMonths;
+      })[0]
+    : null;
   const affordabilityAmount = parseMoney(affordabilityForm.amount);
   const affordabilityResult = getAffordabilityResult({
     title: affordabilityForm.title,
@@ -2524,6 +2530,74 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     refreshAllInvestmentPricesRef.current = refreshAllInvestmentPrices;
   });
 
+  async function upsertLoanSubscription(input: {
+    name: string;
+    amount: number;
+    day: number;
+    previousName?: string;
+  }) {
+    const previousKey = input.previousName ? normalizeCategory(input.previousName) : "";
+    const nextKey = normalizeCategory(input.name);
+    const existingSubscription = data.subscriptions.find((subscription) =>
+      subscription.plan === loanSubscriptionPlan &&
+      (normalizeCategory(subscription.name) === previousKey || normalizeCategory(subscription.name) === nextKey)
+    );
+    const nextSubscription = {
+      name: input.name,
+      plan: loanSubscriptionPlan,
+      amount: input.amount,
+      day: input.day,
+      frequency: "monthly" as SubscriptionFrequency,
+      intervalMonths: 1,
+      startDate: existingSubscription?.startDate ?? dateForPeriodDay(month, input.day),
+      active: existingSubscription?.active ?? true,
+    };
+    let id = existingSubscription?.id ?? crypto.randomUUID();
+
+    if (remoteReady) {
+      try {
+        const remoteId = existingSubscription ? toRemoteId(existingSubscription.id) : null;
+
+        if (remoteId) {
+          await updateRemoteSubscription(
+            remoteId,
+            nextSubscription.name,
+            nextSubscription.amount,
+            nextSubscription.plan,
+            nextSubscription.day,
+            nextSubscription.active,
+            {
+              frequency: nextSubscription.frequency,
+              interval_months: nextSubscription.intervalMonths,
+              start_date: nextSubscription.startDate,
+            }
+          );
+        } else {
+          const created = await addRemoteSubscription(
+            nextSubscription.name,
+            nextSubscription.amount,
+            nextSubscription.plan,
+            nextSubscription.day,
+            {
+              frequency: nextSubscription.frequency,
+              interval_months: nextSubscription.intervalMonths,
+              start_date: nextSubscription.startDate,
+            }
+          ) as RemoteSubscription;
+          id = String(created.id);
+        }
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
+
+    return {
+      existingId: existingSubscription?.id ?? null,
+      subscription: { id, ...nextSubscription },
+    };
+  }
+
   function resetLoanForm() {
     setLoanForm({
       name: "",
@@ -2560,6 +2634,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       interest_rate: interestRate,
       payment_day: paymentDay,
     };
+    const previousLoan = editingLoanId
+      ? data.loans.find((loan) => loan.id === editingLoanId)
+      : undefined;
+    const syncedSubscription = await upsertLoanSubscription({
+      name,
+      amount: monthlyPayment,
+      day: paymentDay,
+      previousName: previousLoan?.name,
+    });
 
     if (editingLoanId) {
       const remoteId = toRemoteId(editingLoanId);
@@ -2579,6 +2662,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             ? { ...loan, name, remainingAmount, monthlyPayment, interestRate, paymentDay }
             : loan
         ),
+        subscriptions: syncedSubscription.existingId
+          ? current.subscriptions.map((subscription) =>
+              subscription.id === syncedSubscription.existingId ? syncedSubscription.subscription : subscription
+            )
+          : [...current.subscriptions, syncedSubscription.subscription],
       }));
       show("Lånet är uppdaterat.");
     } else {
@@ -2597,6 +2685,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       setData((current) => ({
         ...current,
         loans: [...current.loans, { id, name, remainingAmount, monthlyPayment, interestRate, paymentDay }],
+        subscriptions: syncedSubscription.existingId
+          ? current.subscriptions.map((subscription) =>
+              subscription.id === syncedSubscription.existingId ? syncedSubscription.subscription : subscription
+            )
+          : [...current.subscriptions, syncedSubscription.subscription],
       }));
       show("Lånet är tillagt.");
     }
@@ -2617,6 +2710,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   async function removeLoan(id: string) {
+    const loan = data.loans.find((item) => item.id === id);
+    const linkedSubscription = loan
+      ? data.subscriptions.find((subscription) =>
+          subscription.plan === loanSubscriptionPlan &&
+          normalizeCategory(subscription.name) === normalizeCategory(loan.name)
+        )
+      : undefined;
     const remoteId = toRemoteId(id);
     if (remoteReady && remoteId) {
       try {
@@ -2626,8 +2726,23 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         setRemoteReady(false);
       }
     }
+    const linkedSubscriptionRemoteId = linkedSubscription ? toRemoteId(linkedSubscription.id) : null;
+    if (remoteReady && linkedSubscriptionRemoteId) {
+      try {
+        await deleteRemoteSubscription(linkedSubscriptionRemoteId);
+      } catch (error) {
+        console.error(error);
+        setRemoteReady(false);
+      }
+    }
 
-    setData((current) => ({ ...current, loans: current.loans.filter((loan) => loan.id !== id) }));
+    setData((current) => ({
+      ...current,
+      loans: current.loans.filter((loan) => loan.id !== id),
+      subscriptions: linkedSubscription
+        ? current.subscriptions.filter((subscription) => subscription.id !== linkedSubscription.id)
+        : current.subscriptions,
+    }));
     if (editingLoanId === id) {
       resetLoanForm();
     }
