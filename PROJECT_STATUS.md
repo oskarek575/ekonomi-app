@@ -1284,3 +1284,977 @@ Git-status innan dokumentet skapades:
 - inga kodändringar;
 - en redan existerande untracked fil: `Microsoft Teams (PWA).lnk`, ej rörd.
 
+## Product Focus Cleanup Plan
+
+Senast uppdaterad: 2026-08-29
+
+Syfte: göra en säker scope-/cleanup-analys inför en eventuell nedskalning av produkten. Detta är bara analys. Ingen produktkod, design eller databas ändras i detta steg.
+
+Ny produktkärna:
+
+1. Fria pengar
+2. Kassabok / transaktioner
+3. Budgetar
+4. Planerade transaktioner / fasta utgifter
+5. Resebudget
+6. Enkel ekonomiöversikt
+7. Endast nödvändiga inställningar för ovanstående
+
+Viktig produktprincip:
+
+Planerade transaktioner ska kunna ligga på ett framtida datum men räknas bort från fria pengar direkt när löneperioden börjar, så att fria pengar visar vad som faktiskt är tillgängligt att använda.
+
+### 1. Inventering av nuvarande funktioner
+
+#### A. Behåll
+
+Funktioner som direkt stödjer den nya kärnan.
+
+| Funktion | Var finns den | Varför behålla |
+| --- | --- | --- |
+| Fria pengar | `Dashboard.tsx`, `finance-calculator.ts` | Produktens huvudvärde. Räknar fram vad användaren faktiskt kan spendera. |
+| Kassabok / transaktioner | `Dashboard.tsx`, `api.ts`, `kop` | Grunden för inkomster, köp, budgetköp, fria köp och saldo. |
+| Fria köp | `Dashboard.tsx`, `finance-calculator.ts`, `kop.source` | Direkt kopplat till fria pengar och appens huvudidé. |
+| Budgetar | `Dashboard.tsx`, `finance-calculator.ts`, `api.ts`, `budgets` | Reserverar pengar direkt och gör att budgetköp inte dras dubbelt från fria pengar. |
+| Kategorier | `Dashboard.tsx`, `api.ts`, `categories` | Behövs för kassabok, budgetar och rapportering. Bör behållas men förenklas. |
+| Fasta utgifter / planerade transaktioner | `Dashboard.tsx`, `finance-calculator.ts`, `api.ts`, `subscriptions` | Behövs för att reservera framtida dragningar direkt i löneperioden. |
+| Löneperiod från dag 25 | `Dashboard.tsx`, `finance-calculator.ts` | Central för hur användaren tänker kring lön och månad. |
+| Resebudget | `Dashboard.tsx`, `api.ts`, `finance-calculator.ts`, `travel_budgets`, `travel_purchases` | Ingår uttryckligen i nya kärnan. |
+| Enkel översikt | `Dashboard.tsx`, `Sidebar.tsx` | Behövs som startvy, men bör fokuseras. |
+| Nödvändiga inställningar | `Dashboard.tsx`, `api.ts`, `profile` | Namn, tema, PWA, export/import, saldoavstämning och konto behövs. |
+| Auth / användarseparering | `api.ts`, Supabase Auth, RLS SQL | Måste behållas för all riktig användning. |
+| Supabase-synk och localStorage fallback | `Dashboard.tsx`, `api.ts` | Viktigt för beta och robusthet. |
+| PWA-installation | `layout.tsx`, `manifest.ts`, `Dashboard.tsx`, `public/*icon*` | Behövs för mobiltest utan App Store ännu. |
+
+#### B. Göm tills vidare
+
+Funktioner som fungerar eller delvis fungerar men inte hör till den nya kärnan. Rekommendation: dölj från navigation/UI först, radera inte direkt.
+
+| Funktion | Filer | Beroenden/referenser | Risk för kärnan | Delar data/state med kärnan |
+| --- | --- | --- | --- | --- |
+| Mål | `Dashboard.tsx`, `api.ts`, `supabase/release-setup.sql`, `supabase/migrations/202607030002_add_goals_and_savings.sql` | `activeSection === "goals"`, `GoalPanel`, `getGoals`, `addGoal`, `updateGoal`, `deleteGoal`, `goals` i `FinanceData` | Medel. Mål/sparande är inkopplat i översikten och `financeSummary` tar emot `savings`. | Ja. Delar `data.goals`, `data.savings`, kategorier och transaktioner via sparlogik. |
+| Sparkonton | `Dashboard.tsx`, `api.ts`, `finance-calculator.ts`, SQL för `savings_accounts` | `getSavingsAccounts`, `addSavingsAccount`, `updateSavingsAccount`, `deleteSavingsAccount`, `getSavingsAdjustments` | Medel/hög om man tar bort direkt. Spartransaktioner påverkar nu sparkonton och målwidgets. | Ja. Sparkonton läggs in som kategorier och används av spartransaktioner. |
+| Lån | `Dashboard.tsx`, `components/dashboard/sections/LoansSection.tsx`, `api.ts`, `supabase/migrations/202608090001_add_loans.sql` | `activeSection === "loans"`, `LoansSection`, `getLoans`, `addLoan`, `updateLoan`, `deleteLoan`, `upsertLoanSubscription` | Medel. Lån skapar/uppdaterar fasta utgifter, vilket påverkar fria pengar. | Ja. Delar `subscriptions` genom automatisk fast utgift med plan `Lån`. |
+| AI Insights / "Har jag råd?" | `Dashboard.tsx`, CSS | `activeSection === "insights"`, `InsightsPanel`, `getAffordabilityResult`, översiktens insights | Låg/medel. Läser mest summary-data och navigerar till andra sektioner. | Ja, men främst read-only från `freeMoney`, `remainingDays`, mål och subscriptions. |
+| Avancerade rapporter / saldoanalys | `Dashboard.tsx`, `finance-calculator.ts`, CSS | `activeSection === "reports"`, `showBalanceAnalysis`, `balanceBreakdownRows`, `expensesByCategory` | Medel. Saldoanalys läser kärnlogik och är nyttig för felsökning, men kan döljas bakom knapp. | Ja. Läser alla kärndata men skriver inget. |
+| Adminpanel | `Dashboard.tsx`, `app/api/admin/stats/route.ts`, `api.ts` | `showAdminPanels`, `AdminOverviewPanel`, `getAdminStats`, `/api/admin/stats` | Låg för vanlig användar-UX om den bara göms. Hög säkerhetsmässigt om fel adminpolicy. | Ja via counts på alla tabeller, men skriver normalt inte kärndata. |
+| Support/feedback | `Dashboard.tsx`, `api.ts`, SQL för `feedback` | `FeedbackPanel`, `SupportAdminPanel`, `addFeedback`, `getFeedbackTickets`, `updateFeedbackStatus`, automatisk fellogg | Låg för kärnberäkningar. | Delar auth/user och settings UI, men inte ekonomiuträkningen. |
+| Beta-/launchchecklistor | `Dashboard.tsx` | `BetaStatusPanel`, `LaunchChecklistPanel`, `betaChecks`, `launchChecks` | Låg. | Läser appstatus, men påverkar inte ekonomi. |
+| Changelog | `Dashboard.tsx` | `ChangelogPanel` | Låg. | Nej, bara UI/text. |
+| Pro-demo / Pro-version | `Sidebar.tsx`, `Dashboard.tsx` | `proActive`, `toggleProDemo`, `pro-card` | Låg. | Minimal state, ej databaskritisk. |
+
+#### C. Kandidat för borttagning
+
+Kod som med hög sannolikhet är legacy, duplicerad eller utanför huvudflödet. Rekommendation: ta bort först när grep/import-verifiering + build bekräftar att huvudflödet inte påverkas.
+
+| Kandidat | Filer | Beroenden/referenser | Säker verifiering | Risk för kärnan |
+| --- | --- | --- | --- | --- |
+| Äldre budgetroute | `app/budgets/page.tsx`, `components/budgets/*` | Importeras av `app/budgets/page.tsx`. Huvudflödet använder `Dashboard.tsx`, inte dessa komponenter. | `rg` visar komponenterna bara används av denna route. | Låg om `/budgets` inte används som publik route. Medel om någon använder direkt URL. |
+| Äldre köproute | `app/purchases/page.tsx`, `components/purchases/*` | Importeras av `app/purchases/page.tsx`. | `rg` visar komponenterna bara används av denna route. | Låg/medel. Route använder `api.ts`, men inte huvud-Dashboard. |
+| Äldre subscriptionsroute | `app/subscriptions/page.tsx`, `components/subscriptions/*` | Importeras av `app/subscriptions/page.tsx`. | `rg` visar modal-komponenterna bara används av denna route. | Låg/medel. Kan påverka direkt URL `/subscriptions`, inte huvudflödet. |
+| Äldre categoriesroute | `app/categories/page.tsx`, `components/categories/*` | Importeras av `app/categories/page.tsx`. | `rg` visar komponenterna bara används av denna route. | Låg/medel. Kan påverka direkt URL `/categories`, inte huvudflödet. |
+| Äldre settingsroute | `app/settings/page.tsx` | Fristående route som använder `getProfile`/`updateProfile`. | Ingen import från huvudflödet identifierad. | Låg om `/settings` inte används. |
+| Gammal dashboard hook | `app/Hooks/useDashboard.ts` | `rg` visar ingen import av `useDashboard`. | Hög säkerhet: inga referenser hittade. | Låg. |
+| Gamla dashboard-komponenter under `dashboard/cards`, `dashboard/actions`, `dashboard/lists`, `dashboard/overview` | Exempel: `FreeMoneyCard.tsx`, `DashboardStats.tsx`, `DashboardBottom.tsx`, `AIInsights.tsx`, `SpendingChart.tsx` | De importerar varandra internt, men `Dashboard.tsx` importerar dem inte. | `rg` visar att huvud-Dashboard bara importerar `LoansSection`. | Medel om man planerar återanvända dem. Låg för runtime om de inte importeras. |
+| Legacy API-funktion `generateSubscriptionsForCurrentMonth` | `api.ts` | `rg` visar ingen användning utanför egen definition. | Ingen referens hittad i nuvarande huvudflöde. | Låg, men rör subscriptions/kop och bör tas efter tester. |
+| `app/types/database.ts` delvis gammal typfil | `app/types/database.ts` | Används av äldre routes/hook. | Inte komplett för ny schema. | Medel om äldre routes behålls; låg om de tas bort. |
+
+Osäkert:
+
+- `release-setup.sql` och migrations ska inte tas bort. Även om vissa delar gäller funktioner som ska gömmas behövs historiken tills en ny konsoliderad migrationsstrategi finns.
+- CSS-klasser för gamla komponenter kan vara svåra att säkert ta bort innan UI-sektioner har gömts och build/visuell test är gjord.
+
+### 2. Beroenden för grupp B och C
+
+#### Mål och sparkonton
+
+Berörda filer:
+
+- `Dashboard.tsx`
+- `api.ts`
+- `finance-calculator.ts`
+- `supabase/release-setup.sql`
+- `supabase/migrations/202607030002_add_goals_and_savings.sql`
+- `app/types/database.ts`
+
+Referenser:
+
+- `FinanceData.goals`
+- `FinanceData.savings`
+- `Goal`, `SavingsAccount`
+- `goalForm`, `savingsForm`
+- `editingGoalId`, `editingSavingsId`
+- `getGoals`, `addGoal`, `updateGoal`, `deleteGoal`
+- `getSavingsAccounts`, `addSavingsAccount`, `updateSavingsAccount`, `deleteSavingsAccount`
+- `getSavingsAdjustments`, `applySavingsAdjustments`, `findLinkedSavingsForGoal`
+- `GoalPanel`
+- `activeSection === "goals"`
+- Sidebar-länk `"Mål"`
+
+Risk mot kärnan:
+
+- Direkt borttagning är riskabelt eftersom spartransaktioner och sparkonton även påverkar kategorilistan och lokalt state.
+- Att bara gömma från navigation är betydligt säkrare.
+
+#### Lån
+
+Berörda filer:
+
+- `Dashboard.tsx`
+- `components/dashboard/sections/LoansSection.tsx`
+- `api.ts`
+- `finance-calculator.ts` indirekt via `subscriptions`
+- `supabase/migrations/202608090001_add_loans.sql`
+- `supabase/release-setup.sql`
+
+Referenser:
+
+- `FinanceData.loans`
+- `getLoans`, `addLoan`, `updateLoan`, `deleteLoan`
+- `upsertLoanSubscription`
+- `loanSubscriptionPlan = "Lån"`
+- `activeSection === "loans"`
+- Sidebar-länk `"Lån"`
+
+Risk mot kärnan:
+
+- Lån i sig är utanför kärnan.
+- Men lån skapar fasta utgifter, och fasta utgifter är kärna. Därför ska lån döljas först, inte tas bort direkt.
+
+#### AI Insights
+
+Berörda filer:
+
+- `Dashboard.tsx`
+- CSS i `globals.css`
+
+Referenser:
+
+- `InsightsPanel`
+- `topInsights`
+- `getAffordabilityResult`
+- `affordabilityForm`
+- `affordabilityResult`
+- `activeSection === "insights"`
+- Sidebar-länk `"AI Insights"`
+
+Risk mot kärnan:
+
+- Låg om den bara göms från navigation och översikt.
+- Kan fortfarande behållas internt för framtiden.
+
+#### Avancerade rapporter
+
+Berörda filer:
+
+- `Dashboard.tsx`
+- `finance-calculator.ts`
+- CSS i `globals.css`
+
+Referenser:
+
+- `activeSection === "reports"`
+- `showBalanceAnalysis`
+- `balanceBreakdownRows`
+- `expensesByCategory`
+- Sidebar-länk `"Rapporter"`
+
+Risk mot kärnan:
+
+- Rapportdelen läser kärnberäkningar. Att gömma hela rapportfliken är låg risk, men att ta bort beräkningsfält ur `finance-calculator.ts` är medel/hög risk.
+
+#### Admin/support/beta
+
+Berörda filer:
+
+- `Dashboard.tsx`
+- `api.ts`
+- `app/api/admin/stats/route.ts`
+- `supabase/release-setup.sql`
+- `supabase/migrations/202607230001_add_feedback.sql`
+- `supabase/migrations/202607230002_upgrade_feedback_to_support.sql`
+
+Referenser:
+
+- `showAdminPanels`
+- `AdminOverviewPanel`
+- `SupportAdminPanel`
+- `FeedbackPanel`
+- `BetaStatusPanel`
+- `LaunchChecklistPanel`
+- `getAdminStats`
+- `addFeedback`
+- `getFeedbackTickets`
+- `updateFeedbackStatus`
+
+Risk mot kärnan:
+
+- Låg om gömt i UI.
+- Säkerhetsmässigt bör adminpolicy ses över innan lansering.
+
+#### Legacy routes och gamla komponenter
+
+Berörda filer:
+
+- `app/budgets/page.tsx`
+- `app/categories/page.tsx`
+- `app/purchases/page.tsx`
+- `app/settings/page.tsx`
+- `app/subscriptions/page.tsx`
+- `app/components/budgets/*`
+- `app/components/categories/*`
+- `app/components/purchases/*`
+- `app/components/subscriptions/*`
+- `app/Hooks/useDashboard.ts`
+- `app/components/dashboard/actions/*`
+- `app/components/dashboard/cards/*`
+- `app/components/dashboard/lists/*`
+- `app/components/dashboard/overview/*`
+
+Referenser:
+
+- Äldre route-komponenter importeras bara av sina route-sidor.
+- Gamla dashboard subkomponenter importeras internt av andra gamla dashboard subkomponenter.
+- Nuvarande `Dashboard.tsx` importerar endast `LoansSection` från dashboard submapps-strukturen.
+
+Risk mot kärnan:
+
+- Låg om verifierat oanvända från huvudflödet.
+- Medel om någon användare eller länk fortfarande öppnar `/budgets`, `/purchases`, `/settings`, `/subscriptions` eller `/categories` direkt.
+
+### 3. Navigation
+
+#### Nuvarande navigation
+
+`app/components/Sidebar.tsx` definierar `AppSection`:
+
+- `overview`
+- `transactions`
+- `freePurchases`
+- `budgets`
+- `categories`
+- `goals`
+- `loans`
+- `travel`
+- `subscriptions`
+- `insights`
+- `reports`
+- `settings`
+
+Sidebar visar alla dessa:
+
+- Översikt
+- Transaktioner
+- Fria köp
+- Budget
+- Kategorier
+- Mål
+- Lån
+- Resebudget
+- Fasta utgifter
+- AI Insights
+- Rapporter
+- Inställningar
+
+`app/page.tsx` har en separat `sections`-array för hash-navigation:
+
+- `overview`
+- `transactions`
+- `freePurchases`
+- `budgets`
+- `categories`
+- `goals`
+- `travel`
+- `subscriptions`
+- `insights`
+- `reports`
+- `settings`
+
+Notering:
+
+- `loans` finns i `Sidebar.tsx` och renderas i `Dashboard.tsx`, men saknas i `app/page.tsx` sections-array. Det betyder att klick i sidebar fungerar via state, men direktlänk/hash `#loans` kan falla tillbaka till overview vid första sidladdning.
+
+#### Rekommenderad synlig navigation efter nedskalning
+
+Synlig primär navigation:
+
+1. Översikt
+2. Fria pengar
+3. Transaktioner
+4. Budget
+5. Fasta utgifter
+6. Resebudget
+7. Kategorier
+8. Inställningar
+
+Rekommenderad ordning på mobil:
+
+1. Fria pengar
+2. Transaktioner
+3. Budget
+4. Fasta utgifter
+5. Resebudget
+6. Mer / Inställningar
+
+Göm tills vidare:
+
+- Mål
+- Lån
+- AI Insights
+- Rapporter
+
+Flytta in bakom inställningar/admin eller dev-only:
+
+- Adminpanel
+- Beta-status
+- Launch checklist
+- Supportadmin
+- Changelog
+- Pro-demo
+
+Behåll eventuellt support för betaägaren, men den bör inte dominera produktens kärn-UX.
+
+### 4. Dashboard
+
+#### Widgets som stödjer fria pengar
+
+Behåll:
+
+- `free-money-panel free-money-hero`
+- fria pengar-ring
+- `Lägg till köp`
+- beräkningen inkomst - reserverat - fria köp - budget över = fritt
+- kvar per dag
+- fria köp idag
+- vald löneperiod
+
+Göm/förenkla:
+
+- översiktens AI Insights
+- måluppdatering/starkaste mål
+- widgets som leder till mål/lån/avancerade rapporter
+
+#### Widgets som stödjer transaktioner
+
+Behåll:
+
+- `Ny transaktion`
+- senaste transaktioner
+- transaktionslistan i `transactions`
+- fria köp-listan i `freePurchases`
+- redigera/radera transaktion
+- kategori-/sökfilter
+- små category/merchant-ikoner
+
+Flytta/förenkla:
+
+- separata äldre `/purchases`-route bör senare tas bort eller ersättas med huvudsektionen.
+
+#### Widgets som stödjer budgetar
+
+Behåll:
+
+- budgetöversikt
+- budgetformulär
+- budgetrader med kvar/använt
+- budgetöverskridande
+
+Göm/förenkla:
+
+- avancerad rapportvisning som inte behövs för att förstå budget kvar.
+
+#### Widgets som stödjer fasta utgifter
+
+Behåll:
+
+- kommande fasta utgifter
+- `Fasta utgifter`-sektionen
+- frekvens/dragdatum
+- skapa fasta utgifter som transaktioner
+- saknade dragningar i saldoanalys kan vara kvar bakom expanderad knapp.
+
+Viktigt:
+
+- fasta utgifter måste fortsätta reserveras i fria pengar från periodstart även om dragdatum ligger senare.
+
+#### Widgets som stödjer resebudget
+
+Behåll:
+
+- resebudget-hero
+- skapa/redigera/radera resa
+- separera från fria pengar-toggle
+- reseköp
+- kategorisummering för resa
+
+Göm/förenkla:
+
+- om resebudget får för stor plats på översikten kan den visas som ett litet statuskort och ha full vy i egen flik.
+
+#### Allt annat
+
+Kan gömmas:
+
+- målwidget;
+- sparkonto-widget;
+- AI Insights-widget;
+- admin/beta/checklistor från vanlig settingsvy;
+- avancerad saldoanalys kan vara kvar kollapsad eller flyttas till "Avancerat".
+
+Bör flyttas:
+
+- support/beta/admin till admin-only eller dev-only del;
+- import/export/radera data kan ligga kvar i inställningar men under "Avancerat".
+
+Kan tas bort senare:
+
+- legacy dashboard subkomponenter som inte importeras;
+- legacy route-sidor när man är säker på att hash-dashboarden är enda appflödet.
+
+### 5. Databas
+
+#### Tabeller som behövs för nya kärnan
+
+Behåll:
+
+- `profile`: namn, månadsinkomst, ingående saldo och profilrelaterad data.
+- `kop`: kassabok/transaktioner/fria köp/budgetköp/fasta utgifter som transaktioner.
+- `budgets`: budgetar per kategori.
+- `categories`: användarens kategorier.
+- `subscriptions`: planerade/fasta utgifter.
+- `travel_budgets`: resebudgetar.
+- `travel_purchases`: köp i resebudget.
+
+Behåll för auth men inte som egen public table:
+
+- Supabase Auth `auth.users`.
+
+#### Tabeller som tillhör funktioner att lägga åt sidan
+
+Göm och behåll tills vidare:
+
+- `goals`
+- `savings_accounts`
+- `loans`
+- `feedback`
+
+Motivering:
+
+- De har RLS och befintlig användardata kan finnas.
+- De ska inte raderas i cleanup-fas 1.
+- Vissa delar delar state/logik med kärnan, särskilt `savings_accounts` och `loans`.
+
+#### Databasändringar
+
+Inga tabeller ska raderas eller ändras i denna fas.
+
+Framtida möjlig databasförbättring:
+
+- Om "planerade transaktioner" ska bli bredare än fasta utgifter bör man överväga en egen tabell eller tydligare modell för planerade engångstransaktioner.
+- Idag hanteras återkommande planering via `subscriptions`. En vanlig framtida planerad engångstransaktion finns inte som separat modell.
+
+### 6. Legacy / teknisk skuld
+
+#### Gamla route-sidor
+
+Kandidater:
+
+- `app/budgets/page.tsx`
+- `app/categories/page.tsx`
+- `app/purchases/page.tsx`
+- `app/settings/page.tsx`
+- `app/subscriptions/page.tsx`
+
+Varför de verkar legacy:
+
+- Nuvarande huvudapp använder `app/page.tsx` + `Dashboard.tsx` + hash-sektioner.
+- Sidorna har äldre layout och egna modaler.
+- De syns som separata routes i `next build`, men sidebar navigerar inte till dem via vanliga länkar.
+
+Verifiering:
+
+- `rg` visar att deras komponenter importeras av respektive route.
+- De är fortfarande runtime-routes, så "oanvända" betyder inte automatiskt säkert att radera. Beslut kräver att man accepterar att direkt-URL:erna försvinner.
+
+#### Gamla komponenter
+
+Kandidater:
+
+- `app/components/budgets/*`
+- `app/components/categories/*`
+- `app/components/purchases/*`
+- `app/components/subscriptions/*`
+- `app/components/dashboard/actions/*`
+- `app/components/dashboard/cards/*`
+- `app/components/dashboard/lists/*`
+- `app/components/dashboard/overview/*`
+
+Varför de verkar legacy:
+
+- Huvud-Dashboard importerar inte dessa, förutom `sections/LoansSection`.
+- Flera verkar vara från en tidigare dashboard-arkitektur.
+
+Verifiering:
+
+- `rg` visar interna imports och imports från äldre routes.
+- Exakt borttagning bör göras stegvis efter att route-strategin är beslutad.
+
+#### Oanvänd hook
+
+Kandidat:
+
+- `app/Hooks/useDashboard.ts`
+
+Varför den verkar legacy:
+
+- `rg` hittar ingen import av `useDashboard`.
+- Den använder äldre fält och äldre dashboardtänk.
+
+Verifiering:
+
+- Hög säkerhet att den inte används i nuvarande buildflöde.
+
+#### Duplicerad affärslogik
+
+Kandidater:
+
+- datum-/periodfunktioner i både `Dashboard.tsx` och `finance-calculator.ts`;
+- `isFreePurchase` finns både i `Dashboard.tsx` och `finance-calculator.ts`;
+- subscription interval/frequency-logik finns både i `Dashboard.tsx` och `finance-calculator.ts`;
+- savings/goal-koppling ligger i `Dashboard.tsx`, medan delar av savings finns i `finance-calculator.ts`.
+
+Risk:
+
+- Medel/hög. Detta är nära kärnlogiken och ska inte städas utan tester.
+
+### 7. Säkerhet
+
+Saker att fixa innan framtida lansering, men inte i denna analysfas:
+
+#### RLS
+
+Status:
+
+- `release-setup.sql` aktiverar RLS på centrala tabeller.
+- Policies är user-owned via `auth.uid() = user_id`.
+- `travel_purchases` har extra parent-check mot `travel_budgets`.
+
+Risk:
+
+- Om gamla SQL-filer körs i fel ordning kan policies skilja sig från appens tänkta nuvarande läge.
+- Kör alltid slutlig konsoliderad SQL i rätt ordning i en testdatabas innan riktig lansering.
+
+#### Admin-policy
+
+Status:
+
+- Appkodens fallback-admin är `oskarek575@gmail.com`.
+- `release-setup.sql` använder också `oskarek575@gmail.com` för feedback-admin.
+- Äldre migration `202607230002_upgrade_feedback_to_support.sql` inkluderar även `oskarcool1337@gmail.com`.
+
+Risk:
+
+- Om den äldre migrationen körs efter release setup kan fler än ägaren få feedback-adminrättigheter.
+
+Rekommendation:
+
+- Skapa en ny säkerhetsmigration som uttryckligen droppar gamla admin policies och skapar dem med enbart korrekt adminlista.
+- Håll adminlista på ett ställe där det går, helst server/env för appåtkomst och SQL-policy för DB-åtkomst.
+
+#### Auth
+
+Status:
+
+- Supabase Auth används.
+- Sign-up sparar namn i metadata och skapar/uppdaterar profile.
+- Email confirmation kan påverka om ny användare kan logga in direkt beroende på Supabase-inställning.
+
+Risk:
+
+- UX kring email confirmation behöver vara tydlig för nya betatestare.
+
+#### Användarseparering
+
+Status:
+
+- Data är designad som per-user via `user_id`.
+- API:t använder Supabase client och RLS.
+- Adminroute kräver bearer token och service role key server-side.
+
+Risk:
+
+- Service role key får aldrig exponeras som `NEXT_PUBLIC_*`.
+- Adminstatistikroute ska fortsätta kontrollera email server-side.
+
+### 8. Produktlogik: fria pengar mot önskad modell
+
+Önskad modell:
+
+- budgetar reserveras direkt;
+- fasta/planerade utgifter reserveras direkt för aktuell löneperiod;
+- fria köp dras direkt;
+- budgetköp inom budget ska inte dras dubbelt;
+- budgetöverskridande ska minska fria pengar;
+- resebudget ska kunna vara separat eller påverka fria pengar;
+- framtida planerade transaktioner ska kunna ha verkligt framtida datum men ändå vara reserverade från periodstart.
+
+#### Stöds idag
+
+Budgetar reserveras direkt:
+
+- Ja.
+- `reservedBudgetTotal = budgets.reduce(...)`.
+
+Fasta utgifter reserveras direkt:
+
+- Ja för `subscriptions` som är due i perioden.
+- `fixedExpenseTotal` summerar alla schemalagda fasta utgifter som har `dueDate` i löneperioden.
+
+Fria köp dras direkt:
+
+- Ja.
+- `freePurchaseSpent` summerar fria köp i perioden och dras från `freeMoney`.
+
+Budgetköp inom budget dras inte dubbelt:
+
+- Ja enligt både kod och tester.
+- Budgetköp räknas in i `budgetRows.used`, men inte i `freePurchaseSpent`.
+
+Budgetöverskridande minskar fria pengar:
+
+- Ja.
+- `budgetOverspendTotal` dras från `freeMoney`.
+- Det finns test för detta.
+
+Resebudget separat/påverkar fria pengar:
+
+- Ja.
+- `travel.separateFromFreeMoney` styr om reseköp räknas i `travelSpentAffectingFreeMoney`.
+
+#### Delvis stödd
+
+Framtida planerade transaktioner:
+
+- Stöds för återkommande fasta utgifter genom `subscriptions`.
+- En subscription med framtida `dueDate` i aktuell löneperiod räknas in i `fixedExpenseTotal`, vilket reserverar fria pengar från periodstart.
+- Men det finns ingen generell modell för planerade engångstransaktioner utanför subscriptions.
+
+Exempel:
+
+- "Netflix dras den 20:e" kan reserveras direkt i perioden.
+- "Jag vet att jag ska betala 900 kr för däckbyte den 12:e en enda gång" behöver idag troligen läggas som fast utgift eller vanlig transaktion, inte som en separat engångsplanerad transaktion.
+
+Rekommenderad lösning senare:
+
+1. Behåll `subscriptions` för återkommande fasta utgifter.
+2. Lägg senare till ett tydligt koncept `planned_transactions` eller utöka `kop` med status/planeringsfält, men bara efter produktbeslut.
+3. Kalkylatorn bör då reservera planerade transaktioner i perioden från periodstart, men bara räkna faktiskt saldo på rätt sätt när de faktiskt dragits.
+
+### 9. Prioriterad cleanup-plan
+
+Konservativ och säker ordning:
+
+#### Steg 1: Göm icke-kärnflikar från navigationen
+
+Sannolikt berörda filer:
+
+- `app/components/Sidebar.tsx`
+- eventuellt `app/page.tsx`
+
+Åtgärd:
+
+- Dölj `Mål`, `Lån`, `AI Insights`, `Rapporter` från synlig sidebar/bottom-nav.
+- Låt `AppSection` och renderingen i `Dashboard.tsx` ligga kvar.
+
+Risknivå:
+
+- Låg.
+
+Test efteråt:
+
+- `npm run lint`
+- `npm run build`
+- klicka igenom synliga flikar: Översikt, Fria köp, Transaktioner, Budget, Kategorier, Fasta utgifter, Resebudget, Inställningar.
+
+#### Steg 2: Fokusera översikten utan att ta bort kod
+
+Sannolikt berörda filer:
+
+- `Dashboard.tsx`
+- `globals.css`
+
+Åtgärd:
+
+- Behåll fria pengar, snabbköp, statkort, senaste transaktioner, budgetstatus, fasta utgifter och resebudgetstatus.
+- Göm mål-widget och AI-widget från översikten.
+- Lämna komponent/funktioner kvar i koden.
+
+Risknivå:
+
+- Medel, eftersom `Dashboard.tsx` är stor och översikten har många beroenden.
+
+Test efteråt:
+
+- skapa fria köp;
+- skapa budgetköp inom budget;
+- överskrid budget;
+- skapa fast utgift;
+- skapa reseköp med `separateFromFreeMoney` både true och false;
+- mobil layout.
+
+#### Steg 3: Förenkla inställningar visuellt
+
+Sannolikt berörda filer:
+
+- `Dashboard.tsx`
+- `globals.css`
+
+Åtgärd:
+
+- Behåll profilnamn, ingående saldo, tema, PWA-installation, export/import/radera data och logga ut.
+- Göm beta-status, launch checklist, adminstatistik, supportadmin och changelog bakom admin/dev eller senare vy.
+
+Risknivå:
+
+- Låg/medel.
+
+Test efteråt:
+
+- ändra namn;
+- ändra ingående saldo;
+- install guide/PWA-panel;
+- logga ut/in;
+- säkerställ att admin fortfarande kan nå eventuell admininformation om den ska finnas kvar.
+
+#### Steg 4: Lägg test runt planerade utgifter
+
+Sannolikt berörda filer:
+
+- `scripts/finance-calculator.test.mjs`
+- eventuellt bara testdata, ingen produktkod om befintlig logik redan klarar det.
+
+Åtgärd:
+
+- Lägg test som bekräftar att framtida fast utgift i aktuell löneperiod reserveras direkt från fria pengar.
+- Lägg test för kvartalsvis/halvårsvis subscription.
+- Lägg test för resebudget true/false.
+
+Risknivå:
+
+- Låg.
+
+Test efteråt:
+
+- `npm run test`
+- `npm run lint`
+- `npm run build`
+
+#### Steg 5: Besluta route-strategi
+
+Sannolikt berörda filer:
+
+- `app/page.tsx`
+- legacy routes under `app/*/page.tsx`
+
+Åtgärd:
+
+- Besluta om appen ska använda hash-sektioner eller riktiga routes.
+- För betan: enklast är att behålla hash-sektioner tills vidare.
+
+Risknivå:
+
+- Medel.
+
+Test efteråt:
+
+- direktlänkar;
+- refresh på varje flik;
+- mobil navigation;
+- Vercel deployment.
+
+#### Steg 6: Ta bort bevisat oanvänd hook
+
+Sannolikt berörda filer:
+
+- `app/Hooks/useDashboard.ts`
+
+Åtgärd:
+
+- Ta bort filen om `rg useDashboard app` fortfarande bara visar definitionen.
+
+Risknivå:
+
+- Låg.
+
+Test efteråt:
+
+- `npm run lint`
+- `npm run build`
+
+#### Steg 7: Ta bort eller arkivera gamla dashboard subkomponenter
+
+Sannolikt berörda filer:
+
+- `app/components/dashboard/actions/*`
+- `app/components/dashboard/cards/*`
+- `app/components/dashboard/lists/*`
+- `app/components/dashboard/overview/*`
+
+Åtgärd:
+
+- Ta bort bara om de fortfarande inte importeras av huvudflödet.
+- Alternativt vänta tills `Dashboard.tsx` har refaktorerats och använda bra delar.
+
+Risknivå:
+
+- Medel.
+
+Test efteråt:
+
+- `npm run lint`
+- `npm run build`
+- visuell kontroll desktop/mobil.
+
+#### Steg 8: Ta bort legacy routes
+
+Sannolikt berörda filer:
+
+- `app/budgets/page.tsx`
+- `app/categories/page.tsx`
+- `app/purchases/page.tsx`
+- `app/settings/page.tsx`
+- `app/subscriptions/page.tsx`
+- deras modal/list-komponenter
+- eventuellt `app/types/database.ts`
+
+Åtgärd:
+
+- Ta bort routes bara om produktbeslutet är att de inte ska finnas.
+- Efter borttagning ska `next build` inte längre lista dem.
+
+Risknivå:
+
+- Medel.
+
+Test efteråt:
+
+- `npm run lint`
+- `npm run build`
+- kontrollera att huvudappens hash-navigation fungerar.
+
+#### Steg 9: Konsolidera affärslogik
+
+Sannolikt berörda filer:
+
+- `Dashboard.tsx`
+- `finance-calculator.ts`
+- `scripts/finance-calculator.test.mjs`
+
+Åtgärd:
+
+- Flytta duplicerade helpers från `Dashboard.tsx` till `finance-calculator.ts` eller en liten domain-fil.
+- Gör ett litet steg åt gången.
+
+Risknivå:
+
+- Hög.
+
+Test efteråt:
+
+- full testsvit;
+- manuell ekonomitestmatris;
+- build/lint;
+- jämför fria pengar före/efter med samma data.
+
+#### Steg 10: Skapa framtida modell för engångs-planerade transaktioner
+
+Sannolikt berörda filer:
+
+- `finance-calculator.ts`
+- `Dashboard.tsx`
+- `api.ts`
+- ny SQL migration om ny tabell behövs
+
+Åtgärd:
+
+- Vänta med detta tills scope-cleanup är klar.
+- Produktbeslut krävs: egen tabell eller utöka `kop`.
+
+Risknivå:
+
+- Hög.
+
+Test efteråt:
+
+- planerad engångsutgift framtida datum;
+- faktisk dragning;
+- dubbelräkning;
+- budgetköp kontra fria köp;
+- faktisk saldo kontra fria pengar.
+
+### 10. Sammanfattning
+
+#### Behåll
+
+Behåll och stärk:
+
+- Fria pengar
+- Kassabok/transaktioner
+- Fria köp
+- Budgetar
+- Kategorier
+- Fasta/planerade utgifter
+- Löneperiod dag 25
+- Resebudget
+- Enkel översikt
+- Nödvändiga inställningar
+- Auth, RLS, Supabase-synk och PWA
+
+#### Göm tills vidare
+
+Göm i första cleanup-rundan:
+
+- Mål
+- Sparkonton
+- Lån
+- AI Insights
+- Avancerade rapporter
+- Adminstatistik
+- Supportadmin
+- Beta-/launchchecklistor
+- Changelog
+- Pro-demo
+
+#### Kandidat för borttagning med hög säkerhet
+
+Högst sannolik borttagning senare:
+
+- `app/Hooks/useDashboard.ts`
+- legacy route-sidor om direkt-URLs inte behövs
+- gamla modal/list-komponenter som bara används av legacy routes
+- gamla dashboard subkomponenter som inte importeras av huvudflödet
+- `generateSubscriptionsForCurrentMonth` om den fortsatt är oanvänd
+
+#### Risker
+
+Största riskerna:
+
+- `Dashboard.tsx` är stor, så UI-gömning kan råka påverka state eller forms.
+- Lån delar data med fasta utgifter via subscriptions.
+- Sparkonton/mål delar kategori- och transaktionslogik.
+- Adminpolicy skiljer sig mellan nyare release SQL och äldre migration.
+- Det finns ingen generell modell för planerade engångstransaktioner ännu.
+
+#### Rekommenderad ordning
+
+1. Göm icke-kärnflikar från navigation.
+2. Fokusera översikten.
+3. Förenkla inställningar.
+4. Lägg tester runt planerade/fasta utgifter och resebudget.
+5. Bestäm route-strategi.
+6. Ta bort `useDashboard.ts` om fortfarande oanvänd.
+7. Ta bort gamla dashboard subkomponenter om fortfarande oanvända.
+8. Ta bort legacy routes om produktbeslutet är taget.
+9. Konsolidera affärslogik försiktigt.
+10. Designa eventuell ny modell för engångs-planerade transaktioner.
+
