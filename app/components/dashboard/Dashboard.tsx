@@ -7,7 +7,7 @@ import {
   Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
   ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
   Database, Download, MessageSquare, PiggyBank, Plane, Plus,
-  RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Users, WalletCards,
+  RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Users, WalletCards, Wrench,
 } from "lucide-react";
 import {
   addBudget as addRemoteBudget,
@@ -738,6 +738,18 @@ function Sparkline({ color }: { color: string }) {
 
 function CardTitle({ children, link, onClick }: { children: ReactNode; link?: string; onClick?: () => void }) {
   return <div className="card-title"><h3>{children}</h3>{link && <button onClick={onClick} type="button">{link}</button>}</div>;
+}
+
+function OverviewInfoNotice() {
+  return (
+    <article className="overview-info-notice">
+      <span><Wrench size={17} /></span>
+      <div>
+        <b>Vi förbättrar Oskars Ekonomi</b>
+        <small>Appen utvecklas just nu och vissa delar kan förändras medan du testar. Din feedback hjälper oss att göra appen bättre.</small>
+      </div>
+    </article>
+  );
 }
 
 function Logo({ title, tone = "white" }: { title: string; tone?: string }) {
@@ -3444,6 +3456,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <button onClick={() => onNavigate("budgets")} type="button"><WalletCards size={22}/><span>Reserverat kvar</span><b>{kr(reservedRemaining)}</b></button>
             <button onClick={() => onNavigate("freePurchases")} type="button"><PiggyBank size={22}/><span>Fritt idag</span><b>{kr(freeMoneyPerDay)}</b></button>
           </section>
+
+          <OverviewInfoNotice />
 
           <section className="mobile-overview-quick" aria-label="Snabbvy">
             <h2>Snabbvy</h2>
