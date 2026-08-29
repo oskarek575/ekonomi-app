@@ -1,9 +1,8 @@
 "use client";
 
 import {
-  BarChart3, BellRing, Boxes, ChevronDown, CircleDollarSign,
-  CreditCard, Crown, LayoutDashboard, Plane, Settings, Sparkles,
-  Target, WalletCards,
+  BellRing, Boxes, ChevronDown, CircleDollarSign,
+  CreditCard, Crown, LayoutDashboard, Plane, Settings, WalletCards,
 } from "lucide-react";
 
 export type AppSection =
@@ -22,16 +21,12 @@ export type AppSection =
 
 const links = [
   ["Översikt", "overview", LayoutDashboard],
+  ["Fria pengar", "freePurchases", CircleDollarSign],
   ["Transaktioner", "transactions", CreditCard],
-  ["Fria köp", "freePurchases", CircleDollarSign],
   ["Budget", "budgets", WalletCards],
-  ["Kategorier", "categories", Boxes],
-  ["Mål", "goals", Target],
-  ["Lån", "loans", CreditCard],
-  ["Resebudget", "travel", Plane],
   ["Fasta utgifter", "subscriptions", BellRing],
-  ["AI Insights", "insights", Sparkles],
-  ["Rapporter", "reports", BarChart3],
+  ["Resebudget", "travel", Plane],
+  ["Kategorier", "categories", Boxes],
   ["Inställningar", "settings", Settings],
 ] as const;
 

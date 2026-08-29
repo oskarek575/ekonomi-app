@@ -1290,6 +1290,10 @@ Senast uppdaterad: 2026-08-29
 
 Syfte: göra en säker scope-/cleanup-analys inför en eventuell nedskalning av produkten. Detta är bara analys. Ingen produktkod, design eller databas ändras i detta steg.
 
+Status:
+
+- Cleanup steg 1 genomfört 2026-08-29: primär navigation visar nu endast Översikt, Fria pengar, Transaktioner, Budget, Fasta utgifter, Resebudget, Kategorier och Inställningar. Mål, Lån, AI Insights och Rapporter är gömda från synlig navigation men finns kvar i kod/rendering för eventuell återaktivering.
+
 Ny produktkärna:
 
 1. Fria pengar
@@ -2257,4 +2261,3 @@ Största riskerna:
 8. Ta bort legacy routes om produktbeslutet är taget.
 9. Konsolidera affärslogik försiktigt.
 10. Designa eventuell ny modell för engångs-planerade transaktioner.
-
