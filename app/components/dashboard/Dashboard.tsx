@@ -1323,6 +1323,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     reservedBudgetTotal,
     scheduledSubscriptions,
     fixedExpenseTotal,
+    reservedRemaining,
     missingPostedSubscriptions,
     missingPostedFixedExpenses,
     reservedTotal,
@@ -2751,10 +2752,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   const stats = [
-    { title: "Totalt saldo", value: kr(actualBalance), change: actualBalance >= 0 ? "+ stabilt" : "- underskott", tail: "efter registrerade köp", color: "green", Icon: WalletCards },
-    { title: "Inkomster", value: kr(income), change: income ? "+ registrerat" : "0", tail: "i vald månad", color: "green", Icon: ArrowDownToLine },
-    { title: "Utgifter", value: `-${kr(expenses)}`, change: expenses ? "- aktivt" : "0", tail: "i vald månad", color: "purple", Icon: ArrowUpRight },
-    { title: "Fria pengar", value: kr(freeMoney), change: `-${kr(freePurchaseSpent)}`, tail: "fria köp", color: "blue", Icon: PiggyBank },
+    { title: "Inkomst", value: kr(income), change: income ? "+ registrerat" : "0", tail: "i vald period", color: "green", Icon: ArrowDownToLine },
+    { title: "Reserverat kvar", value: kr(reservedRemaining), change: reservedRemaining ? "planerat" : "0", tail: "budget & fasta", color: "green", Icon: WalletCards },
+    { title: "Utgifter", value: `-${kr(expenses)}`, change: expenses ? "- bokfört" : "0", tail: "i vald period", color: "purple", Icon: ArrowUpRight },
+    { title: "Fritt idag", value: kr(freeMoneyPerDay), change: freeMoney >= 0 ? "per dag" : "- underskott", tail: "resten av perioden", color: "blue", Icon: PiggyBank },
   ];
 
   const topInsights = [
@@ -3078,7 +3079,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
-    if (title === "Inkomster") {
+    if (title === "Inkomst") {
       setCategoryFilter("Lön");
       onNavigate("transactions");
       return;
@@ -3087,6 +3088,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     if (title === "Utgifter") {
       setCategoryFilter("Alla");
       onNavigate("transactions");
+      return;
+    }
+
+    if (title === "Reserverat kvar") {
+      onNavigate("budgets");
       return;
     }
 
@@ -3379,15 +3385,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <div className="free-money-ring" aria-hidden="true">
               <WalletCards size={42} />
             </div>
-            <div className="free-money-math">
-              <span><b>{kr(income)}</b><small>Inkomster</small></span>
-              <i>−</i>
-              <span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span>
-              <i>−</i>
-              <span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>
-              {budgetOverspendTotal > 0 && <><i>−</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget över</small></span></>}
-              <i>=</i>
-              <span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span>
+            <div className="free-money-math free-money-summary-values">
+              <span><b>{kr(income)}</b><small>Inkomst</small></span>
+              <span><b>{kr(reservedRemaining)}</b><small>Reserverat kvar</small></span>
+              <span><b>{kr(expenses)}</b><small>Utgifter</small></span>
+              <span className="result"><b>{kr(freeMoneyPerDay)}</b><small>Fritt idag</small></span>
             </div>
             <div className="mobile-spend-pills">
               <span><b>{kr(todayFreePurchaseSpent)}</b><small>Idag</small></span>
@@ -3437,9 +3439,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           </section>
 
           <section className="mobile-overview-metrics" aria-label="Översikt">
-            <button onClick={() => { setCategoryFilter("Lön"); onNavigate("transactions"); }} type="button"><ArrowDownToLine size={22}/><span>Inkomster</span><b>{kr(income)}</b></button>
+            <button onClick={() => { setCategoryFilter("Lön"); onNavigate("transactions"); }} type="button"><ArrowDownToLine size={22}/><span>Inkomst</span><b>{kr(income)}</b></button>
             <button onClick={() => { setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button"><ArrowUpRight size={22}/><span>Utgifter</span><b>{kr(expenses)}</b></button>
-            <button onClick={() => onNavigate("budgets")} type="button"><WalletCards size={22}/><span>Reserverat</span><b>{kr(reservedTotal)}</b></button>
+            <button onClick={() => onNavigate("budgets")} type="button"><WalletCards size={22}/><span>Reserverat kvar</span><b>{kr(reservedRemaining)}</b></button>
             <button onClick={() => onNavigate("freePurchases")} type="button"><PiggyBank size={22}/><span>Fritt idag</span><b>{kr(freeMoneyPerDay)}</b></button>
           </section>
 

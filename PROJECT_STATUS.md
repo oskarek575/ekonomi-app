@@ -1293,6 +1293,7 @@ Syfte: göra en säker scope-/cleanup-analys inför en eventuell nedskalning av 
 Status:
 
 - Cleanup steg 1 genomfört 2026-08-29: primär navigation visar nu endast Översikt, Fria pengar, Transaktioner, Budget, Fasta utgifter, Resebudget, Kategorier och Inställningar. Mål, Lån, AI Insights och Rapporter är gömda från synlig navigation men finns kvar i kod/rendering för eventuell återaktivering.
+- Översiktens kärnvärden uppdaterade 2026-08-29: `finance-calculator.ts` beräknar nu ett separat `reservedRemaining`/Reserverat kvar. Värdet är budget kvar plus fasta utgifter i aktuell löneperiod som ännu inte matchas av en bokförd transaktion. Befintlig fria-pengar-formel ändrades inte.
 
 Ny produktkärna:
 
@@ -1908,6 +1909,14 @@ Budgetar reserveras direkt:
 
 - Ja.
 - `reservedBudgetTotal = budgets.reduce(...)`.
+
+Reserverat kvar:
+
+- Ja.
+- `reservedRemaining = budgetRemainingTotal + fixedExpenseRemaining`.
+- `budgetRemainingTotal` är pengar kvar i budgetar efter bokförda budgetköp.
+- `fixedExpenseRemaining` är fasta utgifter i aktuell löneperiod som ännu inte matchas av en bokförd/betald transaktion.
+- Detta är ett separat presentations- och analysvärde. Det ersätter inte `reservedTotal` i fria-pengar-formeln.
 
 Fasta utgifter reserveras direkt:
 

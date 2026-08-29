@@ -85,9 +85,11 @@ export type FinanceSummary = {
   reservedBudgetTotal: number;
   scheduledSubscriptions: ScheduledFinanceSubscription[];
   fixedExpenseTotal: number;
+  fixedExpenseRemaining: number;
   missingPostedSubscriptions: ScheduledFinanceSubscription[];
   missingPostedFixedExpenses: number;
   reservedTotal: number;
+  reservedRemaining: number;
   travelPurchasesInPeriod: FinanceTravelBudget["purchases"];
   travelSpentForActualBalance: number;
   travelSpentAffectingFreeMoney: number;
@@ -351,6 +353,15 @@ export function calculateFinanceSummary({
   const fixedExpenseTotal = scheduledSubscriptions
     .filter((subscription) => subscription.isDueThisPeriod)
     .reduce((sum, subscription) => sum + subscription.amount, 0);
+  const fixedExpenseRemaining = scheduledSubscriptions
+    .filter((subscription) => subscription.active && subscription.dueDate)
+    .filter((subscription) => !hasMatchingTransaction(monthTransactions, {
+      id: subscription.id,
+      title: subscription.name,
+      amount: subscription.amount,
+      date: subscription.dueDate ?? "",
+    }))
+    .reduce((sum, subscription) => sum + subscription.amount, 0);
   const missingPostedSubscriptions = scheduledSubscriptions
     .filter((subscription) => subscription.active && subscription.dueDate && isOnOrBeforeToday(subscription.dueDate, today))
     .filter((subscription) => !hasMatchingTransaction(monthTransactions, {
@@ -394,12 +405,13 @@ export function calculateFinanceSummary({
     return { ...budget, used, pct, remaining, overspent };
   });
   const budgetOverspendTotal = budgetRows.reduce((sum, budget) => sum + budget.overspent, 0);
+  const budgetRemainingTotal = budgetRows.reduce((sum, budget) => sum + budget.remaining, 0);
+  const reservedRemaining = budgetRemainingTotal + fixedExpenseRemaining;
   const freeMoney = income - reservedTotal - freePurchaseSpent - travelSpentAffectingFreeMoney - budgetOverspendTotal;
   const freeMoneyBase = Math.max(income - reservedTotal, 1);
   const freeMoneyProgress = Math.max(0, Math.min(100, Math.round((Math.max(freeMoney, 0) / freeMoneyBase) * 100)));
   const remainingDays = daysLeftInPeriod(period, today);
   const freeMoneyPerDay = Math.max(0, Math.floor(freeMoney / Math.max(remainingDays, 1)));
-  const budgetRemainingTotal = budgetRows.reduce((sum, budget) => sum + budget.remaining, 0);
   const plannedAvailableMoney = budgetRemainingTotal + freeMoney;
   const plannedVsActualDifference = plannedAvailableMoney - actualBalance;
 
@@ -413,9 +425,11 @@ export function calculateFinanceSummary({
     reservedBudgetTotal,
     scheduledSubscriptions,
     fixedExpenseTotal,
+    fixedExpenseRemaining,
     missingPostedSubscriptions,
     missingPostedFixedExpenses,
     reservedTotal,
+    reservedRemaining,
     travelPurchasesInPeriod,
     travelSpentForActualBalance,
     travelSpentAffectingFreeMoney,

@@ -34,6 +34,29 @@ describe("finance calculator", () => {
     assert.equal(result.budgetRows[0].remaining, 3_000);
   });
 
+  it("keeps an unused budget fully reserved", () => {
+    const result = summary({
+      budgets: [{ id: "food", category: "Mat", limit: 4_000 }],
+    });
+
+    assert.equal(result.reservedRemaining, 4_000);
+    assert.equal(result.expenses, 0);
+    assert.equal(result.freeMoney, 21_000);
+  });
+
+  it("moves budget purchases from reserved remaining to expenses without reducing free money", () => {
+    const result = summary({
+      budgets: [{ id: "food", category: "Mat", limit: 4_000 }],
+      transactions: [
+        { id: "ica", title: "ICA", category: "Mat", amount: 1_000, date: "2026-07-03", type: "expense", source: "budget" },
+      ],
+    });
+
+    assert.equal(result.reservedRemaining, 3_000);
+    assert.equal(result.expenses, 1_000);
+    assert.equal(result.freeMoney, 21_000);
+  });
+
   it("reduces free money only by the overspend when a budget is exceeded", () => {
     const result = summary({
       budgets: [{ id: "food", category: "Mat", limit: 4_000 }],
@@ -43,6 +66,7 @@ describe("finance calculator", () => {
     });
 
     assert.equal(result.budgetOverspendTotal, 300);
+    assert.equal(result.reservedRemaining, 0);
     assert.equal(result.freeMoney, 20_700);
   });
 
@@ -55,6 +79,17 @@ describe("finance calculator", () => {
     });
 
     assert.equal(result.freeMoney, 20_910);
+  });
+
+  it("includes free purchases in expenses and reduces free money", () => {
+    const result = summary({
+      transactions: [
+        { id: "coffee", title: "Kaffe", category: "Fria köp", amount: 90, date: "2026-07-03", type: "expense", source: "free" },
+      ],
+    });
+
+    assert.equal(result.expenses, 90);
+    assert.equal(result.freeMoney, 24_910);
   });
 
   it("does not treat a savings account balance as a hidden period expense", () => {
@@ -89,8 +124,55 @@ describe("finance calculator", () => {
     });
 
     assert.equal(result.fixedExpenseTotal, 129);
+    assert.equal(result.fixedExpenseRemaining, 0);
     assert.equal(result.missingPostedFixedExpenses, 0);
     assert.equal(result.actualBalance, 24_871);
+  });
+
+  it("keeps an unpaid fixed expense in reserved remaining", () => {
+    const result = summary({
+      subscriptions: [
+        { id: "rent", name: "Hyra", plan: "Boende", amount: 5_000, day: 15, active: true },
+      ],
+    });
+
+    assert.equal(result.fixedExpenseTotal, 5_000);
+    assert.equal(result.fixedExpenseRemaining, 5_000);
+    assert.equal(result.reservedRemaining, 5_000);
+    assert.equal(result.expenses, 0);
+    assert.equal(result.freeMoney, 20_000);
+  });
+
+  it("removes a paid fixed expense from reserved remaining and counts it as an expense without reducing free money again", () => {
+    const result = summary({
+      subscriptions: [
+        { id: "rent", name: "Hyra", plan: "Boende", amount: 5_000, day: 3, active: true },
+      ],
+      transactions: [
+        { id: "rent-paid", title: "Hyra", category: "Prenumerationer", amount: 5_000, date: "2026-07-03", type: "expense", source: "budget", subscriptionId: "rent" },
+      ],
+    });
+
+    assert.equal(result.fixedExpenseTotal, 5_000);
+    assert.equal(result.fixedExpenseRemaining, 0);
+    assert.equal(result.reservedRemaining, 0);
+    assert.equal(result.expenses, 5_000);
+    assert.equal(result.freeMoney, 20_000);
+  });
+
+  it("does not double count paid fixed expenses in actual balance", () => {
+    const result = summary({
+      subscriptions: [
+        { id: "rent", name: "Hyra", plan: "Boende", amount: 5_000, day: 3, active: true },
+      ],
+      transactions: [
+        { id: "rent-paid", title: "Hyra", category: "Prenumerationer", amount: 5_000, date: "2026-07-03", type: "expense", source: "budget", subscriptionId: "rent" },
+      ],
+    });
+
+    assert.equal(result.expenses, 5_000);
+    assert.equal(result.missingPostedFixedExpenses, 0);
+    assert.equal(result.actualBalance, 20_000);
   });
 
   it("uses opening balance when calculating actual balance", () => {
