@@ -4,9 +4,10 @@ import { ChangeEvent, CSSProperties, FormEvent, ReactNode, useCallback, useEffec
 import type { User } from "@supabase/supabase-js";
 import packageInfo from "../../../package.json";
 import {
-  Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays,
-  ChevronDown, ChevronRight, CircleCheck, Crosshair, Edit3, Lightbulb,
-  Database, Download, MessageSquare, PiggyBank, Plane, Plus,
+  Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, Bell, CalendarDays, Car,
+  ChevronDown, ChevronRight, CircleCheck, CircleHelp, Crosshair, Dumbbell, Edit3,
+  Gamepad2, HeartPulse, Home, Lightbulb, PawPrint, Receipt,
+  Database, Download, MessageSquare, PiggyBank, Plane, Plus, ShoppingBag, ShoppingCart, Utensils,
   RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Users, WalletCards, Wrench,
 } from "lucide-react";
 import {
@@ -152,10 +153,16 @@ type FinanceData = {
   budgets: Budget[];
   subscriptions: Subscription[];
   categories: string[];
+  categoryDetails: Record<string, CategoryDetail>;
   goals: Goal[];
   savings: SavingsAccount[];
   loans: Loan[];
   travelBudgets: TravelBudget[];
+};
+
+type CategoryDetail = {
+  color: string;
+  icon: string;
 };
 
 type RemotePurchase = {
@@ -303,11 +310,48 @@ const categoryColors: Record<string, string> = {
   "Övrigt": "#637083",
 };
 
+const categoryIconOptions = [
+  { id: "shopping-cart", label: "Mat", Icon: ShoppingCart },
+  { id: "utensils", label: "Restaurang", Icon: Utensils },
+  { id: "car", label: "Bil", Icon: Car },
+  { id: "home", label: "Bostad", Icon: Home },
+  { id: "gamepad", label: "Nöje", Icon: Gamepad2 },
+  { id: "shopping-bag", label: "Shopping", Icon: ShoppingBag },
+  { id: "piggy-bank", label: "Spar", Icon: PiggyBank },
+  { id: "receipt", label: "Räkning", Icon: Receipt },
+  { id: "heart-pulse", label: "Hälsa", Icon: HeartPulse },
+  { id: "dumbbell", label: "Träning", Icon: Dumbbell },
+  { id: "paw", label: "Husdjur", Icon: PawPrint },
+  { id: "plane", label: "Resa", Icon: Plane },
+  { id: "wallet", label: "Pengar", Icon: WalletCards },
+  { id: "other", label: "Övrigt", Icon: CircleHelp },
+] as const;
+
+const categoryIconMap = Object.fromEntries(
+  categoryIconOptions.map((option) => [option.id, option.Icon])
+);
+
+const categoryAccentOptions = ["#42c776", "#2dd4bf", "#438ee8", "#8b45f5", "#d1519b", "#f3a047", "#ef4444", "#637083"];
+
+const defaultCategoryDetails: Record<string, CategoryDetail> = {
+  "Bostad": { color: categoryColors.Bostad, icon: "home" },
+  "Mat & Livsmedel": { color: categoryColors["Mat & Livsmedel"], icon: "shopping-cart" },
+  "Transport": { color: categoryColors.Transport, icon: "car" },
+  "Drivmedel": { color: categoryColors.Drivmedel, icon: "car" },
+  "Nöjen": { color: categoryColors.Nöjen, icon: "gamepad" },
+  "Shopping": { color: categoryColors.Shopping, icon: "shopping-bag" },
+  "Fria köp": { color: categoryColors["Fria köp"], icon: "wallet" },
+  "Prenumerationer": { color: categoryColors.Prenumerationer, icon: "receipt" },
+  "Lön": { color: categoryColors.Lön, icon: "wallet" },
+  "Övrigt": { color: categoryColors["Övrigt"], icon: "other" },
+};
+
 const lockedCategories = ["Lön", "Fria köp", "Prenumerationer"] as const;
 
 const defaultData: FinanceData = {
   openingBalance: 0,
   categories: ["Bostad", "Mat & Livsmedel", "Drivmedel", "Transport", "Nöjen", "Shopping", "Fria köp", "Prenumerationer", "Lön", "Övrigt"],
+  categoryDetails: defaultCategoryDetails,
   transactions: [
     { id: "t1", title: "Lön", category: "Lön", amount: 34850, date: "2025-05-30", type: "income" },
     { id: "t2", title: "Hyra", category: "Bostad", amount: 6850, date: "2025-05-27", type: "expense" },
@@ -772,39 +816,70 @@ const merchantIcons = [
   { match: ["youtube"], label: "▶", tone: "youtube" },
 ];
 
-const categoryIcons: Record<string, { label: string; tone: string }> = {
-  "Bostad": { label: "⌂", tone: "home" },
-  "Mat & Livsmedel": { label: "🛒", tone: "food" },
-  "Drivmedel": { label: "⛽", tone: "fuel" },
-  "Transport": { label: "↔", tone: "transport" },
-  "Nöjen": { label: "★", tone: "fun" },
-  "Shopping": { label: "🛒", tone: "shopping" },
-  "Fria köp": { label: "₿", tone: "free" },
-  "Prenumerationer": { label: "↻", tone: "subscription" },
-  "Lön": { label: "↓", tone: "income" },
-  "Övrigt": { label: "•", tone: "default" },
-};
-
-function getCategoryIcon(category: string, type: TransactionType = "expense") {
-  return categoryIcons[category] ?? { label: type === "income" ? "↓" : category.slice(0, 2).toUpperCase(), tone: type === "income" ? "income" : "default" };
+function getCategoryDetail(category: string, categoryDetails?: Record<string, CategoryDetail>) {
+  return categoryDetails?.[category] ?? defaultCategoryDetails[category] ?? {
+    color: categoryColors[category] ?? "#637083",
+    icon: "other",
+  };
 }
 
-function TransactionIcon({ title, category, type }: { title: string; category: string; type: TransactionType }) {
-  const text = `${title} ${category}`.toLowerCase();
-  const match = merchantIcons.find((icon) => icon.match.some((word) => text.includes(word)));
-  const categoryIcon = getCategoryIcon(category, type);
-  const label = match?.label ?? categoryIcon.label;
-  const tone = match?.tone ?? categoryIcon.tone;
-
-  return <span className={`merchant-logo ${tone}`}>{label}</span>;
-}
-
-function CategoryMeta({ category, type, suffix }: { category: string; type: TransactionType; suffix?: string }) {
-  const icon = getCategoryIcon(category, type);
+function CategoryIconBadge({
+  category,
+  categoryDetails,
+  className,
+  size = 17,
+}: {
+  category: string;
+  categoryDetails?: Record<string, CategoryDetail>;
+  className: string;
+  size?: number;
+}) {
+  const detail = getCategoryDetail(category, categoryDetails);
+  const Icon = categoryIconMap[detail.icon] ?? CircleHelp;
 
   return (
+    <span className={`${className} category-visual`} style={{ "--category-color": detail.color } as CSSProperties}>
+      <Icon size={size} strokeWidth={2.1} />
+    </span>
+  );
+}
+
+function TransactionIcon({
+  title,
+  category,
+  type,
+  categoryDetails,
+}: {
+  title: string;
+  category: string;
+  type: TransactionType;
+  categoryDetails?: Record<string, CategoryDetail>;
+}) {
+  const text = `${title} ${category}`.toLowerCase();
+  const match = merchantIcons.find((icon) => icon.match.some((word) => text.includes(word)));
+
+  if (match) return <span className={`merchant-logo ${match.tone}`}>{match.label}</span>;
+  if (type === "income") return <span className="merchant-logo income">↓</span>;
+
+  return <CategoryIconBadge category={category} categoryDetails={categoryDetails} className="merchant-logo" />;
+}
+
+function CategoryMeta({
+  category,
+  type,
+  suffix,
+  categoryDetails,
+}: {
+  category: string;
+  type: TransactionType;
+  suffix?: string;
+  categoryDetails?: Record<string, CategoryDetail>;
+}) {
+  return (
     <small className="category-meta">
-      <span className={`category-mini-icon ${icon.tone}`}>{icon.label}</span>
+      {type === "income"
+        ? <span className="category-mini-icon income">↓</span>
+        : <CategoryIconBadge category={category} categoryDetails={categoryDetails} className="category-mini-icon" size={12} />}
       <span>{category}{suffix ? ` · ${suffix}` : ""}</span>
     </small>
   );
@@ -813,18 +888,19 @@ function CategoryMeta({ category, type, suffix }: { category: string; type: Tran
 function TransactionCategoryPicker({
   categories,
   selectedCategory,
+  categoryDetails,
   budgetRows,
   onSelect,
 }: {
   categories: string[];
   selectedCategory: string;
+  categoryDetails?: Record<string, CategoryDetail>;
   budgetRows: { category: string; remaining: number; overspent: number }[];
   onSelect: (category: string) => void;
 }) {
   return (
     <div className="transaction-category-picker" aria-label="Välj kategori">
       {categories.map((category) => {
-        const icon = getCategoryIcon(category);
         const budget = budgetRows.find((row) => row.category === category);
         const isSelected = selectedCategory === category;
         const detail = budget
@@ -840,7 +916,7 @@ function TransactionCategoryPicker({
             onClick={() => onSelect(category)}
             type="button"
           >
-            <span className={`category-choice-icon ${icon.tone}`}>{icon.label}</span>
+            <CategoryIconBadge category={category} categoryDetails={categoryDetails} className="category-choice-icon" size={18} />
             <span>
               <b>{category}</b>
               <small>{detail}</small>
@@ -924,6 +1000,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [budgetForm, setBudgetForm] = useState({ category: "Mat & Livsmedel", limit: "" });
   const [subscriptionForm, setSubscriptionForm] = useState(defaultSubscriptionForm);
   const [categoryName, setCategoryName] = useState("");
+  const [categoryIcon, setCategoryIcon] = useState("other");
+  const [categoryColor, setCategoryColor] = useState(categoryAccentOptions[0]);
   const [goalForm, setGoalForm] = useState({ title: "", saved: "", target: "", linkedSavingsId: "" });
   const [savingsForm, setSavingsForm] = useState({ name: "", amount: "" });
   const [loanForm, setLoanForm] = useState({
@@ -1137,6 +1215,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           ...(parsed.categories ?? []),
           ...(parsed.savings ?? []).map((saving) => saving.name),
         ])),
+        categoryDetails: {
+          ...defaultCategoryDetails,
+          ...(parsed.categoryDetails ?? {}),
+        },
       });
       setLastLocalSave(window.localStorage.getItem(`${userStorageKey}-saved-at`));
     }
@@ -1216,6 +1298,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             ...categoryRows.map((category) => category.name),
             ...savingsRows.map((saving) => saving.name),
           ])),
+          categoryDetails: {
+            ...defaultCategoryDetails,
+            ...current.categoryDetails,
+            ...Object.fromEntries(categoryRows.map((category) => [
+              category.name,
+              {
+                color: category.color || categoryColors[category.name] || "#64748b",
+                icon: category.icon || defaultCategoryDetails[category.name]?.icon || "other",
+              },
+            ])),
+          },
           subscriptions: subscriptionRows.map((subscription) => {
             const id = String(subscription.id);
             const cached = current.subscriptions.find((item) => item.id === id);
@@ -1462,7 +1555,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       const sum = monthTransactions
         .filter((item) => item.type === "expense" && item.category === category)
         .reduce((total, item) => total + item.amount, 0);
-      return { category, sum, pct: expenses ? Math.round((sum / expenses) * 100) : 0, color: categoryColors[category] ?? "#637083" };
+      return { category, sum, pct: expenses ? Math.round((sum / expenses) * 100) : 0, color: getCategoryDetail(category, data.categoryDetails).color };
     })
     .filter((item) => item.sum > 0)
     .sort((a, b) => b.sum - a.sum);
@@ -2032,13 +2125,23 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     event.preventDefault();
     const name = categoryName.trim();
     if (!name || data.categories.includes(name)) return;
+    const details = { color: categoryColor, icon: categoryIcon };
 
     if (remoteReady) {
-      await addRemoteCategory(name, categoryColors[name] ?? "#64748b", "•");
+      await addRemoteCategory(name, details.color, details.icon);
     }
 
-    setData((current) => ({ ...current, categories: [...current.categories, name] }));
+    setData((current) => ({
+      ...current,
+      categories: [...current.categories, name],
+      categoryDetails: {
+        ...current.categoryDetails,
+        [name]: details,
+      },
+    }));
     setCategoryName("");
+    setCategoryIcon("other");
+    setCategoryColor(categoryAccentOptions[0]);
     setTransactionForm((form) => ({ ...form, category: name }));
     show("Kategorin är tillagd.");
   }
@@ -2068,6 +2171,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setData((current) => ({
       ...current,
       categories: current.categories.filter((category) => category !== name),
+      categoryDetails: Object.fromEntries(
+        Object.entries(current.categoryDetails).filter(([category]) => category !== name)
+      ),
     }));
     setTransactionForm((form) => ({ ...form, category: form.category === name ? "Fria köp" : form.category }));
     setBudgetForm((form) => ({ ...form, category: form.category === name ? data.categories.find((category) => category !== name && !lockedCategories.includes(category as (typeof lockedCategories)[number])) ?? "" : form.category }));
@@ -2205,7 +2311,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     try {
       if (remoteReady && !data.categories.includes(name)) {
         try {
-          await addRemoteCategory(name, categoryColors[name] ?? "#22c55e", "💰");
+          await addRemoteCategory(name, categoryColors[name] ?? "#22c55e", "piggy-bank");
         } catch (error) {
           console.error(error);
           setRemoteReady(false);
@@ -2268,6 +2374,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               )
             : current.transactions,
           categories: current.categories.includes(name) ? current.categories : [...current.categories, name],
+          categoryDetails: {
+            ...current.categoryDetails,
+            [name]: current.categoryDetails[name] ?? {
+              color: categoryColors[name] ?? "#22c55e",
+              icon: "piggy-bank",
+            },
+          },
         };
       });
 
@@ -3467,6 +3580,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               {transactionForm.type === "expense" ? (
                 <TransactionCategoryPicker
                   budgetRows={budgetRows}
+                  categoryDetails={data.categoryDetails}
                   categories={transactionCategories}
                   selectedCategory={transactionForm.category}
                   onSelect={(category) => setTransactionForm((form) => ({ ...form, category }))}
@@ -3535,7 +3649,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           <section className="mobile-overview-quick" aria-label="Snabbvy">
             <h2>Snabbvy</h2>
             <button onClick={() => { setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button">
-              {latestPurchase ? <TransactionIcon title={latestPurchase.title} category={latestPurchase.category} type={latestPurchase.type} /> : <Logo title="Köp" tone="white" />}
+              {latestPurchase ? <TransactionIcon title={latestPurchase.title} category={latestPurchase.category} type={latestPurchase.type} categoryDetails={data.categoryDetails} /> : <Logo title="Köp" tone="white" />}
               <span><small>Senaste köp:</small><b>{latestPurchase?.title ?? "Inget köp än"}</b></span>
               <strong>{latestPurchase ? kr(latestPurchase.amount) : "0 kr"}</strong>
               <ChevronRight size={18}/>
@@ -3562,7 +3676,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <div className="dual-grid">
                 <article className="panel list-panel">
                   <CardTitle link="Visa alla" onClick={() => onNavigate("transactions")}>Senaste transaktioner</CardTitle>
-                  <div className="transaction-list">{filteredTransactions.slice(0, 5).map((item) => <div className="list-row" key={item.id}><TransactionIcon title={item.title} category={item.category} type={item.type} /><span className="row-copy"><b>{item.title}</b><CategoryMeta category={item.category} type={item.type}/></span><span className={`row-value ${item.type === "income" ? "plus" : "minus"}`}><b>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</b><small>{new Date(item.date).toLocaleDateString("sv-SE")}</small></span></div>)}</div>
+                  <div className="transaction-list">{filteredTransactions.slice(0, 5).map((item) => <div className="list-row" key={item.id}><TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={data.categoryDetails} /><span className="row-copy"><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} categoryDetails={data.categoryDetails}/></span><span className={`row-value ${item.type === "income" ? "plus" : "minus"}`}><b>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</b><small>{new Date(item.date).toLocaleDateString("sv-SE")}</small></span></div>)}</div>
                   <button className="wide-button" onClick={() => onNavigate("transactions")} type="button">Visa alla transaktioner <ArrowRight size={15}/></button>
                 </article>
                 <article className="panel list-panel">
@@ -3595,6 +3709,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             {transactionForm.type === "expense" ? (
               <TransactionCategoryPicker
                 budgetRows={budgetRows}
+                categoryDetails={data.categoryDetails}
                 categories={transactionCategories}
                 selectedCategory={transactionForm.category}
                 onSelect={(category) => setTransactionForm((form) => ({ ...form, category }))}
@@ -3610,7 +3725,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
           </form>
           <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök transaktion..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option>Alla</option>{data.categories.map((category) => <option key={category}>{category}</option>)}</select></div>
-          <div className="data-table">{filteredTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={new Date(item.date).toLocaleDateString("sv-SE")}/></span></span><strong className={item.type === "income" ? "plus" : "minus"}>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <div className="data-table">{filteredTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={data.categoryDetails}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={new Date(item.date).toLocaleDateString("sv-SE")} categoryDetails={data.categoryDetails}/></span></span><strong className={item.type === "income" ? "plus" : "minus"}>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
@@ -3631,7 +3746,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </button>
           </article>
           <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök fria köp..." value={search} onChange={(event) => setSearch(event.target.value)} /></label></div>
-          <div className="data-table">{freePurchaseTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={`fria pengar · ${new Date(item.date).toLocaleDateString("sv-SE")}`}/></span></span><strong className="minus">-{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <div className="data-table">{freePurchaseTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={data.categoryDetails}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={`fria pengar · ${new Date(item.date).toLocaleDateString("sv-SE")}`} categoryDetails={data.categoryDetails}/></span></span><strong className="minus">-{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
@@ -3648,14 +3763,46 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "categories" && (
         <SectionPanel title="Kategorier" description="Skapa och välj egna kategorier.">
-          <form className="management-form" onSubmit={addCategory}><input placeholder="Ny kategori, t.ex. Hund" value={categoryName} onChange={(event) => setCategoryName(event.target.value)}/><button type="submit"><Plus size={16}/> Lägg till kategori</button></form>
+          <form className="category-builder panel" onSubmit={addCategory}>
+            <div className="category-builder-heading">
+              <span>Ny kategori</span>
+              <b>Välj namn, ikon och färg</b>
+              <small>Det du väljer visas sedan i köp, transaktioner och kategoriöversikten.</small>
+            </div>
+            <input placeholder="Ny kategori, t.ex. Hund" value={categoryName} onChange={(event) => setCategoryName(event.target.value)}/>
+            <div className="category-icon-grid" aria-label="Välj ikon">
+              {categoryIconOptions.map(({ id, label, Icon }) => (
+                <button className={categoryIcon === id ? "selected" : ""} key={id} onClick={() => setCategoryIcon(id)} type="button">
+                  <Icon size={20}/>
+                  <small>{label}</small>
+                </button>
+              ))}
+            </div>
+            <div className="category-color-grid" aria-label="Välj färg">
+              {categoryAccentOptions.map((color) => (
+                <button
+                  aria-label={`Välj färg ${color}`}
+                  className={categoryColor === color ? "selected" : ""}
+                  key={color}
+                  onClick={() => setCategoryColor(color)}
+                  style={{ "--category-color": color } as CSSProperties}
+                  type="button"
+                />
+              ))}
+            </div>
+            <button type="submit"><Plus size={16}/> Lägg till kategori</button>
+          </form>
           <div className="chip-grid category-chip-grid">
             {data.categories.map((category) => {
               const isLocked = lockedCategories.includes(category as (typeof lockedCategories)[number]);
+              const detail = getCategoryDetail(category, data.categoryDetails);
 
               return (
-                <div className="category-chip" key={category} style={{ borderColor: categoryColors[category] ?? "#334155" }}>
-                  <button className="category-chip-main" onClick={() => { setTransactionForm((form) => ({ ...form, category })); onNavigate("overview"); }} type="button">{category}</button>
+                <div className="category-chip" key={category} style={{ borderColor: detail.color }}>
+                  <button className="category-chip-main" onClick={() => { setTransactionForm((form) => ({ ...form, category })); onNavigate("overview"); }} type="button">
+                    <CategoryIconBadge category={category} categoryDetails={data.categoryDetails} className="category-chip-icon" size={18} />
+                    <span>{category}</span>
+                  </button>
                   {!isLocked && (
                     <button className="category-chip-delete" aria-label={`Radera ${category}`} onClick={() => removeCategory(category)} type="button">
                       <Trash2 size={14}/>

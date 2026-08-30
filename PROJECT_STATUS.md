@@ -2292,3 +2292,7 @@ Aktiv navigation och huvudappen är fortsatt hash-baserad via `app/page.tsx`, `S
 ### Kategorival för köp förbättrat 2026-08-30
 
 Köpformulären i Översikten och Transaktioner använder nu tryckbara kategorikort för utgifter i stället för en scrollig kategoridropdown. Korten återanvänder befintliga kategorier, budgetrader och transaktionsstate, så ingen ny databaslogik eller ekonomilogik lades till.
+
+### Egna kategoriikoner och färger 2026-08-30
+
+Kategorier kan nu skapas med valt ikon- och färgtema. Appen återanvänder Supabase-fälten `icon` och `color` i `categories` och visar metadata i kategoriväljaren, kategoriöversikten och transaktionsraderna. Ingen ny databasstruktur eller ekonomilogik lades till.
