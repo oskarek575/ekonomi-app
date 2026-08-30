@@ -2284,3 +2284,7 @@ Följande bevisat oanvända/legacy-delar har tagits bort utan att ändra kärnfl
 - gamla `app/types/database.ts`, efter att inga imports fanns kvar till filen
 
 Aktiv navigation och huvudappen är fortsatt hash-baserad via `app/page.tsx`, `Sidebar.tsx` och `Dashboard.tsx`. Dolda men fortfarande renderbara funktioner i huvud-Dashboard, exempelvis mål/sparkonton/lån/AI insights/rapporter/admin/support, har inte raderats i denna cleanup.
+
+### Översiktsdiagram återlagt 2026-08-30
+
+Översikten visar åter en mobilvänlig ruta med cirkeldiagram för utgifter per kategori. Rutan återanvänder befintlig `expensesByCategory` och `donutGradient` i `Dashboard.tsx`, så ingen ny ekonomilogik eller databaslogik lades till.

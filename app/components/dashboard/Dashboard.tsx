@@ -3459,6 +3459,28 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
           <OverviewInfoNotice />
 
+          <section className="mobile-overview-category panel">
+            <CardTitle>Utgifter per kategori</CardTitle>
+            {expensesByCategory.length ? (
+              <div className="report-category-body">
+                <div className="donut" style={{ background: donutGradient }}>
+                  <div><strong>{kr(expenses)}</strong><span>Totala utgifter</span></div>
+                </div>
+                <div className="category-list">
+                  {expensesByCategory.slice(0, 5).map((item) => (
+                    <button className="category-item" key={item.category} onClick={() => { setCategoryFilter(item.category); onNavigate("transactions"); }} type="button">
+                      <i style={{ background: item.color }} />
+                      <span>{item.category}</span>
+                      <b>{kr(item.sum)}</b>
+                      <small>{item.pct}%</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : <EmptyState text="Inga utgifter att visa ännu." />}
+            <button className="wide-button" onClick={() => onNavigate("categories")} type="button">Visa alla kategorier <ArrowRight size={15}/></button>
+          </section>
+
           <section className="mobile-overview-quick" aria-label="Snabbvy">
             <h2>Snabbvy</h2>
             <button onClick={() => { setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button">
