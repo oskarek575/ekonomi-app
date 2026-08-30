@@ -2271,3 +2271,16 @@ Största riskerna:
 8. Ta bort legacy routes om produktbeslutet är taget.
 9. Konsolidera affärslogik försiktigt.
 10. Designa eventuell ny modell för engångs-planerade transaktioner.
+
+### Cleanup genomförd 2026-08-30
+
+Följande bevisat oanvända/legacy-delar har tagits bort utan att ändra kärnflödet i `app/page.tsx` + `Dashboard.tsx`:
+
+- gammal dashboard-hook: `app/Hooks/useDashboard.ts`
+- gamla dashboard-subkomponenter under `app/components/dashboard/actions`, `cards`, `lists` och `overview`
+- gamla separata App Router-sidor: `/budgets`, `/categories`, `/purchases`, `/settings`, `/subscriptions`
+- gamla modal/list-komponenter under `app/components/budgets`, `categories`, `purchases` och `subscriptions`
+- legacy-API-hjälpen `generateSubscriptionsForCurrentMonth`, som bara användes av den borttagna `/subscriptions`-routen
+- gamla `app/types/database.ts`, efter att inga imports fanns kvar till filen
+
+Aktiv navigation och huvudappen är fortsatt hash-baserad via `app/page.tsx`, `Sidebar.tsx` och `Dashboard.tsx`. Dolda men fortfarande renderbara funktioner i huvud-Dashboard, exempelvis mål/sparkonton/lån/AI insights/rapporter/admin/support, har inte raderats i denna cleanup.
