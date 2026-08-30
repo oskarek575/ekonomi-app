@@ -3318,7 +3318,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       return;
     }
 
-    onNavigate("freePurchases");
+    setCategoryFilter("Alla");
+    onNavigate("transactions");
   }
 
   function startFreePurchase(title = "") {
@@ -3677,7 +3678,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <button onClick={() => { setCategoryFilter("Lön"); onNavigate("transactions"); }} type="button"><ArrowDownToLine size={22}/><span>Inkomst</span><b>{kr(income)}</b></button>
             <button onClick={() => { setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button"><ArrowUpRight size={22}/><span>Utgifter</span><b>{kr(expenses)}</b></button>
             <button onClick={() => onNavigate("budgets")} type="button"><WalletCards size={22}/><span>Reserverat kvar</span><b>{kr(reservedRemaining)}</b></button>
-            <button onClick={() => onNavigate("freePurchases")} type="button"><PiggyBank size={22}/><span>Fritt idag</span><b>{kr(freeMoneyPerDay)}</b></button>
+            <button onClick={() => { setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button"><PiggyBank size={22}/><span>Fritt idag</span><b>{kr(freeMoneyPerDay)}</b></button>
           </section>
 
           <OverviewInfoNotice />

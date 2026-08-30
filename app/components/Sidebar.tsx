@@ -21,7 +21,6 @@ export type AppSection =
 
 const links = [
   ["Översikt", "overview", LayoutDashboard],
-  ["Fria pengar", "freePurchases", CircleDollarSign],
   ["Transaktioner", "transactions", CreditCard],
   ["Budget", "budgets", WalletCards],
   ["Fasta utgifter", "subscriptions", BellRing],
