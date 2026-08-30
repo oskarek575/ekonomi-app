@@ -2296,3 +2296,7 @@ Köpformulären i Översikten och Transaktioner använder nu tryckbara kategorik
 ### Egna kategoriikoner och färger 2026-08-30
 
 Kategorier kan nu skapas med valt ikon- och färgtema. Appen återanvänder Supabase-fälten `icon` och `color` i `categories` och visar metadata i kategoriväljaren, kategoriöversikten och transaktionsraderna. Ingen ny databasstruktur eller ekonomilogik lades till.
+
+### Transaktionsform och kategorirapport justerad 2026-08-30
+
+Transaktioner-sidan har nu ett hopfällbart formulär så kategori-korten inte gör sidan onödigt lång. Cirkeldiagrammet för utgifter per kategori är borttaget från Översikten och ligger i stället på Rapporter-sidan, som åter är synlig i navigationen. Egna kategorier kan raderas direkt via soptunnan; låsta systemkategorier skyddas fortfarande.

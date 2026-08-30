@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  BellRing, Boxes, ChevronDown, CircleDollarSign,
+  Activity, BellRing, Boxes, ChevronDown, CircleDollarSign,
   CreditCard, Crown, LayoutDashboard, Plane, Settings, WalletCards,
 } from "lucide-react";
 
@@ -27,6 +27,7 @@ const links = [
   ["Fasta utgifter", "subscriptions", BellRing],
   ["Resebudget", "travel", Plane],
   ["Kategorier", "categories", Boxes],
+  ["Rapporter", "reports", Activity],
   ["Inställningar", "settings", Settings],
 ] as const;
 
