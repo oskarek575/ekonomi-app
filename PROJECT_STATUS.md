@@ -2288,3 +2288,7 @@ Aktiv navigation och huvudappen är fortsatt hash-baserad via `app/page.tsx`, `S
 ### Översiktsdiagram återlagt 2026-08-30
 
 Översikten visar åter en mobilvänlig ruta med cirkeldiagram för utgifter per kategori. Rutan återanvänder befintlig `expensesByCategory` och `donutGradient` i `Dashboard.tsx`, så ingen ny ekonomilogik eller databaslogik lades till.
+
+### Kategorival för köp förbättrat 2026-08-30
+
+Köpformulären i Översikten och Transaktioner använder nu tryckbara kategorikort för utgifter i stället för en scrollig kategoridropdown. Korten återanvänder befintliga kategorier, budgetrader och transaktionsstate, så ingen ny databaslogik eller ekonomilogik lades till.
