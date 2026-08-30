@@ -2300,3 +2300,7 @@ Kategorier kan nu skapas med valt ikon- och färgtema. Appen återanvänder Supa
 ### Transaktionsform och kategorirapport justerad 2026-08-30
 
 Transaktioner-sidan har nu ett hopfällbart formulär så kategori-korten inte gör sidan onödigt lång. Cirkeldiagrammet för utgifter per kategori är borttaget från Översikten och ligger i stället på Rapporter-sidan, som åter är synlig i navigationen. Egna kategorier kan raderas direkt via soptunnan; låsta systemkategorier skyddas fortfarande.
+
+### Kategoriväljare justerad 2026-08-30
+
+Transaktionsformuläret är åter fast synligt. Endast kategorifältet kan fällas ut, och den öppna kategorilistan har egen scroll-yta med begränsad höjd så mobilscroll inte lika lätt flyttar hela sidan.

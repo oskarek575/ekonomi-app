@@ -928,6 +928,62 @@ function TransactionCategoryPicker({
   );
 }
 
+function TransactionCategoryField({
+  categories,
+  selectedCategory,
+  categoryDetails,
+  budgetRows,
+  expanded,
+  onToggle,
+  onSelect,
+}: {
+  categories: string[];
+  selectedCategory: string;
+  categoryDetails?: Record<string, CategoryDetail>;
+  budgetRows: { category: string; remaining: number; overspent: number }[];
+  expanded: boolean;
+  onToggle: () => void;
+  onSelect: (category: string) => void;
+}) {
+  const selectedBudget = budgetRows.find((row) => row.category === selectedCategory);
+  const selectedDetail = selectedBudget
+    ? selectedBudget.overspent > 0
+      ? `${kr(selectedBudget.overspent)} över budget`
+      : `${kr(selectedBudget.remaining)} kvar`
+    : "Dras från fria pengar";
+
+  return (
+    <div className="transaction-category-field">
+      <button
+        className="category-picker-toggle"
+        onClick={onToggle}
+        type="button"
+        aria-expanded={expanded}
+      >
+        <CategoryIconBadge category={selectedCategory} categoryDetails={categoryDetails} className="category-choice-icon" size={18} />
+        <span>
+          <small>Kategori</small>
+          <b>{selectedCategory}</b>
+          <em>{selectedDetail}</em>
+        </span>
+        <ChevronDown size={18}/>
+      </button>
+      {expanded && (
+        <TransactionCategoryPicker
+          budgetRows={budgetRows}
+          categoryDetails={categoryDetails}
+          categories={categories}
+          selectedCategory={selectedCategory}
+          onSelect={(category) => {
+            onSelect(category);
+            onToggle();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 function EmptyState({ text }: { text: string }) {
   return <div className="empty-state">{text}</div>;
 }
@@ -989,7 +1045,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [notice, setNotice] = useState("Klart! Din ekonomi är uppdaterad.");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("Alla");
-  const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [showTransactionCategories, setShowTransactionCategories] = useState(false);
   const [transactionForm, setTransactionForm] = useState({
     title: "",
     amount: "",
@@ -1770,14 +1826,14 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       }
 
       setTransactionForm((form) => ({ ...form, title: "", amount: "" }));
-      setShowTransactionForm(false);
+      setShowTransactionCategories(false);
     } finally {
       setSubmittingAction("");
     }
   }
 
   function editTransaction(transaction: Transaction) {
-    setShowTransactionForm(true);
+    setShowTransactionCategories(false);
     setEditingTransactionId(transaction.id);
     setTransactionForm({
       title: transaction.title,
@@ -1794,7 +1850,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   function cancelTransactionEdit() {
     setEditingTransactionId(null);
     setTransactionForm((form) => ({ ...form, title: "", amount: "" }));
-    setShowTransactionForm(false);
+    setShowTransactionCategories(false);
     show("Redigering avbruten.");
   }
 
@@ -3266,7 +3322,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   function startFreePurchase(title = "") {
-    setShowTransactionForm(true);
+    setShowTransactionCategories(false);
     setTransactionForm((form) => ({
       ...form,
       title,
@@ -3578,11 +3634,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <input placeholder={transactionForm.type === "income" ? "Ex. Lön" : "Ex. ICA Kvantum"} value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value }))} />
               <input inputMode="decimal" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value }))} />
               {transactionForm.type === "expense" ? (
-                <TransactionCategoryPicker
+                <TransactionCategoryField
                   budgetRows={budgetRows}
                   categoryDetails={data.categoryDetails}
                   categories={transactionCategories}
+                  expanded={showTransactionCategories}
                   selectedCategory={transactionForm.category}
+                  onToggle={() => setShowTransactionCategories((value) => !value)}
                   onSelect={(category) => setTransactionForm((form) => ({ ...form, category }))}
                 />
               ) : (
@@ -3668,17 +3726,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "transactions" && (
         <SectionPanel title="Transaktioner" description="Lägg till alla köp och inkomster här. Appen avgör automatiskt om köpet går mot en budget eller fria pengar.">
-          <button
-            className="collapse-toggle transaction-form-toggle"
-            onClick={() => setShowTransactionForm((value) => !value)}
-            type="button"
-            aria-expanded={showTransactionForm}
-          >
-            <span><b>{editingTransactionId ? "Redigera transaktion" : "Nytt köp eller inkomst"}</b><small>{showTransactionForm ? "Dölj formuläret" : "Tryck för att lägga till eller ändra en transaktion"}</small></span>
-            <ChevronDown size={18}/>
-          </button>
-          {showTransactionForm && (
-            <form className="management-form purchase-form compact-transaction-form" onSubmit={addTransaction}>
+          <form className="management-form purchase-form compact-transaction-form" onSubmit={addTransaction}>
               <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: "budget", category: event.target.value === "income" ? "Lön" : "Mat & Livsmedel" }))}>
                 <option value="expense">Köp / utgift</option>
                 <option value="income">Inkomst</option>
@@ -3686,11 +3734,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <input placeholder={transactionForm.type === "income" ? "Ex. Lön" : "Ex. Willys"} value={transactionForm.title} onChange={(event) => setTransactionForm((form) => ({ ...form, title: event.target.value }))} />
               <input inputMode="decimal" placeholder="Belopp" value={transactionForm.amount} onChange={(event) => setTransactionForm((form) => ({ ...form, amount: event.target.value }))} />
               {transactionForm.type === "expense" ? (
-                <TransactionCategoryPicker
+                <TransactionCategoryField
                   budgetRows={budgetRows}
                   categoryDetails={data.categoryDetails}
                   categories={transactionCategories}
+                  expanded={showTransactionCategories}
                   selectedCategory={transactionForm.category}
+                  onToggle={() => setShowTransactionCategories((value) => !value)}
                   onSelect={(category) => setTransactionForm((form) => ({ ...form, category }))}
                 />
               ) : (
@@ -3703,7 +3753,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <button disabled={submittingAction === "transaction"} type="submit"><Plus size={16}/> {submittingAction === "transaction" ? "Sparar..." : editingTransactionId ? "Spara ändring" : "Skapa köp"}</button>
               {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
             </form>
-          )}
           <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök transaktion..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option>Alla</option>{data.categories.map((category) => <option key={category}>{category}</option>)}</select></div>
           <div className="data-table">{filteredTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={data.categoryDetails}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={new Date(item.date).toLocaleDateString("sv-SE")} categoryDetails={data.categoryDetails}/></span></span><strong className={item.type === "income" ? "plus" : "minus"}>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
@@ -3721,7 +3770,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <b>Lägg in nya köp under Transaktioner</b>
               <small>Välj en kategori med budget så räknas köpet mot budgeten. Välj en kategori utan budget så dras det från fria pengar.</small>
             </div>
-            <button onClick={() => { setTransactionForm((form) => ({ ...form, type: "expense", category: form.category === "Lön" ? "Fria köp" : form.category })); setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button">
+            <button onClick={() => { setShowTransactionCategories(false); setTransactionForm((form) => ({ ...form, type: "expense", category: form.category === "Lön" ? "Fria köp" : form.category })); setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button">
               <Plus size={16}/> Lägg till köp
             </button>
           </article>
