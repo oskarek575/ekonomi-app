@@ -1108,6 +1108,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [lastLocalSave, setLastLocalSave] = useState<string | null>(null);
   const [showBalanceAnalysis, setShowBalanceAnalysis] = useState(false);
   const [showFreeMoneyDetails, setShowFreeMoneyDetails] = useState(false);
+  const [confirmedDuplicateTransactionKey, setConfirmedDuplicateTransactionKey] = useState("");
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [onboardingForm, setOnboardingForm] = useState({
     income: "",
@@ -1530,6 +1531,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     reservedBudgetTotal,
     scheduledSubscriptions,
     fixedExpenseTotal,
+    fixedExpenseRemaining,
     reservedRemaining,
     missingPostedSubscriptions,
     missingPostedFixedExpenses,
@@ -1551,11 +1553,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const linkedGoalSavingsIds = new Set(data.goals
     .map((goal) => findLinkedSavingsForGoal(goal, data.savings)?.id)
     .filter(Boolean));
-  const manualGoalsSaved = data.goals.reduce((sum, goal) => {
-    const linkedSaving = findLinkedSavingsForGoal(goal, data.savings);
-
-    return sum + (linkedSaving ? 0 : goal.saved);
-  }, 0);
   const standaloneSavingsTotal = data.savings
     .filter((saving) => !linkedGoalSavingsIds.has(saving.id))
     .reduce((sum, saving) => sum + saving.amount, 0);
@@ -1620,6 +1617,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ? `Budgeterad kategori. ${kr(transactionOverBudgetPreview)} över budget dras från fria pengar.`
         : "Budgeterad kategori. Köpet minskar budgetens kvar-belopp."
       : "Ingen budget finns för kategorin, så köpet dras från fria pengar.";
+  const moneyStory = `Du har ${kr(freeMoney)} fria pengar eftersom ${kr(reservedTotal)} redan är reserverat och ${kr(freePurchaseSpent)} är använt som fria köp.`;
 
   const expensesByCategory = data.categories
     .filter((category) => category !== "Lön")
@@ -1692,6 +1690,25 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     lastSubmitRef.current = { key, at: now };
     return false;
+  }
+
+  function getTransactionDuplicateKey(transaction: Pick<Transaction, "title" | "amount" | "category" | "type" | "date">) {
+    return [
+      normalizeCategory(transaction.title),
+      transaction.amount,
+      normalizeCategory(transaction.category),
+      transaction.type,
+      transaction.date,
+    ].join("|");
+  }
+
+  function hasMatchingTransaction(transaction: Pick<Transaction, "title" | "amount" | "category" | "type" | "date">) {
+    const key = getTransactionDuplicateKey(transaction);
+
+    return data.transactions.some((item) =>
+      item.id !== editingTransactionId
+      && getTransactionDuplicateKey(item) === key
+    );
   }
 
   function scrollToEditor(ref: { current: HTMLFormElement | null }) {
@@ -1771,6 +1788,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         source: transactionForm.type === "expense" ? expenseSource : undefined,
         date: transactionForm.date,
       };
+      const duplicateKey = getTransactionDuplicateKey(transaction);
+
+      if (!editingTransactionId && hasMatchingTransaction(transaction) && confirmedDuplicateTransactionKey !== duplicateKey) {
+        setConfirmedDuplicateTransactionKey(duplicateKey);
+        show("Det här ser ut som en transaktion som redan finns. Tryck på spara igen om det stämmer att den ska läggas in ändå.");
+        return;
+      }
+
+      setConfirmedDuplicateTransactionKey("");
 
       if (editingTransactionId) {
         const previousTransaction = data.transactions.find((item) => item.id === editingTransactionId) ?? null;
@@ -3747,12 +3773,19 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </div>
 
             <div className="right-stack">
-              <InsightsPanel insights={topInsights} onNavigate={onNavigate} affordabilityForm={affordabilityForm} onAffordabilityChange={setAffordabilityForm} affordabilityResult={affordabilityResult} />
+              <PeriodCoachPanel
+                budgetRows={budgetRows}
+                fixedExpenseRemaining={fixedExpenseRemaining}
+                freeMoneyPerDay={freeMoneyPerDay}
+                moneyStory={moneyStory}
+                nextSubscription={nextActiveSubscription}
+                onNavigate={onNavigate}
+                remainingDays={remainingDays}
+                reservedRemaining={reservedRemaining}
+              />
               <SubscriptionsPanel subscriptions={scheduledSubscriptions} onNavigate={onNavigate} onGenerate={createSubscriptionExpenses} onEdit={editSubscription} onToggle={toggleSubscription} onRemove={removeSubscription} />
             </div>
           </section>
-
-          <GoalPanel goals={data.goals} savings={data.savings} savingsTotal={savingsTotal} manualGoalsSaved={manualGoalsSaved} goalsTargetTotal={goalsTargetTotal} goalSavedTotal={goalSavedTotal} goalProgress={goalProgress} onNavigate={onNavigate} />
         </>
       )}
 
@@ -4860,6 +4893,70 @@ function InsightsPanel({
   );
 }
 
+function PeriodCoachPanel({
+  budgetRows,
+  fixedExpenseRemaining,
+  freeMoneyPerDay,
+  moneyStory,
+  nextSubscription,
+  onNavigate,
+  remainingDays,
+  reservedRemaining,
+}: {
+  budgetRows: { category: string; limit: number; remaining: number; overspent: number }[];
+  fixedExpenseRemaining: number;
+  freeMoneyPerDay: number;
+  moneyStory: string;
+  nextSubscription?: (Subscription & { nextDueDate?: string | null }) | null;
+  onNavigate: (section: AppSection) => void;
+  remainingDays: number;
+  reservedRemaining: number;
+}) {
+  const watchedBudgets = budgetRows
+    .filter((budget) => budget.limit > 0)
+    .filter((budget) => budget.overspent > 0 || budget.remaining / budget.limit <= 0.25)
+    .slice(0, 3);
+
+  return (
+    <article className="panel period-coach-panel">
+      <CardTitle>Så ligger du till</CardTitle>
+      <div className="period-coach-story">
+        <b>{kr(freeMoneyPerDay)} per dag</b>
+        <small>{moneyStory} Det är {remainingDays} dagar kvar i perioden.</small>
+      </div>
+      <div className="period-coach-grid">
+        <button onClick={() => onNavigate("budgets")} type="button">
+          <WalletCards size={18}/>
+          <span><b>{kr(reservedRemaining)}</b><small>Pengar med jobb kvar</small></span>
+        </button>
+        <button onClick={() => onNavigate("subscriptions")} type="button">
+          <Bell size={18}/>
+          <span>
+            <b>{nextSubscription ? kr(nextSubscription.amount) : "0 kr"}</b>
+            <small>{nextSubscription?.nextDueDate ? `Nästa dragning ${new Date(`${nextSubscription.nextDueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : "Ingen kommande dragning"}</small>
+          </span>
+        </button>
+        <button onClick={() => onNavigate("subscriptions")} type="button">
+          <Receipt size={18}/>
+          <span><b>{kr(fixedExpenseRemaining)}</b><small>Fasta utgifter kvar att bokföra</small></span>
+        </button>
+      </div>
+      <div className="period-coach-list">
+        <span>Budgetar att hålla koll på</span>
+        {watchedBudgets.length ? watchedBudgets.map((budget) => (
+          <button key={budget.category} onClick={() => onNavigate("budgets")} type="button">
+            <b>{budget.category}</b>
+            <small>{budget.overspent > 0 ? `${kr(budget.overspent)} över budget` : `${kr(budget.remaining)} kvar`}</small>
+          </button>
+        )) : (
+          <p>Inga budgetar sticker ut just nu. Snyggt.</p>
+        )}
+      </div>
+      <button className="wide-button" onClick={() => onNavigate("transactions")} type="button">Lägg till eller granska köp <ArrowRight size={15}/></button>
+    </article>
+  );
+}
+
 function SubscriptionsPanel({
   subscriptions,
   onNavigate,
@@ -4896,90 +4993,5 @@ function SubscriptionsPanel({
       ))}</div>
       <button className="wide-button" onClick={onGenerate} type="button">Skapa utgifter <ArrowRight size={15}/></button>
     </article>
-  );
-}
-
-function GoalPanel({
-  goals,
-  savings,
-  savingsTotal,
-  manualGoalsSaved,
-  goalsTargetTotal,
-  goalSavedTotal,
-  goalProgress,
-  onNavigate,
-  onEditGoal,
-  onRemoveGoal,
-  onEditSavings,
-  onRemoveSavings,
-  showSavingsDetails = false,
-}: {
-  goals: Goal[];
-  savings: SavingsAccount[];
-  savingsTotal: number;
-  manualGoalsSaved: number;
-  goalsTargetTotal: number;
-  goalSavedTotal: number;
-  goalProgress: number;
-  onNavigate: (section: AppSection) => void;
-  onEditGoal?: (goal: Goal) => void;
-  onRemoveGoal?: (id: string) => void;
-  onEditSavings?: (saving: SavingsAccount) => void;
-  onRemoveSavings?: (id: string) => void;
-  showSavingsDetails?: boolean;
-}) {
-  return (
-    <section className="goal-card panel">
-      <div className="goal-copy">
-        <h3>Dina mål</h3>
-        <b>{goals.length ? `${goals.length} aktiva mål` : "Inga mål ännu"}</b>
-        <strong>{goalProgress}%</strong>
-        <span>{kr(goalSavedTotal)} av {kr(goalsTargetTotal)}</span>
-        <div className="goal-progress"><i style={{ width: `${goalProgress}%` }}/></div>
-        <div className="savings-summary">
-          <span><b>{kr(manualGoalsSaved)}</b><small>Manuellt sparat</small></span>
-          <span><b>{kr(savingsTotal)}</b><small>Sparkonton</small></span>
-        </div>
-        <div className="goals-list">
-          {goals.length ? goals.map((goal) => {
-            const savedAmount = getGoalDisplaySavedAmount(goal, goals, savings);
-            const linkedSaving = findLinkedSavingsForGoal(goal, savings);
-            const usesSavingsPool = !linkedSaving && goals.length === 1 && savings.length > 0;
-            const progress = goal.target ? Math.min(100, Math.round((savedAmount / goal.target) * 100)) : 0;
-
-            return (
-              <div className="goal-row" key={goal.id}>
-                <span><b>{goal.title}</b><small>{kr(savedAmount)} av {kr(goal.target)}{linkedSaving || usesSavingsPool ? " · kopplat" : ""}</small></span>
-                <div className="mini-progress"><i style={{ width: `${progress}%` }}/></div>
-                <strong>{progress}%</strong>
-                {showSavingsDetails && (
-                  <span className="row-actions">
-                    {onEditGoal && <button onClick={() => onEditGoal(goal)} type="button">Redigera</button>}
-                    {onRemoveGoal && <button onClick={() => onRemoveGoal(goal.id)} type="button"><Trash2 size={14}/></button>}
-                  </span>
-                )}
-              </div>
-            );
-          }) : <EmptyState text="Skapa ditt första mål ovanför." />}
-        </div>
-        {showSavingsDetails && (
-          <div className="savings-list">
-            {savings.length ? savings.map((saving) => (
-              <div className="savings-row" key={saving.id}>
-                <span><b>{saving.name}</b><small>Kategori skapad</small></span>
-                <strong>{kr(saving.amount)}</strong>
-                <span className="row-actions">
-                  {onEditSavings && <button onClick={() => onEditSavings(saving)} type="button">Redigera</button>}
-                  {onRemoveSavings && <button onClick={() => onRemoveSavings(saving.id)} type="button"><Trash2 size={14}/></button>}
-                </span>
-              </div>
-            )) : <EmptyState text="Inga sparkonton ännu. Lägg till ett ovanför." />}
-          </div>
-        )}
-        <p>Du är på god väg! Fortsätt spara för att nå ditt mål.</p>
-        <button className="inline-link" onClick={() => onNavigate("goals")} type="button">Ändra sparmål</button>
-      </div>
-      <button className="goal-image" onClick={() => onNavigate("goals")} type="button"><span><Crosshair size={27}/></span></button>
-    </section>
   );
 }

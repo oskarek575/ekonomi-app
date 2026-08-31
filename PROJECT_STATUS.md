@@ -2316,3 +2316,7 @@ Appens automatiska val av aktuell löneperiod använder nu `getCurrentFinancialM
 ### Fria pengar och köpflöde förtydligat 2026-08-31
 
 Översikten visar nu löneperiodens namn tillsammans med datumintervallet, en hopfällbar “Varför har jag fria pengar?”-förklaring samt tydligare köp-hintar som visar om vald kategori går mot budget eller dras från fria pengar. Själva ekonomiberäkningen ändrades inte.
+
+### Översikt polerad mot kärnflödet 2026-08-31
+
+Översikten har fått en mer fokuserad periodcoach med fritt per dag, pengar med jobb, nästa dragning och budgetar som behöver uppmärksamhet. AI- och målsektionerna finns kvar i kod/rendering men visas inte längre som dominerande widgets på startsidan. Transaktionsflödet har fått ett mjukt dublettskydd där en misstänkt identisk transaktion kräver ett extra spar-klick.
