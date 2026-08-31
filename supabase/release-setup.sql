@@ -77,6 +77,9 @@ alter table if exists public.profile
 alter table if exists public.profile
   add column if not exists created_at timestamptz not null default now();
 
+alter table if exists public.profile
+  add column if not exists last_seen_at timestamptz;
+
 alter table if exists public.savings_accounts
   drop constraint if exists savings_accounts_name_key;
 
@@ -300,6 +303,7 @@ create index if not exists subscriptions_user_day_idx on public.subscriptions (u
 create index if not exists goals_user_created_idx on public.goals (user_id, created_at);
 create index if not exists savings_accounts_user_id_idx on public.savings_accounts (user_id);
 create index if not exists profile_user_id_idx on public.profile (user_id);
+create index if not exists profile_last_seen_idx on public.profile (last_seen_at desc);
 create index if not exists travel_budgets_user_id_idx on public.travel_budgets (user_id);
 create index if not exists travel_purchases_user_id_idx on public.travel_purchases (user_id);
 

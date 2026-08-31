@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
 const fallbackAdminEmails = ["oskarek575@gmail.com"];
@@ -16,6 +16,12 @@ const appTables = [
   "feedback",
 ] as const;
 
+type ProfileActivityRow = {
+  user_id?: string | null;
+  full_name?: string | null;
+  last_seen_at?: string | null;
+};
+
 function getAdminEmails() {
   const configuredEmails = process.env.NEXT_PUBLIC_BETA_ADMIN_EMAILS?.split(",")
     .map((email) => email.trim().toLowerCase())
@@ -29,6 +35,10 @@ function daysAgo(days: number) {
   date.setDate(date.getDate() - days);
 
   return date.toISOString();
+}
+
+function getTime(value?: string | null) {
+  return value ? new Date(value).getTime() : 0;
 }
 
 async function getSafeCount(
@@ -119,7 +129,7 @@ export async function GET(request: Request) {
       persistSession: false,
     },
   });
-  const users = [];
+  const users: User[] = [];
   let page = 1;
 
   while (page <= 20) {
@@ -134,8 +144,17 @@ export async function GET(request: Request) {
 
   const now = Date.now();
   const thirtyDaysAgo = daysAgo(30);
-  const active7Users = users.filter((user) => user.last_sign_in_at && new Date(user.last_sign_in_at).getTime() >= now - 7 * 24 * 60 * 60 * 1000);
-  const active30Users = users.filter((user) => user.last_sign_in_at && new Date(user.last_sign_in_at).getTime() >= now - 30 * 24 * 60 * 60 * 1000);
+  const profileRows = await getSafeRows(adminClient, "profile", "user_id, full_name, last_seen_at") as ProfileActivityRow[];
+  const profileByUserId = new Map(
+    profileRows
+      .filter((profile) => profile.user_id)
+      .map((profile) => [profile.user_id as string, profile])
+  );
+  const getUserLastSeenAt = (user: typeof users[number]) =>
+    profileByUserId.get(user.id)?.last_seen_at ?? user.last_sign_in_at ?? null;
+
+  const active7Users = users.filter((user) => getTime(getUserLastSeenAt(user)) >= now - 7 * 24 * 60 * 60 * 1000);
+  const active30Users = users.filter((user) => getTime(getUserLastSeenAt(user)) >= now - 30 * 24 * 60 * 60 * 1000);
   const new30Users = users.filter((user) => user.created_at && new Date(user.created_at).getTime() >= now - 30 * 24 * 60 * 60 * 1000);
 
   const [openTickets, totalTickets, rowsByTable] = await Promise.all([
@@ -179,14 +198,24 @@ export async function GET(request: Request) {
       total: totalTickets ?? 0,
     },
     recentUsers: users
-      .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+      .sort((a, b) => {
+        const activityDiff = getTime(getUserLastSeenAt(b)) - getTime(getUserLastSeenAt(a));
+        if (activityDiff !== 0) return activityDiff;
+
+        return getTime(b.created_at) - getTime(a.created_at);
+      })
       .slice(0, 8)
-      .map((user) => ({
-        id: user.id,
-        email: user.email,
-        name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
-        createdAt: user.created_at,
-        lastSignInAt: user.last_sign_in_at,
-      })),
+      .map((user) => {
+        const profile = profileByUserId.get(user.id);
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: profile?.full_name ?? user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+          createdAt: user.created_at,
+          lastSeenAt: profile?.last_seen_at ?? null,
+          lastSignInAt: user.last_sign_in_at,
+        };
+      }),
   });
 }

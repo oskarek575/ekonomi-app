@@ -55,6 +55,7 @@ import {
   updateProfileName,
   updateOpeningBalance,
   updateFeedbackStatus,
+  updateLastSeenAt,
   updateSubscription as updateRemoteSubscription,
   updateTravelBudget as updateRemoteTravelBudget,
 } from "../../lib/api";
@@ -276,6 +277,7 @@ type LayoutTheme = "blue" | "green" | "purple" | "rose" | "orange";
 const storageKey = "oskars-ekonomi-v2";
 const themeStorageKey = "oskars-ekonomi-theme";
 const onboardingStorageKey = "oskars-ekonomi-onboarding";
+const lastSeenStorageKey = "oskars-ekonomi-last-seen";
 const fallbackAdminEmails = ["oskarek575@gmail.com"];
 const salaryDay = 25;
 const loanSubscriptionPlan = "Lån";
@@ -1130,6 +1132,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const userStorageKey = user ? `${storageKey}-${user.id}` : storageKey;
   const userThemeStorageKey = user ? `${themeStorageKey}-${user.id}` : themeStorageKey;
   const userOnboardingStorageKey = user ? `${onboardingStorageKey}-${user.id}` : onboardingStorageKey;
+  const userLastSeenStorageKey = user ? `${lastSeenStorageKey}-${user.id}` : lastSeenStorageKey;
   const displayName = getUserDisplayName(user);
   const greeting = getTimeGreeting();
   const initials = getInitials(displayName);
@@ -1447,6 +1450,23 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     window.localStorage.setItem(`${userStorageKey}-saved-at`, savedAt);
     setLastLocalSave(savedAt);
   }, [authLoading, data, user, userStorageKey]);
+
+  useEffect(() => {
+    if (!user || !remoteReady) return;
+
+    const now = Date.now();
+    const lastSynced = Number(window.localStorage.getItem(userLastSeenStorageKey) ?? 0);
+    const tenMinutes = 10 * 60 * 1000;
+
+    if (Number.isFinite(lastSynced) && now - lastSynced < tenMinutes) return;
+
+    window.localStorage.setItem(userLastSeenStorageKey, String(now));
+
+    updateLastSeenAt().catch((error) => {
+      console.warn("Appaktivitet kunde inte uppdateras.", error);
+      window.localStorage.removeItem(userLastSeenStorageKey);
+    });
+  }, [remoteReady, user, userLastSeenStorageKey]);
 
   useEffect(() => {
     if (!data.travelBudgets.length) {
@@ -4723,7 +4743,7 @@ function AdminOverviewPanel({
 
       <div className="admin-metric-grid">
         <div><Users size={18}/><span>Användare</span><b>{stats?.users?.total ?? "—"}</b><small>Totalt skapade konton</small></div>
-        <div><Activity size={18}/><span>Aktiva 7 dagar</span><b>{stats?.users?.active7 ?? "—"}</b><small>Senaste inloggning</small></div>
+        <div><Activity size={18}/><span>Aktiva 7 dagar</span><b>{stats?.users?.active7 ?? "—"}</b><small>Senaste appaktivitet</small></div>
         <div><Users size={18}/><span>Nya 30 dagar</span><b>{stats?.users?.new30 ?? "—"}</b><small>Nya beta-användare</small></div>
         <div><MessageSquare size={18}/><span>Support</span><b>{openTickets}</b><small>{totalTickets} ärenden totalt</small></div>
       </div>
@@ -4748,7 +4768,13 @@ function AdminOverviewPanel({
             {stats?.recentUsers?.length ? stats.recentUsers.map((recentUser) => (
               <div key={recentUser.id}>
                 <span><b>{recentUser.name || recentUser.email || "Ny användare"}</b><small>{recentUser.email ?? "Ingen e-post"}</small></span>
-                <small>{recentUser.lastSignInAt ? `Aktiv ${new Date(recentUser.lastSignInAt).toLocaleDateString("sv-SE")}` : "Inte inloggad än"}</small>
+                <small>
+                  {recentUser.lastSeenAt
+                    ? `Aktiv ${new Date(recentUser.lastSeenAt).toLocaleDateString("sv-SE")}`
+                    : recentUser.lastSignInAt
+                      ? `Inloggad ${new Date(recentUser.lastSignInAt).toLocaleDateString("sv-SE")}`
+                      : "Inte inloggad än"}
+                </small>
               </div>
             )) : <EmptyState text={loading ? "Hämtar användare..." : "Senaste konton visas när servernyckeln är konfigurerad."} />}
           </div>

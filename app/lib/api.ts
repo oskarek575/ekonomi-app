@@ -65,7 +65,8 @@ export type AdminStats = {
     email?: string;
     name?: string | null;
     createdAt?: string;
-    lastSignInAt?: string;
+    lastSeenAt?: string | null;
+    lastSignInAt?: string | null;
   }[];
 };
 
@@ -127,6 +128,7 @@ export type Profile = {
   monthly_savings: number;
   opening_balance?: number;
   full_name?: string | null;
+  last_seen_at?: string | null;
 };
 
 async function ensureProfileForUser(user: User | null, name?: string): Promise<Profile | null> {
@@ -208,6 +210,20 @@ async function ensureProfileForUserSafe(user: User | null, name?: string) {
 
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
+
+  if (error) throw error;
+}
+
+export async function updateLastSeenAt() {
+  const user = await getCurrentUser();
+  if (!user) return;
+
+  await ensureProfileForUserSafe(user);
+
+  const { error } = await supabase
+    .from("profile")
+    .update({ last_seen_at: new Date().toISOString() })
+    .eq("user_id", user.id);
 
   if (error) throw error;
 }

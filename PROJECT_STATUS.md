@@ -1,6 +1,12 @@
 # PROJECT_STATUS.md
 
-Senast uppdaterad: 2026-08-29
+Senast uppdaterad: 2026-08-31
+
+## Senaste ändring: faktisk appaktivitet i adminpanelen
+
+Adminpanelen använder nu appens egen aktivitetsmarkör `profile.last_seen_at` för att visa aktiva användare och senaste aktivitet. Klienten uppdaterar värdet sparsamt när en inloggad användare har synkat med Supabase, högst ungefär var tionde minut per enhet. Admin-API:t faller tillbaka till Supabase Auth `last_sign_in_at` om `last_seen_at` saknas.
+
+Databasändringen finns i `supabase/migrations/202608310001_add_profile_last_seen.sql` och är även inlagd i `supabase/release-setup.sql`.
 
 Det här dokumentet beskriver nuläget i repositoryt `oskars-ekonomi-app`. Det är skrivet som en teknisk handoff till en tech lead, produktarkitekt eller annan utvecklare som ska förstå projektet utan att behöva läsa hela historiken i chatten.
 
