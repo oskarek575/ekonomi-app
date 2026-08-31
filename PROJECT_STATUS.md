@@ -2312,3 +2312,7 @@ Den separata `freePurchases`-sektionen finns kvar i kod och kan nås/återaktive
 ### Löneperiod vid månadsslut fixad 2026-08-31
 
 Appens automatiska val av aktuell löneperiod använder nu `getCurrentFinancialMonth` i `finance-calculator.ts`. Fixen hindrar datum som 31 augusti från att hoppa två månader framåt när nästa månad är kortare. Regressionstest finns för 24/25/31 augusti och nästa brytdag.
+
+### Fria pengar och köpflöde förtydligat 2026-08-31
+
+Översikten visar nu löneperiodens namn tillsammans med datumintervallet, en hopfällbar “Varför har jag fria pengar?”-förklaring samt tydligare köp-hintar som visar om vald kategori går mot budget eller dras från fria pengar. Själva ekonomiberäkningen ändrades inte.

@@ -441,6 +441,10 @@ function parseMoney(value: string) {
   return Number.isFinite(amount) ? amount : NaN;
 }
 
+function capitalizeFirst(value: string) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
 function formatDateInput(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -582,6 +586,12 @@ function sourceFromRemotePurchase(
   }
 
   return purchase.kategori === "Fria köp" || (budgetCategorySet && !budgetCategorySet.has(normalizeCategory(purchase.kategori)))
+    ? "free"
+    : "budget";
+}
+
+function getExpenseSourceForCategory(category: string, budgetCategorySet: Set<string>): PurchaseSource {
+  return category === "Fria köp" || !budgetCategorySet.has(normalizeCategory(category))
     ? "free"
     : "budget";
 }
@@ -1097,6 +1107,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [layoutTheme, setLayoutTheme] = useState<LayoutTheme>("blue");
   const [lastLocalSave, setLastLocalSave] = useState<string | null>(null);
   const [showBalanceAnalysis, setShowBalanceAnalysis] = useState(false);
+  const [showFreeMoneyDetails, setShowFreeMoneyDetails] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [onboardingForm, setOnboardingForm] = useState({
     income: "",
@@ -1493,6 +1504,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }, [activeSection]);
 
   const monthDate = new Date(`${month}-01T12:00:00`);
+  const periodTitle = `${capitalizeFirst(monthFormatter.format(monthDate))}-perioden`;
   const budgetCategorySet = useMemo(
     () => new Set(data.budgets.map((budget) => normalizeCategory(budget.category))),
     [data.budgets]
@@ -1532,6 +1544,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     freeMoneyPerDay,
     plannedAvailableMoney,
     plannedVsActualDifference,
+    travelSpentAffectingFreeMoney,
     balanceBreakdown: balanceBreakdownRows,
   } = financeSummary;
   const freeMoneyStyle = { "--free-progress": `${freeMoneyProgress}%` } as CSSProperties;
@@ -1593,9 +1606,20 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     ? data.categories.filter((category) => category === "Lön")
     : data.categories.filter((category) => category !== "Lön");
 
-  const transactionCategoryHasBudget = transactionForm.type === "expense"
-    ? budgetCategorySet.has(normalizeCategory(transactionForm.category))
-    : false;
+  const selectedBudgetRow = transactionForm.type === "expense"
+    ? budgetRows.find((budget) => normalizeCategory(budget.category) === normalizeCategory(transactionForm.category))
+    : undefined;
+  const transactionAmountPreview = parseMoney(transactionForm.amount);
+  const transactionOverBudgetPreview = selectedBudgetRow && Number.isFinite(transactionAmountPreview)
+    ? Math.max(transactionAmountPreview - selectedBudgetRow.remaining, 0)
+    : 0;
+  const transactionImpactText = transactionForm.type !== "expense"
+    ? ""
+    : selectedBudgetRow
+      ? transactionOverBudgetPreview > 0
+        ? `Budgeterad kategori. ${kr(transactionOverBudgetPreview)} över budget dras från fria pengar.`
+        : "Budgeterad kategori. Köpet minskar budgetens kvar-belopp."
+      : "Ingen budget finns för kategorin, så köpet dras från fria pengar.";
 
   const expensesByCategory = data.categories
     .filter((category) => category !== "Lön")
@@ -1736,10 +1760,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setSubmittingAction("transaction");
 
     try {
-      const expenseSource: PurchaseSource = transactionForm.type === "expense" && (
-        transactionForm.category === "Fria köp" || !budgetCategorySet.has(normalizeCategory(transactionForm.category))
-      )
-        ? "free"
+      const expenseSource: PurchaseSource = transactionForm.type === "expense"
+        ? getExpenseSourceForCategory(transactionForm.category, budgetCategorySet)
         : "budget";
       const transaction = {
         title: transactionForm.title.trim(),
@@ -3565,7 +3587,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       <div className="date-row">
         <label className="month-control"><CalendarDays size={17}/><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /> <ChevronDown size={14}/></label>
-        <span className="period-range">{dateFormatter.format(period.start)} – {dateFormatter.format(new Date(period.end.getTime() - 86400000))}</span>
+        <span className="period-range">{periodTitle}: {dateFormatter.format(period.start)} – {dateFormatter.format(new Date(period.end.getTime() - 86400000))}</span>
       </div>
 
       <div className="notice-bar">{notice}</div>
@@ -3613,6 +3635,24 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </div>
           </section>
 
+          <article className="free-money-explainer panel">
+            <button onClick={() => setShowFreeMoneyDetails((value) => !value)} type="button" aria-expanded={showFreeMoneyDetails}>
+              <span><CircleHelp size={18}/> Varför har jag {kr(freeMoney)} fria pengar?</span>
+              <ChevronDown size={17}/>
+            </button>
+            {showFreeMoneyDetails && (
+              <div className="free-money-explainer-details">
+                <div><span>Inkomst</span><b>+{kr(income)}</b></div>
+                <div><span>Budgetar reserverade</span><b>−{kr(reservedBudgetTotal)}</b></div>
+                <div><span>Fasta utgifter denna period</span><b>−{kr(fixedExpenseTotal)}</b></div>
+                <div><span>Fria köp</span><b>−{kr(freePurchaseSpent)}</b></div>
+                {travelSpentAffectingFreeMoney > 0 && <div><span>Resebudget</span><b>−{kr(travelSpentAffectingFreeMoney)}</b></div>}
+                {budgetOverspendTotal > 0 && <div><span>Över budget</span><b>−{kr(budgetOverspendTotal)}</b></div>}
+                <div className="result"><span>Kvar att spendera</span><b>{kr(freeMoney)}</b></div>
+              </div>
+            )}
+          </article>
+
           <section className="quick-add panel">
             <div>
               <h2>Ny transaktion</h2>
@@ -3641,7 +3681,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 </select>
               )}
               {transactionForm.type === "expense" && (
-                <span className="form-hint">{transactionCategoryHasBudget ? "Budgeterad kategori" : "Dras från fria pengar"}</span>
+                <span className="form-hint">{transactionImpactText}</span>
               )}
               <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
               <button disabled={submittingAction === "transaction"} type="submit"><Plus size={17}/> {submittingAction === "transaction" ? "Sparar..." : editingTransactionId ? "Spara ändring" : "Spara"}</button>
@@ -3740,7 +3780,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                   {transactionCategories.map((category) => <option key={category}>{category}</option>)}
                 </select>
               )}
-              {transactionForm.type === "expense" && <span className="form-hint">{transactionCategoryHasBudget ? "Budgeterad kategori" : "Dras från fria pengar"}</span>}
+              {transactionForm.type === "expense" && <span className="form-hint">{transactionImpactText}</span>}
               <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
               <button disabled={submittingAction === "transaction"} type="submit"><Plus size={16}/> {submittingAction === "transaction" ? "Sparar..." : editingTransactionId ? "Spara ändring" : "Skapa köp"}</button>
               {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
