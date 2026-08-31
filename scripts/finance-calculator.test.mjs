@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { calculateFinanceSummary } from "../app/lib/finance-calculator.ts";
+import { calculateFinanceSummary, getCurrentFinancialMonth } from "../app/lib/finance-calculator.ts";
 
 const month = "2026-07";
 const today = new Date("2026-07-10T12:00:00");
@@ -22,6 +22,13 @@ function summary(overrides = {}) {
 }
 
 describe("finance calculator", () => {
+  it("keeps the current financial month stable around short next months", () => {
+    assert.equal(getCurrentFinancialMonth(new Date("2026-08-24T12:00:00")), "2026-08");
+    assert.equal(getCurrentFinancialMonth(new Date("2026-08-25T12:00:00")), "2026-09");
+    assert.equal(getCurrentFinancialMonth(new Date("2026-08-31T12:00:00")), "2026-09");
+    assert.equal(getCurrentFinancialMonth(new Date("2026-09-25T12:00:00")), "2026-10");
+  });
+
   it("does not reduce free money for purchases that fit inside a budget", () => {
     const result = summary({
       budgets: [{ id: "food", category: "Mat", limit: 4_000 }],

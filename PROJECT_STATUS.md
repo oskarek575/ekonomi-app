@@ -2308,3 +2308,7 @@ Transaktionsformuläret är åter fast synligt. Endast kategorifältet kan fäll
 ### Fria pengar-sidan gömd från navigation 2026-08-30
 
 Den separata `freePurchases`-sektionen finns kvar i kod och kan nås/återaktiveras senare, men visas inte längre i desktop-sidebar eller mobil bottom-nav. Översiktens klick för “Fritt idag” går i stället till Transaktioner, så köpflödet samlas i kassaboken utan att ta bort befintlig Fria pengar-kod.
+
+### Löneperiod vid månadsslut fixad 2026-08-31
+
+Appens automatiska val av aktuell löneperiod använder nu `getCurrentFinancialMonth` i `finance-calculator.ts`. Fixen hindrar datum som 31 augusti från att hoppa två månader framåt när nästa månad är kortare. Regressionstest finns för 24/25/31 augusti och nästa brytdag.

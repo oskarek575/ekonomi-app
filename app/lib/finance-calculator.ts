@@ -120,6 +120,17 @@ export function formatFinanceDate(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+export function getCurrentFinancialMonth(date = new Date(), salaryDay = defaultSalaryDay) {
+  const financialMonth = new Date(date);
+
+  if (date.getDate() >= salaryDay) {
+    financialMonth.setDate(1);
+    financialMonth.setMonth(financialMonth.getMonth() + 1);
+  }
+
+  return `${financialMonth.getFullYear()}-${String(financialMonth.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export function getFinancialPeriod(month: string, salaryDay = defaultSalaryDay) {
   const [year, monthNumber] = month.split("-").map(Number);
   const selectedMonthIndex = monthNumber - 1;

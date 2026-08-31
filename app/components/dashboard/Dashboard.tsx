@@ -61,6 +61,7 @@ import {
 import type { AdminStats } from "../../lib/api";
 import {
   calculateFinanceSummary,
+  getCurrentFinancialMonth,
 } from "../../lib/finance-calculator";
 import type { AppSection } from "../Sidebar";
 import LoansSection from "./sections/LoansSection";
@@ -440,10 +441,6 @@ function parseMoney(value: string) {
   return Number.isFinite(amount) ? amount : NaN;
 }
 
-function formatMonthInput(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
 function formatDateInput(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -475,13 +472,7 @@ function defaultSubscriptionForm() {
 }
 
 function currentMonthValue(date = new Date()) {
-  const budgetMonth = new Date(date);
-
-  if (date.getDate() >= salaryDay) {
-    budgetMonth.setMonth(budgetMonth.getMonth() + 1);
-  }
-
-  return formatMonthInput(budgetMonth);
+  return getCurrentFinancialMonth(date, salaryDay);
 }
 
 function getFinancialPeriod(month: string) {
