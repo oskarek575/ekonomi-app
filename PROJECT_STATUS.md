@@ -8,6 +8,10 @@ Adminpanelen använder nu appens egen aktivitetsmarkör `profile.last_seen_at` f
 
 Databasändringen finns i `supabase/migrations/202608310001_add_profile_last_seen.sql` och är även inlagd i `supabase/release-setup.sql`.
 
+## Senaste ändring: fler layoutfärger
+
+Inställningarna för personlig layoutfärg har utökats med fler grundfärger: röd, orange, gul, lime, grön, turkos, cyan, mörkblå, indigo, lila, rosa och grå. Färgvalet använder fortfarande samma enkla temasystem med CSS-variabler och sparas per användare i webbläsaren.
+
 Det här dokumentet beskriver nuläget i repositoryt `oskars-ekonomi-app`. Det är skrivet som en teknisk handoff till en tech lead, produktarkitekt eller annan utvecklare som ska förstå projektet utan att behöva läsa hela historiken i chatten.
 
 Den här genomgången är baserad på faktisk kod i repositoryt. Ingen produktkod ändrades när dokumentet skapades.

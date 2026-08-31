@@ -272,7 +272,19 @@ type AppExportPayload = {
   month?: string;
   data?: Partial<FinanceData>;
 };
-type LayoutTheme = "blue" | "green" | "purple" | "rose" | "orange";
+type LayoutTheme =
+  | "red"
+  | "orange"
+  | "yellow"
+  | "lime"
+  | "green"
+  | "teal"
+  | "cyan"
+  | "blue"
+  | "indigo"
+  | "purple"
+  | "rose"
+  | "slate";
 
 const storageKey = "oskars-ekonomi-v2";
 const themeStorageKey = "oskars-ekonomi-theme";
@@ -285,11 +297,18 @@ const monthFormatter = new Intl.DateTimeFormat("sv-SE", { month: "long", year: "
 const dateFormatter = new Intl.DateTimeFormat("sv-SE", { day: "numeric", month: "short" });
 
 const layoutThemes: { id: LayoutTheme; label: string; description: string }[] = [
-  { id: "blue", label: "Mörkblå", description: "Lugn app-känsla" },
+  { id: "red", label: "Röd", description: "Tydlig & kraftfull" },
+  { id: "orange", label: "Orange", description: "Mer energi" },
+  { id: "yellow", label: "Gul", description: "Ljus & positiv" },
+  { id: "lime", label: "Lime", description: "Piggt & sparigt" },
   { id: "green", label: "Grön", description: "Ekonomi & sparande" },
+  { id: "teal", label: "Turkos", description: "Modern & lugn" },
+  { id: "cyan", label: "Cyan", description: "Klar & fräsch" },
+  { id: "blue", label: "Mörkblå", description: "Lugn app-känsla" },
+  { id: "indigo", label: "Indigo", description: "Djup & premium" },
   { id: "purple", label: "Lila", description: "Lite mer premium" },
   { id: "rose", label: "Rosa", description: "Varmare ton" },
-  { id: "orange", label: "Orange", description: "Mer energi" },
+  { id: "slate", label: "Grå", description: "Ren & neutral" },
 ];
 
 const subscriptionFrequencies: { id: SubscriptionFrequency; label: string; months: number }[] = [
