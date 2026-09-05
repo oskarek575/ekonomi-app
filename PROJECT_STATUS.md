@@ -12,6 +12,10 @@ Databasändringen finns i `supabase/migrations/202608310001_add_profile_last_see
 
 Inställningarna för personlig layoutfärg har utökats med fler grundfärger: röd, orange, gul, lime, grön, turkos, cyan, mörkblå, indigo, lila, rosa och grå. Färgvalet använder fortfarande samma enkla temasystem med CSS-variabler och sparas per användare i webbläsaren.
 
+## Senaste ändring: tydligare kärnflöde på översikten
+
+Översikten har fått en diskret "Dagens koll"-ruta som översätter fria pengar, fritt per dag, återstående dagar, fasta utgifter och eventuella tajta budgetar till en kort mänsklig status. "Varför har jag fria pengar?"-förklaringen är kvar och bygger på befintliga beräkningar. Transaktionsformuläret visar nu en tydligare varning när ett köp går över budget eller riskerar att gå över fria pengar. Snabbköpen använder tidigare köp som förslag när det finns historik, annars visas enkla standardval.
+
 Det här dokumentet beskriver nuläget i repositoryt `oskars-ekonomi-app`. Det är skrivet som en teknisk handoff till en tech lead, produktarkitekt eller annan utvecklare som ska förstå projektet utan att behöva läsa hela historiken i chatten.
 
 Den här genomgången är baserad på faktisk kod i repositoryt. Ingen produktkod ändrades när dokumentet skapades.

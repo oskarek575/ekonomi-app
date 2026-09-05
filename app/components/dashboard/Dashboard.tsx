@@ -82,6 +82,11 @@ type Transaction = {
   subscriptionId?: string;
 };
 
+type QuickPurchaseSuggestion = {
+  title: string;
+  category: string;
+};
+
 type Budget = {
   id: string;
   category: string;
@@ -1656,7 +1661,70 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ? `Budgeterad kategori. ${kr(transactionOverBudgetPreview)} över budget dras från fria pengar.`
         : "Budgeterad kategori. Köpet minskar budgetens kvar-belopp."
       : "Ingen budget finns för kategorin, så köpet dras från fria pengar.";
-  const moneyStory = `Du har ${kr(freeMoney)} fria pengar eftersom ${kr(reservedTotal)} redan är reserverat och ${kr(freePurchaseSpent)} är använt som fria köp.`;
+  const transactionHintTone = transactionOverBudgetPreview > 0 || (!selectedBudgetRow && Number.isFinite(transactionAmountPreview) && transactionAmountPreview > freeMoney)
+    ? "warning"
+    : "info";
+  const moneyStory = `Fria pengar är det som saknar jobb. Just nu är ${kr(reservedTotal)} reserverat, ${kr(freePurchaseSpent)} använt som fria köp${budgetOverspendTotal > 0 ? ` och ${kr(budgetOverspendTotal)} ligger över budget` : ""}.`;
+  const tightestBudget = budgetRows
+    .filter((budget) => budget.limit > 0 && (budget.overspent > 0 || budget.remaining / budget.limit <= 0.2))
+    .sort((a, b) => {
+      if (a.overspent !== b.overspent) return b.overspent - a.overspent;
+      return (a.remaining / a.limit) - (b.remaining / b.limit);
+    })[0];
+  const morningStatusTitle = freeMoney < 0
+    ? "Du ligger över fria pengar just nu"
+    : freeMoneyPerDay <= 50
+      ? "Ta det lugnt med småköpen idag"
+      : "Du har bra koll på perioden";
+  const morningStatusItems = [
+    `${kr(freeMoneyPerDay)} fritt idag`,
+    `${remainingDays} dagar kvar`,
+    fixedExpenseRemaining ? `${kr(fixedExpenseRemaining)} fasta kvar` : "Fasta utgifter är i fas",
+  ];
+  const quickPurchaseSuggestions = useMemo<QuickPurchaseSuggestion[]>(() => {
+    const fallbackSuggestions: QuickPurchaseSuggestion[] = [
+      { title: "Kaffe", category: "Fria köp" },
+      { title: "Lunch", category: "Mat & Livsmedel" },
+      { title: "Bensin", category: "Transport" },
+      { title: "Mat", category: "Mat & Livsmedel" },
+    ];
+    const suggestionsByTitle = new Map<string, QuickPurchaseSuggestion & { count: number; lastDate: string }>();
+
+    data.transactions
+      .filter((transaction) => transaction.type === "expense")
+      .forEach((transaction) => {
+        const key = normalizeCategory(transaction.title);
+        const current = suggestionsByTitle.get(key);
+
+        if (!current) {
+          suggestionsByTitle.set(key, {
+            title: transaction.title,
+            category: transaction.category,
+            count: 1,
+            lastDate: transaction.date,
+          });
+          return;
+        }
+
+        suggestionsByTitle.set(key, {
+          ...current,
+          category: transaction.category,
+          count: current.count + 1,
+          lastDate: transaction.date > current.lastDate ? transaction.date : current.lastDate,
+        });
+      });
+
+    const frequentSuggestions = [...suggestionsByTitle.values()]
+      .sort((a, b) => b.count - a.count || new Date(b.lastDate).getTime() - new Date(a.lastDate).getTime())
+      .slice(0, 4)
+      .map(({ title, category }) => ({ title, category }));
+    const usedTitles = new Set(frequentSuggestions.map((suggestion) => normalizeCategory(suggestion.title)));
+
+    return [
+      ...frequentSuggestions,
+      ...fallbackSuggestions.filter((suggestion) => !usedTitles.has(normalizeCategory(suggestion.title))),
+    ].slice(0, 4);
+  }, [data.transactions]);
 
   const expensesByCategory = data.categories
     .filter((category) => category !== "Lön")
@@ -1692,6 +1760,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const nextActiveSubscription = scheduledSubscriptions
     .filter((subscription) => subscription.active && subscription.nextDueDate)
     .sort((a, b) => new Date(`${a.nextDueDate}T12:00:00`).getTime() - new Date(`${b.nextDueDate}T12:00:00`).getTime())[0];
+  const morningStatusText = tightestBudget
+    ? `${tightestBudget.category} ${tightestBudget.overspent > 0 ? `är ${kr(tightestBudget.overspent)} över budget` : `har ${kr(tightestBudget.remaining)} kvar`}.`
+    : nextActiveSubscription?.nextDueDate
+      ? `Nästa fasta utgift är ${nextActiveSubscription.name} på ${kr(nextActiveSubscription.amount)}.`
+      : "Inga budgetar sticker ut just nu.";
   const activeTravelBudget = data.travelBudgets.find((travel) => travel.id === activeTravelId)
     ?? data.travelBudgets.find(isTravelActive)
     ?? data.travelBudgets[0];
@@ -3400,14 +3473,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     onNavigate("transactions");
   }
 
-  function startFreePurchase(title = "") {
+  function startFreePurchase(suggestion: string | QuickPurchaseSuggestion = "") {
+    const title = typeof suggestion === "string" ? suggestion : suggestion.title;
+    const category = typeof suggestion === "string" ? "Fria köp" : suggestion.category;
+
     setShowTransactionCategories(false);
     setTransactionForm((form) => ({
       ...form,
       title,
       type: "expense",
       source: "free",
-      category: "Fria köp",
+      category,
     }));
     setCategoryFilter("Alla");
     onNavigate("transactions");
@@ -3700,6 +3776,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </div>
           </section>
 
+          <article className={`daily-coach-panel panel ${freeMoney < 0 ? "danger" : tightestBudget ? "warning" : "good"}`}>
+            <div>
+              <span><Activity size={17}/> Dagens koll</span>
+              <b>{morningStatusTitle}</b>
+              <small>{morningStatusText}</small>
+            </div>
+            <div>
+              {morningStatusItems.map((item) => <span key={item}>{item}</span>)}
+            </div>
+          </article>
+
           <article className="free-money-explainer panel">
             <button onClick={() => setShowFreeMoneyDetails((value) => !value)} type="button" aria-expanded={showFreeMoneyDetails}>
               <span><CircleHelp size={18}/> Varför har jag {kr(freeMoney)} fria pengar?</span>
@@ -3746,15 +3833,18 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 </select>
               )}
               {transactionForm.type === "expense" && (
-                <span className="form-hint">{transactionImpactText}</span>
+                <span className={`form-hint ${transactionHintTone}`}>{transactionImpactText}</span>
               )}
               <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
               <button disabled={submittingAction === "transaction"} type="submit"><Plus size={17}/> {submittingAction === "transaction" ? "Sparar..." : editingTransactionId ? "Spara ändring" : "Spara"}</button>
               {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
             </form>
             <div className="quick-chip-row" aria-label="Snabba val">
-              {["Kaffe", "Lunch", "Bensin", "Mat"].map((title) => (
-                <button key={title} onClick={() => startFreePurchase(title)} type="button">{title}</button>
+              {quickPurchaseSuggestions.map((suggestion) => (
+                <button key={`${suggestion.title}-${suggestion.category}`} onClick={() => startFreePurchase(suggestion)} type="button">
+                  <TransactionIcon title={suggestion.title} category={suggestion.category} type="expense" categoryDetails={data.categoryDetails} />
+                  <span>{suggestion.title}</span>
+                </button>
               ))}
             </div>
           </section>
@@ -3852,7 +3942,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                   {transactionCategories.map((category) => <option key={category}>{category}</option>)}
                 </select>
               )}
-              {transactionForm.type === "expense" && <span className="form-hint">{transactionImpactText}</span>}
+              {transactionForm.type === "expense" && <span className={`form-hint ${transactionHintTone}`}>{transactionImpactText}</span>}
               <input type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((form) => ({ ...form, date: event.target.value }))} />
               <button disabled={submittingAction === "transaction"} type="submit"><Plus size={16}/> {submittingAction === "transaction" ? "Sparar..." : editingTransactionId ? "Spara ändring" : "Skapa köp"}</button>
               {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
