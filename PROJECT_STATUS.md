@@ -16,6 +16,10 @@ Inställningarna för personlig layoutfärg har utökats med fler grundfärger: 
 
 Översikten har fått en diskret "Dagens koll"-ruta som översätter fria pengar, fritt per dag, återstående dagar, fasta utgifter och eventuella tajta budgetar till en kort mänsklig status. "Varför har jag fria pengar?"-förklaringen är kvar och bygger på befintliga beräkningar. Transaktionsformuläret visar nu en tydligare varning när ett köp går över budget eller riskerar att gå över fria pengar. Snabbköpen använder tidigare köp som förslag när det finns historik, annars visas enkla standardval.
 
+## Senaste ändring: Fria köp först i köpflödet
+
+Köpflödets kategoriväljare prioriterar nu alltid "Fria köp" först för vanliga utgifter. "Dagens koll" fokuserar också på fria köp/fria pengar istället för att lyfta en enskild budgetkategori.
+
 Det här dokumentet beskriver nuläget i repositoryt `oskars-ekonomi-app`. Det är skrivet som en teknisk handoff till en tech lead, produktarkitekt eller annan utvecklare som ska förstå projektet utan att behöva läsa hela historiken i chatten.
 
 Den här genomgången är baserad på faktisk kod i repositoryt. Ingen produktkod ändrades när dokumentet skapades.

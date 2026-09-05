@@ -622,6 +622,15 @@ function getExpenseSourceForCategory(category: string, budgetCategorySet: Set<st
     : "budget";
 }
 
+function putFreePurchasesFirst(categories: string[]) {
+  return [...categories].sort((a, b) => {
+    if (a === "Fria köp") return -1;
+    if (b === "Fria köp") return 1;
+
+    return 0;
+  });
+}
+
 function getSavingsTransactionTitle(name: string) {
   return `Sparande till ${name}`;
 }
@@ -1076,9 +1085,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [transactionForm, setTransactionForm] = useState({
     title: "",
     amount: "",
-    category: "Mat & Livsmedel",
+    category: "Fria köp",
     type: "expense" as TransactionType,
-    source: "budget" as PurchaseSource,
+    source: "free" as PurchaseSource,
     date: defaultDateForPeriod(currentMonthValue()),
   });
   const [budgetForm, setBudgetForm] = useState({ category: "Mat & Livsmedel", limit: "" });
@@ -1542,8 +1551,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     } else {
       setTransactionForm((form) => ({
         ...form,
-        source: "budget",
-        category: form.category === "Fria köp" ? "Mat & Livsmedel" : form.category,
+        source: form.category === "Fria köp" ? "free" : "budget",
+        category: form.category === "Lön" ? "Fria köp" : form.category,
       }));
     }
   }, [activeSection]);
@@ -1645,7 +1654,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   });
   const transactionCategories = transactionForm.type === "income"
     ? data.categories.filter((category) => category === "Lön")
-    : data.categories.filter((category) => category !== "Lön");
+    : putFreePurchasesFirst(data.categories.filter((category) => category !== "Lön"));
 
   const selectedBudgetRow = transactionForm.type === "expense"
     ? budgetRows.find((budget) => normalizeCategory(budget.category) === normalizeCategory(transactionForm.category))
@@ -1665,17 +1674,11 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     ? "warning"
     : "info";
   const moneyStory = `Fria pengar är det som saknar jobb. Just nu är ${kr(reservedTotal)} reserverat, ${kr(freePurchaseSpent)} använt som fria köp${budgetOverspendTotal > 0 ? ` och ${kr(budgetOverspendTotal)} ligger över budget` : ""}.`;
-  const tightestBudget = budgetRows
-    .filter((budget) => budget.limit > 0 && (budget.overspent > 0 || budget.remaining / budget.limit <= 0.2))
-    .sort((a, b) => {
-      if (a.overspent !== b.overspent) return b.overspent - a.overspent;
-      return (a.remaining / a.limit) - (b.remaining / b.limit);
-    })[0];
   const morningStatusTitle = freeMoney < 0
     ? "Du ligger över fria pengar just nu"
     : freeMoneyPerDay <= 50
       ? "Ta det lugnt med småköpen idag"
-      : "Du har bra koll på perioden";
+      : "Du har koll på fria köp";
   const morningStatusItems = [
     `${kr(freeMoneyPerDay)} fritt idag`,
     `${remainingDays} dagar kvar`,
@@ -1760,11 +1763,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const nextActiveSubscription = scheduledSubscriptions
     .filter((subscription) => subscription.active && subscription.nextDueDate)
     .sort((a, b) => new Date(`${a.nextDueDate}T12:00:00`).getTime() - new Date(`${b.nextDueDate}T12:00:00`).getTime())[0];
-  const morningStatusText = tightestBudget
-    ? `${tightestBudget.category} ${tightestBudget.overspent > 0 ? `är ${kr(tightestBudget.overspent)} över budget` : `har ${kr(tightestBudget.remaining)} kvar`}.`
-    : nextActiveSubscription?.nextDueDate
-      ? `Nästa fasta utgift är ${nextActiveSubscription.name} på ${kr(nextActiveSubscription.amount)}.`
-      : "Inga budgetar sticker ut just nu.";
+  const morningStatusText = freePurchaseSpent > 0
+    ? `Du har använt ${kr(freePurchaseSpent)} i fria köp denna period${todayFreePurchaseSpent > 0 ? `, varav ${kr(todayFreePurchaseSpent)} idag` : ""}.`
+    : "Inga fria köp registrerade ännu denna period.";
   const activeTravelBudget = data.travelBudgets.find((travel) => travel.id === activeTravelId)
     ?? data.travelBudgets.find(isTravelActive)
     ?? data.travelBudgets[0];
@@ -3776,7 +3777,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </div>
           </section>
 
-          <article className={`daily-coach-panel panel ${freeMoney < 0 ? "danger" : tightestBudget ? "warning" : "good"}`}>
+          <article className={`daily-coach-panel panel ${freeMoney < 0 ? "danger" : freeMoneyPerDay <= 50 ? "warning" : "good"}`}>
             <div>
               <span><Activity size={17}/> Dagens koll</span>
               <b>{morningStatusTitle}</b>
@@ -3811,7 +3812,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <p>Registrera inkomst eller köp.</p>
             </div>
             <form onSubmit={addTransaction} className="quick-form">
-              <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: "budget", category: event.target.value === "income" ? "Lön" : "Mat & Livsmedel" }))}>
+              <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: event.target.value === "income" ? "budget" : "free", category: event.target.value === "income" ? "Lön" : "Fria köp" }))}>
                 <option value="expense">Utgift</option>
                 <option value="income">Inkomst</option>
               </select>
@@ -3921,7 +3922,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       {activeSection === "transactions" && (
         <SectionPanel title="Transaktioner" description="Lägg till alla köp och inkomster här. Appen avgör automatiskt om köpet går mot en budget eller fria pengar.">
           <form className="management-form purchase-form compact-transaction-form" onSubmit={addTransaction}>
-              <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: "budget", category: event.target.value === "income" ? "Lön" : "Mat & Livsmedel" }))}>
+              <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: event.target.value === "income" ? "budget" : "free", category: event.target.value === "income" ? "Lön" : "Fria köp" }))}>
                 <option value="expense">Köp / utgift</option>
                 <option value="income">Inkomst</option>
               </select>
