@@ -2338,3 +2338,7 @@ Appens automatiska val av aktuell löneperiod använder nu `getCurrentFinancialM
 ### Översikt polerad mot kärnflödet 2026-08-31
 
 Översikten har fått en mer fokuserad periodcoach med fritt per dag, pengar med jobb, nästa dragning och budgetar som behöver uppmärksamhet. AI- och målsektionerna finns kvar i kod/rendering men visas inte längre som dominerande widgets på startsidan. Transaktionsflödet har fått ett mjukt dublettskydd där en misstänkt identisk transaktion kräver ett extra spar-klick.
+
+### Vanor och dagbok tillagd 2026-09-15
+
+Appen har fått en ny hash-sektion `habits` med navigationstiteln “Vanor”. Funktionen innehåller dagens vanor, historikkalender, paus/återuppta, redigering/radering av vanor och enkel dagbok med humör. Data sparas i nya Supabase-tabeller: `habits`, `habit_pauses`, `habit_checks` och `journal_entries`, samtliga med RLS per inloggad användare. Funktionen är fristående från ekonomimotorn och ändrar inte fria pengar, budgetar, fasta utgifter eller resebudget.

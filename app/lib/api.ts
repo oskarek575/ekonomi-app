@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { User } from "@supabase/supabase-js";
+import type { HabitCheckStatus, HabitData } from "./habits/model";
 
 export type PurchaseSource = "budget" | "free";
 export type SubscriptionFrequency = "monthly" | "quarterly" | "semiannual" | "yearly" | "custom";
@@ -39,6 +40,12 @@ export type FeedbackInput = {
   message: string;
   page?: string;
   app_version?: string;
+};
+
+export type HabitInput = {
+  name: string;
+  weekdays: number[];
+  created: string;
 };
 
 export type AdminStats = {
@@ -845,6 +852,10 @@ export async function deleteCurrentUserData() {
 
   const tables = [
     "feedback",
+    "habit_checks",
+    "habit_pauses",
+    "journal_entries",
+    "habits",
     "travel_purchases",
     "travel_budgets",
     "loans",
@@ -865,6 +876,234 @@ export async function deleteCurrentUserData() {
 
     if (error) throw error;
   }
+}
+
+type HabitRow = {
+  id: number | string;
+  name: string;
+  weekdays: number[] | string | null;
+  created_day: string;
+  habit_pauses?: HabitPauseRow[] | null;
+};
+
+type HabitPauseRow = {
+  id: number | string;
+  from_day: string;
+  until_day: string | null;
+};
+
+type HabitCheckRow = {
+  habit_id: number | string;
+  day: string;
+  status: HabitCheckStatus;
+};
+
+type JournalEntryRow = {
+  day: string;
+  text: string | null;
+  mood: number | null;
+};
+
+function parseHabitWeekdays(value: HabitRow["weekdays"]) {
+  if (Array.isArray(value)) return value.map(Number).filter((day) => Number.isInteger(day));
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) return parsed.map(Number).filter((day) => Number.isInteger(day));
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function toRemoteId(id: string) {
+  const remoteId = Number(id);
+  if (!Number.isFinite(remoteId)) {
+    throw new Error("Ogiltigt id.");
+  }
+
+  return remoteId;
+}
+
+export async function getHabitData(): Promise<HabitData> {
+  const [habitsResult, checksResult, journalResult] = await Promise.all([
+    supabase
+      .from("habits")
+      .select("id, name, weekdays, created_day, habit_pauses(id, from_day, until_day)")
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("habit_checks")
+      .select("habit_id, day, status"),
+    supabase
+      .from("journal_entries")
+      .select("day, text, mood")
+      .order("day", { ascending: false }),
+  ]);
+
+  if (habitsResult.error) throw habitsResult.error;
+  if (checksResult.error) throw checksResult.error;
+  if (journalResult.error) throw journalResult.error;
+
+  const checks: HabitData["checks"] = {};
+  (checksResult.data as HabitCheckRow[] | null)?.forEach((row) => {
+    if (row.status !== "done" && row.status !== "skipped") return;
+
+    const habitId = String(row.habit_id);
+    checks[habitId] ??= {};
+    checks[habitId][row.day] = row.status;
+  });
+
+  const journal: HabitData["journal"] = {};
+  (journalResult.data as JournalEntryRow[] | null)?.forEach((row) => {
+    journal[row.day] = {
+      text: row.text ?? "",
+      mood: row.mood,
+    };
+  });
+
+  return {
+    habits: ((habitsResult.data as HabitRow[] | null) ?? []).map((row) => ({
+      id: String(row.id),
+      name: row.name,
+      weekdays: parseHabitWeekdays(row.weekdays),
+      created: row.created_day,
+      pauses: (row.habit_pauses ?? []).map((pause) => ({
+        id: String(pause.id),
+        from: pause.from_day,
+        until: pause.until_day,
+      })),
+    })),
+    checks,
+    journal,
+  };
+}
+
+export async function addHabit(input: HabitInput) {
+  const { data, error } = await supabase
+    .from("habits")
+    .insert([{
+      name: input.name,
+      weekdays: input.weekdays,
+      created_day: input.created,
+    }])
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return data;
+}
+
+export async function renameHabit(id: string, name: string) {
+  const { error } = await supabase
+    .from("habits")
+    .update({ name })
+    .eq("id", toRemoteId(id));
+
+  if (error) throw error;
+}
+
+export async function deleteHabit(id: string) {
+  const { error } = await supabase
+    .from("habits")
+    .delete()
+    .eq("id", toRemoteId(id));
+
+  if (error) throw error;
+}
+
+export async function setHabitCheck(habitId: string, day: string, status: HabitCheckStatus | null) {
+  const remoteHabitId = toRemoteId(habitId);
+
+  if (!status) {
+    const { error } = await supabase
+      .from("habit_checks")
+      .delete()
+      .eq("habit_id", remoteHabitId)
+      .eq("day", day);
+
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase
+    .from("habit_checks")
+    .upsert([{
+      habit_id: remoteHabitId,
+      day,
+      status,
+    }], { onConflict: "user_id,habit_id,day" });
+
+  if (error) throw error;
+}
+
+export async function toggleHabitPause(habitId: string, today: string) {
+  const remoteHabitId = toRemoteId(habitId);
+  const { data: openPause, error: readError } = await supabase
+    .from("habit_pauses")
+    .select("id, from_day")
+    .eq("habit_id", remoteHabitId)
+    .is("until_day", null)
+    .maybeSingle();
+
+  if (readError) throw readError;
+
+  if (openPause) {
+    if (openPause.from_day === today) {
+      const { error } = await supabase
+        .from("habit_pauses")
+        .delete()
+        .eq("id", openPause.id);
+
+      if (error) throw error;
+      return;
+    }
+
+    const { error } = await supabase
+      .from("habit_pauses")
+      .update({ until_day: today })
+      .eq("id", openPause.id);
+
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase
+    .from("habit_pauses")
+    .insert([{
+      habit_id: remoteHabitId,
+      from_day: today,
+      until_day: null,
+    }]);
+
+  if (error) throw error;
+}
+
+export async function saveJournalEntry(day: string, text: string, mood: number | null) {
+  const trimmedText = text.trim();
+
+  if (!trimmedText && mood === null) {
+    const { error } = await supabase
+      .from("journal_entries")
+      .delete()
+      .eq("day", day);
+
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase
+    .from("journal_entries")
+    .upsert([{
+      day,
+      text: trimmedText,
+      mood,
+    }], { onConflict: "user_id,day" });
+
+  if (error) throw error;
 }
 
 export async function addFeedback(input: FeedbackInput) {

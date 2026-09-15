@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Activity, BellRing, Boxes, ChevronDown, CircleDollarSign,
+  Activity, BellRing, Boxes, CalendarCheck, ChevronDown, CircleDollarSign,
   CreditCard, Crown, LayoutDashboard, Plane, Settings, WalletCards,
 } from "lucide-react";
 
@@ -14,6 +14,7 @@ export type AppSection =
   | "goals"
   | "loans"
   | "travel"
+  | "habits"
   | "subscriptions"
   | "insights"
   | "reports"
@@ -25,6 +26,7 @@ const links = [
   ["Budget", "budgets", WalletCards],
   ["Fasta utgifter", "subscriptions", BellRing],
   ["Resebudget", "travel", Plane],
+  ["Vanor", "habits", CalendarCheck],
   ["Kategorier", "categories", Boxes],
   ["Rapporter", "reports", Activity],
   ["Inställningar", "settings", Settings],
