@@ -285,6 +285,9 @@ export default function HabitsSection() {
           <span>En dag i taget</span>
           <h3>{tab === "today" ? "Dina vanor." : tab === "history" ? "Din kalender." : "Din dagbok."}</h3>
           <p>Små steg som inte behöver vara perfekta. Kolla av idag, se vad som missats tidigare och skriv några rader när du vill.</p>
+          <button className="habit-primary-action" onClick={() => setShowManager(true)} type="button">
+            <Plus size={17}/> Ny vana
+          </button>
         </div>
         <div className="habit-score-card">
           <small>Idag</small>

@@ -2346,3 +2346,5 @@ Appen har fått en ny hash-sektion `habits` med navigationstiteln “Vanor”. F
 ### Stabilare sparning av vanor 2026-09-17
 
 Alla läs- och skrivoperationer för vanor, markeringar, pauser och dagbok kopplas nu uttryckligen till den inloggade användaren. Det gör att skapandet inte är beroende av ett implicit databas-default och ger stabilare beteende tillsammans med RLS.
+
+En tydlig och alltid synlig “Ny vana”-knapp har även lagts högst upp i Vanor-vyn. Den öppnar det befintliga formuläret och ersätter inte någon vanelogik.
