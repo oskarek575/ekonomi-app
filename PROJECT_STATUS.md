@@ -2358,3 +2358,7 @@ Ekonomimotorn matchar nu varje bokförd transaktion mot högst en fast utgift el
 Köp som tidigare hörde till en budget klassas nu som fria köp om budgeten tas bort, så de inte försvinner ur Fria pengar-beräkningen. Transaktioner som är kopplade till fasta utgifter undantas och dubbelräknas fortsatt inte.
 
 Reseköp som även finns som vanliga transaktioner dras inte längre en extra gång från Fria pengar. Ett omatchat reseköp som ska påverka Fria pengar räknas fortfarande exakt en gång.
+
+### Ny appikon 2026-09-17
+
+PWA-ikonerna för 1024 och 512 pixlar, Android-ikonen för 192 pixlar, Apple Touch-ikonen samt webbläsarens favicon använder nu den nya mörka ekonomiikonen med vit graf och varm orange belysning. Manifestets befintliga ikonreferenser är oförändrade.
