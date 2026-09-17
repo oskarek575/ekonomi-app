@@ -928,18 +928,32 @@ function toRemoteId(id: string) {
   return remoteId;
 }
 
+async function getHabitUserId() {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    throw new Error("Du behöver vara inloggad för att använda vanor.");
+  }
+
+  return user.id;
+}
+
 export async function getHabitData(): Promise<HabitData> {
+  const userId = await getHabitUserId();
   const [habitsResult, checksResult, journalResult] = await Promise.all([
     supabase
       .from("habits")
       .select("id, name, weekdays, created_day, habit_pauses(id, from_day, until_day)")
+      .eq("user_id", userId)
       .order("created_at", { ascending: true }),
     supabase
       .from("habit_checks")
-      .select("habit_id, day, status"),
+      .select("habit_id, day, status")
+      .eq("user_id", userId),
     supabase
       .from("journal_entries")
       .select("day, text, mood")
+      .eq("user_id", userId)
       .order("day", { ascending: false }),
   ]);
 
@@ -982,9 +996,11 @@ export async function getHabitData(): Promise<HabitData> {
 }
 
 export async function addHabit(input: HabitInput) {
+  const userId = await getHabitUserId();
   const { data, error } = await supabase
     .from("habits")
     .insert([{
+      user_id: userId,
       name: input.name,
       weekdays: input.weekdays,
       created_day: input.created,
@@ -998,24 +1014,29 @@ export async function addHabit(input: HabitInput) {
 }
 
 export async function renameHabit(id: string, name: string) {
+  const userId = await getHabitUserId();
   const { error } = await supabase
     .from("habits")
     .update({ name })
-    .eq("id", toRemoteId(id));
+    .eq("id", toRemoteId(id))
+    .eq("user_id", userId);
 
   if (error) throw error;
 }
 
 export async function deleteHabit(id: string) {
+  const userId = await getHabitUserId();
   const { error } = await supabase
     .from("habits")
     .delete()
-    .eq("id", toRemoteId(id));
+    .eq("id", toRemoteId(id))
+    .eq("user_id", userId);
 
   if (error) throw error;
 }
 
 export async function setHabitCheck(habitId: string, day: string, status: HabitCheckStatus | null) {
+  const userId = await getHabitUserId();
   const remoteHabitId = toRemoteId(habitId);
 
   if (!status) {
@@ -1023,6 +1044,7 @@ export async function setHabitCheck(habitId: string, day: string, status: HabitC
       .from("habit_checks")
       .delete()
       .eq("habit_id", remoteHabitId)
+      .eq("user_id", userId)
       .eq("day", day);
 
     if (error) throw error;
@@ -1032,6 +1054,7 @@ export async function setHabitCheck(habitId: string, day: string, status: HabitC
   const { error } = await supabase
     .from("habit_checks")
     .upsert([{
+      user_id: userId,
       habit_id: remoteHabitId,
       day,
       status,
@@ -1041,11 +1064,13 @@ export async function setHabitCheck(habitId: string, day: string, status: HabitC
 }
 
 export async function toggleHabitPause(habitId: string, today: string) {
+  const userId = await getHabitUserId();
   const remoteHabitId = toRemoteId(habitId);
   const { data: openPause, error: readError } = await supabase
     .from("habit_pauses")
     .select("id, from_day")
     .eq("habit_id", remoteHabitId)
+    .eq("user_id", userId)
     .is("until_day", null)
     .maybeSingle();
 
@@ -1056,7 +1081,8 @@ export async function toggleHabitPause(habitId: string, today: string) {
       const { error } = await supabase
         .from("habit_pauses")
         .delete()
-        .eq("id", openPause.id);
+        .eq("id", openPause.id)
+        .eq("user_id", userId);
 
       if (error) throw error;
       return;
@@ -1065,7 +1091,8 @@ export async function toggleHabitPause(habitId: string, today: string) {
     const { error } = await supabase
       .from("habit_pauses")
       .update({ until_day: today })
-      .eq("id", openPause.id);
+      .eq("id", openPause.id)
+      .eq("user_id", userId);
 
     if (error) throw error;
     return;
@@ -1074,6 +1101,7 @@ export async function toggleHabitPause(habitId: string, today: string) {
   const { error } = await supabase
     .from("habit_pauses")
     .insert([{
+      user_id: userId,
       habit_id: remoteHabitId,
       from_day: today,
       until_day: null,
@@ -1083,12 +1111,14 @@ export async function toggleHabitPause(habitId: string, today: string) {
 }
 
 export async function saveJournalEntry(day: string, text: string, mood: number | null) {
+  const userId = await getHabitUserId();
   const trimmedText = text.trim();
 
   if (!trimmedText && mood === null) {
     const { error } = await supabase
       .from("journal_entries")
       .delete()
+      .eq("user_id", userId)
       .eq("day", day);
 
     if (error) throw error;
@@ -1098,6 +1128,7 @@ export async function saveJournalEntry(day: string, text: string, mood: number |
   const { error } = await supabase
     .from("journal_entries")
     .upsert([{
+      user_id: userId,
       day,
       text: trimmedText,
       mood,

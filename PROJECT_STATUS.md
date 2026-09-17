@@ -2342,3 +2342,7 @@ Appens automatiska val av aktuell löneperiod använder nu `getCurrentFinancialM
 ### Vanor och dagbok tillagd 2026-09-15
 
 Appen har fått en ny hash-sektion `habits` med navigationstiteln “Vanor”. Funktionen innehåller dagens vanor, historikkalender, paus/återuppta, redigering/radering av vanor och enkel dagbok med humör. Data sparas i nya Supabase-tabeller: `habits`, `habit_pauses`, `habit_checks` och `journal_entries`, samtliga med RLS per inloggad användare. Funktionen är fristående från ekonomimotorn och ändrar inte fria pengar, budgetar, fasta utgifter eller resebudget.
+
+### Stabilare sparning av vanor 2026-09-17
+
+Alla läs- och skrivoperationer för vanor, markeringar, pauser och dagbok kopplas nu uttryckligen till den inloggade användaren. Det gör att skapandet inte är beroende av ett implicit databas-default och ger stabilare beteende tillsammans med RLS.

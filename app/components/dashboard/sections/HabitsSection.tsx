@@ -50,6 +50,16 @@ function isHabitPaused(habit: Habit) {
   return habit.pauses.some((pause) => pause.until === null);
 }
 
+function getHabitSaveError(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+
+  return "Vanan kunde inte sparas.";
+}
+
 export default function HabitsSection() {
   const [data, setData] = useState<HabitData>(emptyHabitData);
   const [loading, setLoading] = useState(true);
@@ -163,7 +173,7 @@ export default function HabitsSection() {
       await reload();
     } catch (saveError) {
       console.error(saveError);
-      setError("Vanan kunde inte sparas.");
+      setError(getHabitSaveError(saveError));
     } finally {
       setSaving(false);
     }
