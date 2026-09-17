@@ -2372,3 +2372,5 @@ Den transparenta yttermarginalen beskärs nu bort innan ikonstorlekarna skapas. 
 Mobilens tidigare horisontella, scrollbara bottennavigation har ersatts med en smal fast navigationslist längs vänster sida. Samma befintliga navigation, hash-sektioner och accenttema återanvänds; ingen route eller funktion har tagits bort.
 
 Översiktens fyra ekonomivärden visar nu utvecklingen jämfört med föregående löneperiod. Jämförelsen använder samma `calculateFinanceSummary` som den vanliga ekonomiberäkningen och föregående periods bokförda transaktioner från Supabase. Om jämförelsedata inte är tillgänglig visas detta uttryckligen i stället för en uppskattad procentsiffra.
+
+Mobilens stående navigation är nu infällbar och ligger ovanpå innehållet när den öppnas. Den öppnas med en liten kantknapp och stängs med kryss, tryck utanför, sidval eller vänstersvep. Därmed använder Översikten åter hela skärmbredden när menyn är stängd. Desktopnavigationen är oförändrad.
