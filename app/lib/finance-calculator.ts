@@ -156,12 +156,15 @@ export function dateForFinancialPeriodDay(month: string, day: number, salaryDay 
 }
 
 export function isFreePurchase(
-  item: Pick<FinanceTransaction, "type" | "source" | "category">,
+  item: Pick<FinanceTransaction, "type" | "source" | "category" | "subscriptionId">,
   budgetCategorySet?: Set<string>
 ) {
   if (item.type !== "expense") return false;
   if (item.source === "free" || item.category === "Fria köp") return true;
-  if (item.source === "budget") return false;
+  if (item.subscriptionId) return false;
+  if (item.source === "budget") {
+    return budgetCategorySet ? !budgetCategorySet.has(normalizeFinanceText(item.category)) : false;
+  }
 
   return budgetCategorySet ? !budgetCategorySet.has(normalizeFinanceText(item.category)) : false;
 }
@@ -281,11 +284,13 @@ function textLooksRelated(left: string, right: string) {
     || normalizedRight.includes(normalizedLeft);
 }
 
-export function hasMatchingTransaction(
+function findMatchingTransactionIndex(
   transactions: FinanceTransaction[],
-  match: { id?: string; title: string; amount: number; date: string }
+  match: { id?: string; title: string; amount: number; date: string },
+  usedIndexes = new Set<number>()
 ) {
-  return transactions.some((transaction) => {
+  return transactions.findIndex((transaction, index) => {
+    if (usedIndexes.has(index)) return false;
     if (transaction.type !== "expense") return false;
 
     if (match.id && transaction.subscriptionId === match.id) {
@@ -299,6 +304,13 @@ export function hasMatchingTransaction(
       && closePostingDate
       && textLooksRelated(transaction.title, match.title);
   });
+}
+
+export function hasMatchingTransaction(
+  transactions: FinanceTransaction[],
+  match: { id?: string; title: string; amount: number; date: string }
+) {
+  return findMatchingTransactionIndex(transactions, match) >= 0;
 }
 
 function daysLeftInPeriod(period: { start: Date; end: Date }, today = new Date()) {
@@ -364,40 +376,59 @@ export function calculateFinanceSummary({
   const fixedExpenseTotal = scheduledSubscriptions
     .filter((subscription) => subscription.isDueThisPeriod)
     .reduce((sum, subscription) => sum + subscription.amount, 0);
+  const matchedSubscriptionIds = new Set<string>();
+  const usedSubscriptionTransactionIndexes = new Set<number>();
+
+  scheduledSubscriptions
+    .filter((subscription) => subscription.active && subscription.dueDate)
+    .forEach((subscription) => {
+      const matchIndex = findMatchingTransactionIndex(monthTransactions, {
+        id: subscription.id,
+        title: subscription.name,
+        amount: subscription.amount,
+        date: subscription.dueDate ?? "",
+      }, usedSubscriptionTransactionIndexes);
+
+      if (matchIndex < 0) return;
+
+      usedSubscriptionTransactionIndexes.add(matchIndex);
+      matchedSubscriptionIds.add(subscription.id);
+    });
   const fixedExpenseRemaining = scheduledSubscriptions
     .filter((subscription) => subscription.active && subscription.dueDate)
-    .filter((subscription) => !hasMatchingTransaction(monthTransactions, {
-      id: subscription.id,
-      title: subscription.name,
-      amount: subscription.amount,
-      date: subscription.dueDate ?? "",
-    }))
+    .filter((subscription) => !matchedSubscriptionIds.has(subscription.id))
     .reduce((sum, subscription) => sum + subscription.amount, 0);
   const missingPostedSubscriptions = scheduledSubscriptions
     .filter((subscription) => subscription.active && subscription.dueDate && isOnOrBeforeToday(subscription.dueDate, today))
-    .filter((subscription) => !hasMatchingTransaction(monthTransactions, {
-      id: subscription.id,
-      title: subscription.name,
-      amount: subscription.amount,
-      date: subscription.dueDate ?? "",
-    }));
+    .filter((subscription) => !matchedSubscriptionIds.has(subscription.id));
   const missingPostedFixedExpenses = missingPostedSubscriptions
     .reduce((sum, subscription) => sum + subscription.amount, 0);
   const reservedTotal = reservedBudgetTotal + fixedExpenseTotal;
   const travelPurchasesInPeriod = travelBudgets
     .flatMap((travel) => travel.purchases)
     .filter((purchase) => isInFinancialPeriod(purchase.date, month, salaryDay));
+  const usedTravelTransactionIndexes = new Set<number>();
+  const matchedTravelPurchaseIds = new Set<string>();
   const travelSpentForActualBalance = travelPurchasesInPeriod
-    .filter((purchase) => !hasMatchingTransaction(monthTransactions, {
+    .filter((purchase) => {
+      const matchIndex = findMatchingTransactionIndex(monthTransactions, {
       title: purchase.title,
       amount: purchase.amount,
       date: purchase.date,
-    }))
+      }, usedTravelTransactionIndexes);
+
+      if (matchIndex < 0) return true;
+
+      usedTravelTransactionIndexes.add(matchIndex);
+      matchedTravelPurchaseIds.add(purchase.id);
+      return false;
+    })
     .reduce((sum, purchase) => sum + purchase.amount, 0);
   const travelSpentAffectingFreeMoney = travelBudgets
     .filter((travel) => !travel.separateFromFreeMoney)
     .flatMap((travel) => travel.purchases)
     .filter((purchase) => isInFinancialPeriod(purchase.date, month, salaryDay))
+    .filter((purchase) => !matchedTravelPurchaseIds.has(purchase.id))
     .reduce((sum, purchase) => sum + purchase.amount, 0);
   const savingsTotal = savings.reduce((sum, saving) => sum + saving.amount, 0);
   const savingsTransactionTotal = monthTransactions
@@ -406,8 +437,9 @@ export function calculateFinanceSummary({
   const actualExpenses = expenses + missingPostedFixedExpenses + travelSpentForActualBalance;
   const actualBalance = openingBalance + income - actualExpenses;
   const budgetRows = budgets.map((budget) => {
+    const normalizedBudgetCategory = normalizeFinanceText(budget.category);
     const used = monthTransactions
-      .filter((item) => item.type === "expense" && item.category === budget.category && !isFreePurchase(item, budgetCategorySet))
+      .filter((item) => item.type === "expense" && normalizeFinanceText(item.category) === normalizedBudgetCategory && !isFreePurchase(item, budgetCategorySet))
       .reduce((sum, item) => sum + item.amount, 0);
     const pct = budget.limit > 0 ? Math.min(100, Math.round((used / budget.limit) * 100)) : 0;
     const remaining = Math.max(budget.limit - used, 0);

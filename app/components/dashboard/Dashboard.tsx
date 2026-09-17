@@ -594,12 +594,15 @@ function isTravelActive(travel: TravelBudget) {
 }
 
 function isFreePurchase(
-  item: Pick<Transaction, "type" | "source" | "category">,
+  item: Pick<Transaction, "type" | "source" | "category" | "subscriptionId">,
   budgetCategorySet?: Set<string>
 ) {
   if (item.type !== "expense") return false;
   if (item.source === "free" || item.category === "Fria köp") return true;
-  if (item.source === "budget") return false;
+  if (item.subscriptionId) return false;
+  if (item.source === "budget") {
+    return budgetCategorySet ? !budgetCategorySet.has(normalizeCategory(item.category)) : false;
+  }
 
   return budgetCategorySet ? !budgetCategorySet.has(normalizeCategory(item.category)) : false;
 }

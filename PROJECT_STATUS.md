@@ -2350,3 +2350,11 @@ Alla läs- och skrivoperationer för vanor, markeringar, pauser och dagbok koppl
 En tydlig och alltid synlig “Ny vana”-knapp har även lagts högst upp i Vanor-vyn. Den öppnar det befintliga formuläret och ersätter inte någon vanelogik.
 
 Dagens checklista har förtydligats med rubriken “Dagens vanor”, instruktion för avprickning och tillgängliga etiketter på kryssknapparna. Efter att en vana sparats stängs formuläret och användaren återgår direkt till dagens checklista.
+
+### Ekonomisk regressionskontroll 2026-09-17
+
+Ekonomimotorn matchar nu varje bokförd transaktion mot högst en fast utgift eller ett reseköp. Det förhindrar att en enda transaktion av misstag markerar två identiska poster som betalda. Budgetkategorier matchas även normaliserat så skillnader i stora/små bokstäver eller omgivande mellanslag inte gör att budgetköp faller utanför budgetsummeringen. Regressionstester täcker båda fallen.
+
+Köp som tidigare hörde till en budget klassas nu som fria köp om budgeten tas bort, så de inte försvinner ur Fria pengar-beräkningen. Transaktioner som är kopplade till fasta utgifter undantas och dubbelräknas fortsatt inte.
+
+Reseköp som även finns som vanliga transaktioner dras inte längre en extra gång från Fria pengar. Ett omatchat reseköp som ska påverka Fria pengar räknas fortfarande exakt en gång.

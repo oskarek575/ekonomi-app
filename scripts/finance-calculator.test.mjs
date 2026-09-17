@@ -182,6 +182,129 @@ describe("finance calculator", () => {
     assert.equal(result.actualBalance, 20_000);
   });
 
+  it("does not let one transaction pay two identical fixed expenses", () => {
+    const result = summary({
+      subscriptions: [
+        { id: "service-a", name: "Tjänst", plan: "Plan A", amount: 100, day: 3, active: true },
+        { id: "service-b", name: "Tjänst", plan: "Plan B", amount: 100, day: 3, active: true },
+      ],
+      transactions: [
+        { id: "one-payment", title: "Tjänst", category: "Prenumerationer", amount: 100, date: "2026-07-03", type: "expense", source: "budget" },
+      ],
+    });
+
+    assert.equal(result.fixedExpenseTotal, 200);
+    assert.equal(result.fixedExpenseRemaining, 100);
+    assert.equal(result.missingPostedFixedExpenses, 100);
+    assert.equal(result.actualBalance, 24_800);
+  });
+
+  it("matches budget categories without being sensitive to casing or surrounding whitespace", () => {
+    const result = summary({
+      budgets: [{ id: "food", category: "Mat", limit: 4_000 }],
+      transactions: [
+        { id: "food-purchase", title: "Butik", category: " mat ", amount: 1_000, date: "2026-07-03", type: "expense", source: "budget" },
+      ],
+    });
+
+    assert.equal(result.budgetRows[0].used, 1_000);
+    assert.equal(result.budgetRows[0].remaining, 3_000);
+    assert.equal(result.freeMoney, 21_000);
+  });
+
+  it("treats an old budget purchase as free after its budget is removed", () => {
+    const result = summary({
+      transactions: [
+        { id: "old-food", title: "Butik", category: "Mat", amount: 1_000, date: "2026-07-03", type: "expense", source: "budget" },
+      ],
+    });
+
+    assert.equal(result.freePurchaseSpent, 1_000);
+    assert.equal(result.freeMoney, 24_000);
+  });
+
+  it("does not reclassify a linked fixed expense as a free purchase", () => {
+    const result = summary({
+      subscriptions: [
+        { id: "rent", name: "Hyra", plan: "Boende", amount: 5_000, day: 3, active: true },
+      ],
+      transactions: [
+        { id: "rent-paid", title: "Hyra", category: "Prenumerationer", amount: 5_000, date: "2026-07-03", type: "expense", source: "budget", subscriptionId: "rent" },
+      ],
+    });
+
+    assert.equal(result.freePurchaseSpent, 0);
+    assert.equal(result.freeMoney, 20_000);
+  });
+
+  it("does not let one transaction hide two identical travel purchases", () => {
+    const result = summary({
+      transactions: [
+        { id: "travel-payment", title: "Taxi", category: "Transport", amount: 200, date: "2026-07-03", type: "expense", source: "budget" },
+      ],
+      travelBudgets: [{
+        id: "trip",
+        name: "Resa",
+        budget: 1_000,
+        startDate: "2026-07-01",
+        endDate: "2026-07-10",
+        separateFromFreeMoney: true,
+        purchases: [
+          { id: "taxi-a", title: "Taxi", amount: 200, category: "Transport", date: "2026-07-03" },
+          { id: "taxi-b", title: "Taxi", amount: 200, category: "Transport", date: "2026-07-03" },
+        ],
+      }],
+    });
+
+    assert.equal(result.travelSpentForActualBalance, 200);
+    assert.equal(result.actualBalance, 24_600);
+  });
+
+  it("does not charge free money twice when a travel purchase also exists as a transaction", () => {
+    const result = summary({
+      transactions: [
+        { id: "travel-payment", title: "Taxi", category: "Transport", amount: 200, date: "2026-07-03", type: "expense", source: "free" },
+      ],
+      travelBudgets: [{
+        id: "trip",
+        name: "Resa",
+        budget: 1_000,
+        startDate: "2026-07-01",
+        endDate: "2026-07-10",
+        separateFromFreeMoney: false,
+        purchases: [
+          { id: "taxi", title: "Taxi", amount: 200, category: "Transport", date: "2026-07-03" },
+        ],
+      }],
+    });
+
+    assert.equal(result.freePurchaseSpent, 200);
+    assert.equal(result.travelSpentAffectingFreeMoney, 0);
+    assert.equal(result.freeMoney, 24_800);
+    assert.equal(result.actualBalance, 24_800);
+  });
+
+  it("charges an unmatched travel purchase once when it affects free money", () => {
+    const result = summary({
+      travelBudgets: [{
+        id: "trip",
+        name: "Resa",
+        budget: 1_000,
+        startDate: "2026-07-01",
+        endDate: "2026-07-10",
+        separateFromFreeMoney: false,
+        purchases: [
+          { id: "taxi", title: "Taxi", amount: 200, category: "Transport", date: "2026-07-03" },
+        ],
+      }],
+    });
+
+    assert.equal(result.travelSpentAffectingFreeMoney, 200);
+    assert.equal(result.travelSpentForActualBalance, 200);
+    assert.equal(result.freeMoney, 24_800);
+    assert.equal(result.actualBalance, 24_800);
+  });
+
   it("uses opening balance when calculating actual balance", () => {
     const result = summary({
       openingBalance: 1_500,
