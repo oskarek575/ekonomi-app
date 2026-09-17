@@ -171,6 +171,9 @@ export default function HabitsSection() {
       setHabitDays([0, 1, 2, 3, 4, 5, 6]);
       setEditingHabitId(null);
       await reload();
+      setShowManager(false);
+      setTab("today");
+      setSelectedDay(today);
     } catch (saveError) {
       console.error(saveError);
       setError(getHabitSaveError(saveError));
@@ -377,6 +380,14 @@ export default function HabitsSection() {
             <small>{selectedCounts.missed ? `${selectedCounts.missed} missade från tidigare dag` : selectedCounts.pending ? "Du behöver inte göra allt på en gång." : "Snyggt. Dagen är i fas."}</small>
           </div>
 
+          <div className="habit-checklist-heading">
+            <div>
+              <span>{selectedDay === today ? "Idag" : formatHabitDate(selectedDay, { day: "numeric", month: "long" })}</span>
+              <h3>{selectedDay === today ? "Dagens vanor" : "Vanor den här dagen"}</h3>
+            </div>
+            <small>Tryck på cirkeln för att markera en vana som klar.</small>
+          </div>
+
           <HabitList data={data} day={selectedDay} today={today} habits={visibleHabits} saving={saving} onRecord={recordHabit} />
 
           <button className="habit-journal-link panel" onClick={() => selectTab("journal")} type="button">
@@ -488,7 +499,7 @@ function HabitList({
 
         return (
           <article className={`habit-row panel ${done ? "done" : ""} ${missed ? "missed" : ""}`} key={habit.id}>
-            <button disabled={saving || day > today} onClick={() => onRecord(habit, "done")} type="button">
+            <button aria-label={done ? `Markera ${habit.name} som inte klar` : `Markera ${habit.name} som klar`} disabled={saving || day > today} onClick={() => onRecord(habit, "done")} type="button">
               {done ? <Check size={20}/> : missed ? <X size={20}/> : <Circle size={20}/>}
             </button>
             <span>

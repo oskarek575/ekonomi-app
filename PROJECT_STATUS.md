@@ -2348,3 +2348,5 @@ Appen har fått en ny hash-sektion `habits` med navigationstiteln “Vanor”. F
 Alla läs- och skrivoperationer för vanor, markeringar, pauser och dagbok kopplas nu uttryckligen till den inloggade användaren. Det gör att skapandet inte är beroende av ett implicit databas-default och ger stabilare beteende tillsammans med RLS.
 
 En tydlig och alltid synlig “Ny vana”-knapp har även lagts högst upp i Vanor-vyn. Den öppnar det befintliga formuläret och ersätter inte någon vanelogik.
+
+Dagens checklista har förtydligats med rubriken “Dagens vanor”, instruktion för avprickning och tillgängliga etiketter på kryssknapparna. Efter att en vana sparats stängs formuläret och användaren återgår direkt till dagens checklista.
