@@ -2366,3 +2366,9 @@ PWA-ikonerna för 1024 och 512 pixlar, Android-ikonen för 192 pixlar, Apple Tou
 Ikonen ersattes därefter med den frilagda versionen utan bildbakgrund. De transparenta ytterkanterna fylls tekniskt med svart för ett konsekvent och giltigt resultat på iOS, Android och i webbläsaren.
 
 Den transparenta yttermarginalen beskärs nu bort innan ikonstorlekarna skapas. Själva ikonen fyller därför hela appytan utan den tidigare synliga svarta ramen.
+
+### Stående mobilnavigation och periodjämförelse 2026-09-17
+
+Mobilens tidigare horisontella, scrollbara bottennavigation har ersatts med en smal fast navigationslist längs vänster sida. Samma befintliga navigation, hash-sektioner och accenttema återanvänds; ingen route eller funktion har tagits bort.
+
+Översiktens fyra ekonomivärden visar nu utvecklingen jämfört med föregående löneperiod. Jämförelsen använder samma `calculateFinanceSummary` som den vanliga ekonomiberäkningen och föregående periods bokförda transaktioner från Supabase. Om jämförelsedata inte är tillgänglig visas detta uttryckligen i stället för en uppskattad procentsiffra.

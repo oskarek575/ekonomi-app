@@ -620,6 +620,44 @@ function sourceFromRemotePurchase(
     : "budget";
 }
 
+function transactionFromRemotePurchase(
+  purchase: RemotePurchase,
+  budgetCategorySet: Set<string>
+): Transaction {
+  const type: TransactionType = purchase.kategori === "Lön" ? "income" : "expense";
+
+  return {
+    id: String(purchase.id),
+    title: purchase.beskrivning,
+    amount: Number(purchase.belopp),
+    category: purchase.kategori,
+    date: purchase.created_at.slice(0, 10),
+    type,
+    source: type === "expense" ? sourceFromRemotePurchase(purchase, budgetCategorySet) : undefined,
+    subscriptionId: purchase.subscription_id ? String(purchase.subscription_id) : undefined,
+  };
+}
+
+function previousFinancialMonth(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const previous = new Date(year, monthNumber - 2, 1);
+
+  return `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function percentageTrend(current: number, previous: number, comparisonReady: boolean) {
+  if (!comparisonReady) return { label: "Jämförelse saknas", tone: "neutral" } as const;
+  if (previous === 0 && current === 0) return { label: "0% mot föregående", tone: "neutral" } as const;
+  if (previous === 0) return { label: "Nytt mot föregående", tone: "positive" } as const;
+
+  const percentage = Math.round(((current - previous) / Math.abs(previous)) * 100);
+
+  return {
+    label: `${percentage > 0 ? "+" : ""}${percentage}% mot föregående`,
+    tone: percentage > 0 ? "positive" : percentage < 0 ? "negative" : "neutral",
+  } as const;
+}
+
 function getExpenseSourceForCategory(category: string, budgetCategorySet: Set<string>): PurchaseSource {
   return category === "Fria köp" || !budgetCategorySet.has(normalizeCategory(category))
     ? "free"
@@ -1081,6 +1119,8 @@ function getReadableError(error: unknown) {
 
 export default function Dashboard({ activeSection, onNavigate }: DashboardProps) {
   const [data, setData] = useState<FinanceData>(defaultData);
+  const [previousTransactions, setPreviousTransactions] = useState<Transaction[]>([]);
+  const [comparisonReady, setComparisonReady] = useState(false);
   const [month, setMonth] = useState(currentMonthValue);
   const [notice, setNotice] = useState("Klart! Din ekonomi är uppdaterad.");
   const [search, setSearch] = useState("");
@@ -1342,6 +1382,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     async function loadSupabaseData() {
       if (!user) {
         setRemoteReady(false);
+        setPreviousTransactions([]);
+        setComparisonReady(false);
         setSyncLoading(false);
         setSyncError("");
         setNotice("Logga in för att synka säkert med Supabase.");
@@ -1350,12 +1392,15 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       setSyncLoading(true);
       setSyncError("");
+      setComparisonReady(false);
 
       try {
         const periodRange = getFinancialPeriod(month);
-        const [profile, purchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, loanRowsData, travelRows] = await Promise.all([
+        const previousPeriodRange = getFinancialPeriod(previousFinancialMonth(month));
+        const [profile, purchaseRows, previousPurchaseRows, budgetRowsData, categoryRows, subscriptionRows, goalRows, savingsRows, loanRowsData, travelRows] = await Promise.all([
           getProfile().catch(() => null),
           getPurchasesByDateRange(periodRange.start, periodRange.end) as Promise<RemotePurchase[]>,
+          getPurchasesByDateRange(previousPeriodRange.start, previousPeriodRange.end) as Promise<RemotePurchase[]>,
           getBudgets() as Promise<RemoteBudget[]>,
           getCategories() as Promise<RemoteCategory[]>,
           getSubscriptions() as Promise<RemoteSubscription[]>,
@@ -1368,25 +1413,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         const remoteBudgetCategorySet = new Set(
           budgetRowsData.map((budget) => normalizeCategory(budget.category))
         );
+        setPreviousTransactions(previousPurchaseRows.map((purchase) => transactionFromRemotePurchase(purchase, remoteBudgetCategorySet)));
+        setComparisonReady(true);
 
         setData((current) => ({
           ...current,
           openingBalance: Number(profile?.opening_balance ?? current.openingBalance ?? 0),
-          transactions: purchaseRows.map((purchase) => {
-            const type: TransactionType = purchase.kategori === "Lön" ? "income" : "expense";
-            const source = type === "expense" ? sourceFromRemotePurchase(purchase, remoteBudgetCategorySet) : undefined;
-
-            return {
-              id: String(purchase.id),
-              title: purchase.beskrivning,
-              amount: Number(purchase.belopp),
-              category: purchase.kategori,
-              date: purchase.created_at.slice(0, 10),
-              type,
-              source,
-              subscriptionId: purchase.subscription_id ? String(purchase.subscription_id) : undefined,
-            };
-          }),
+          transactions: purchaseRows.map((purchase) => transactionFromRemotePurchase(purchase, remoteBudgetCategorySet)),
           budgets: budgetRowsData.map((budget) => ({
             id: String(budget.id),
             category: budget.category,
@@ -1469,6 +1502,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         console.error(error);
         const message = getReadableError(error);
         setRemoteReady(false);
+        setPreviousTransactions([]);
+        setComparisonReady(false);
         setSyncError(message);
         setNotice("Kunde inte nå Supabase, använder lokal cache.");
       } finally {
@@ -1606,6 +1641,17 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     travelSpentAffectingFreeMoney,
     balanceBreakdown: balanceBreakdownRows,
   } = financeSummary;
+  const previousMonth = previousFinancialMonth(month);
+  const previousFinanceSummary = useMemo(() => calculateFinanceSummary({
+    transactions: previousTransactions,
+    budgets: data.budgets,
+    subscriptions: data.subscriptions,
+    savings: data.savings,
+    travelBudgets: data.travelBudgets,
+    month: previousMonth,
+    openingBalance: data.openingBalance,
+    salaryDay,
+  }), [data.budgets, data.openingBalance, data.savings, data.subscriptions, data.travelBudgets, previousMonth, previousTransactions]);
   const freeMoneyStyle = { "--free-progress": `${freeMoneyProgress}%` } as CSSProperties;
   const linkedGoalSavingsIds = new Set(data.goals
     .map((goal) => findLinkedSavingsForGoal(goal, data.savings)?.id)
@@ -3130,10 +3176,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   const stats = [
-    { title: "Inkomst", value: kr(income), change: income ? "+ registrerat" : "0", tail: "i vald period", color: "green", Icon: ArrowDownToLine },
-    { title: "Reserverat kvar", value: kr(reservedRemaining), change: reservedRemaining ? "planerat" : "0", tail: "budget & fasta", color: "green", Icon: WalletCards },
-    { title: "Utgifter", value: `-${kr(expenses)}`, change: expenses ? "- bokfört" : "0", tail: "i vald period", color: "purple", Icon: ArrowUpRight },
-    { title: "Fritt idag", value: kr(freeMoneyPerDay), change: freeMoney >= 0 ? "per dag" : "- underskott", tail: "resten av perioden", color: "blue", Icon: PiggyBank },
+    { title: "Inkomst", value: kr(income), trend: percentageTrend(income, previousFinanceSummary.income, comparisonReady), color: "green", Icon: ArrowDownToLine },
+    { title: "Reserverat kvar", value: kr(reservedRemaining), trend: percentageTrend(reservedRemaining, previousFinanceSummary.reservedRemaining, comparisonReady), color: "green", Icon: WalletCards },
+    { title: "Utgifter", value: `-${kr(expenses)}`, trend: percentageTrend(expenses, previousFinanceSummary.expenses, comparisonReady), color: "purple", Icon: ArrowUpRight },
+    { title: "Fritt idag", value: kr(freeMoneyPerDay), trend: percentageTrend(freeMoneyPerDay, previousFinanceSummary.freeMoneyPerDay, comparisonReady), color: "blue", Icon: PiggyBank },
   ];
 
   const topInsights = [
@@ -3855,21 +3901,26 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           </section>
 
           <section className="stats-grid">
-            {stats.map(({ title, value, change, tail, color, Icon }) => (
+            {stats.map(({ title, value, trend, color, Icon }) => (
               <button className="stat-card" key={title} onClick={() => openStat(title)} type="button">
                 <div className={`stat-icon ${color}`}><Icon size={19}/></div>
                 <span className="stat-label">{title}</span><strong>{value}</strong>
-                <p><b className={change.startsWith("-") ? "negative" : "positive"}>{change}</b> {tail}</p>
+                <p><b className={trend.tone}>{trend.label}</b></p>
                 <Sparkline color={color === "purple" ? "#8a3ffc" : color === "blue" ? "#1e9fd3" : "#16a34a"}/>
               </button>
             ))}
           </section>
 
           <section className="mobile-overview-metrics" aria-label="Översikt">
-            <button onClick={() => { setCategoryFilter("Lön"); onNavigate("transactions"); }} type="button"><ArrowDownToLine size={22}/><span>Inkomst</span><b>{kr(income)}</b></button>
-            <button onClick={() => { setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button"><ArrowUpRight size={22}/><span>Utgifter</span><b>{kr(expenses)}</b></button>
-            <button onClick={() => onNavigate("budgets")} type="button"><WalletCards size={22}/><span>Reserverat kvar</span><b>{kr(reservedRemaining)}</b></button>
-            <button onClick={() => { setCategoryFilter("Alla"); onNavigate("transactions"); }} type="button"><PiggyBank size={22}/><span>Fritt idag</span><b>{kr(freeMoneyPerDay)}</b></button>
+            {stats.map(({ title, value, trend, Icon }) => (
+              <button
+                key={title}
+                onClick={() => openStat(title)}
+                type="button"
+              >
+                <Icon size={22}/><span>{title}</span><b>{value}</b><small className={trend.tone}>{trend.label}</small>
+              </button>
+            ))}
           </section>
 
           <OverviewInfoNotice />
