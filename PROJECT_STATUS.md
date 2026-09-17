@@ -2362,3 +2362,5 @@ Reseköp som även finns som vanliga transaktioner dras inte längre en extra g�
 ### Ny appikon 2026-09-17
 
 PWA-ikonerna för 1024 och 512 pixlar, Android-ikonen för 192 pixlar, Apple Touch-ikonen samt webbläsarens favicon använder nu den nya mörka ekonomiikonen med vit graf och varm orange belysning. Manifestets befintliga ikonreferenser är oförändrade.
+
+Ikonen ersattes därefter med den frilagda versionen utan bildbakgrund. De transparenta ytterkanterna fylls tekniskt med svart för ett konsekvent och giltigt resultat på iOS, Android och i webbläsaren.
