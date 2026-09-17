@@ -65,6 +65,8 @@ import {
   getCurrentFinancialMonth,
 } from "../../lib/finance-calculator";
 import type { AppSection } from "../Sidebar";
+import ReceiptScanner from "./ReceiptScanner";
+import type { ScannedReceiptPurchase } from "./ReceiptScanner";
 import HabitsSection from "./sections/HabitsSection";
 import LoansSection from "./sections/LoansSection";
 
@@ -81,6 +83,15 @@ type Transaction = {
   type: TransactionType;
   source?: PurchaseSource;
   subscriptionId?: string;
+};
+
+type TransactionForm = {
+  title: string;
+  amount: string;
+  category: string;
+  type: TransactionType;
+  source: PurchaseSource;
+  date: string;
 };
 
 type QuickPurchaseSuggestion = {
@@ -1126,7 +1137,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("Alla");
   const [showTransactionCategories, setShowTransactionCategories] = useState(false);
-  const [transactionForm, setTransactionForm] = useState({
+  const [transactionForm, setTransactionForm] = useState<TransactionForm>({
     title: "",
     amount: "",
     category: "Fria köp",
@@ -1705,6 +1716,25 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const transactionCategories = transactionForm.type === "income"
     ? data.categories.filter((category) => category === "Lön")
     : putFreePurchasesFirst(data.categories.filter((category) => category !== "Lön"));
+  const receiptCategories = putFreePurchasesFirst(data.categories.filter((category) => category !== "Lön"));
+
+  function suggestReceiptCategory(merchant: string) {
+    const merchantKey = normalizeCategory(merchant);
+    if (!merchantKey) return "Fria köp";
+
+    const categoryCounts = new Map<string, number>();
+    data.transactions
+      .filter((transaction) => {
+        if (transaction.type !== "expense") return false;
+        const titleKey = normalizeCategory(transaction.title);
+        return titleKey === merchantKey || titleKey.includes(merchantKey) || merchantKey.includes(titleKey);
+      })
+      .forEach((transaction) => {
+        categoryCounts.set(transaction.category, (categoryCounts.get(transaction.category) ?? 0) + 1);
+      });
+
+    return [...categoryCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Fria köp";
+  }
 
   const selectedBudgetRow = transactionForm.type === "expense"
     ? budgetRows.find((budget) => normalizeCategory(budget.category) === normalizeCategory(transactionForm.category))
@@ -1922,41 +1952,40 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     }));
   }
 
-  async function addTransaction(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveTransaction(form: TransactionForm) {
     if (submittingAction || isDuplicateSubmit("transaction")) return;
-    const amount = parseMoney(transactionForm.amount);
+    const amount = parseMoney(form.amount);
 
-    if (!transactionForm.title.trim()) {
+    if (!form.title.trim()) {
       show("Skriv vad köpet gäller först.");
-      return;
+      return false;
     }
 
     if (!Number.isFinite(amount) || amount <= 0) {
       show("Skriv ett giltigt belopp, till exempel 129 eller 129,50.");
-      return;
+      return false;
     }
 
     setSubmittingAction("transaction");
 
     try {
-      const expenseSource: PurchaseSource = transactionForm.type === "expense"
-        ? getExpenseSourceForCategory(transactionForm.category, budgetCategorySet)
+      const expenseSource: PurchaseSource = form.type === "expense"
+        ? getExpenseSourceForCategory(form.category, budgetCategorySet)
         : "budget";
       const transaction = {
-        title: transactionForm.title.trim(),
+        title: form.title.trim(),
         amount,
-        category: transactionForm.category,
-        type: transactionForm.type,
-        source: transactionForm.type === "expense" ? expenseSource : undefined,
-        date: transactionForm.date,
+        category: form.category,
+        type: form.type,
+        source: form.type === "expense" ? expenseSource : undefined,
+        date: form.date,
       };
       const duplicateKey = getTransactionDuplicateKey(transaction);
 
       if (!editingTransactionId && hasMatchingTransaction(transaction) && confirmedDuplicateTransactionKey !== duplicateKey) {
         setConfirmedDuplicateTransactionKey(duplicateKey);
         show("Det här ser ut som en transaktion som redan finns. Tryck på spara igen om det stämmer att den ska läggas in ändå.");
-        return;
+        return false;
       }
 
       setConfirmedDuplicateTransactionKey("");
@@ -2029,9 +2058,26 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       setTransactionForm((form) => ({ ...form, title: "", amount: "" }));
       setShowTransactionCategories(false);
+      return true;
     } finally {
       setSubmittingAction("");
     }
+  }
+
+  async function addTransaction(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveTransaction(transactionForm);
+  }
+
+  async function saveScannedReceipt(purchase: ScannedReceiptPurchase) {
+    return await saveTransaction({
+      title: purchase.title,
+      amount: String(purchase.amount),
+      category: purchase.category,
+      type: "expense",
+      source: getExpenseSourceForCategory(purchase.category, budgetCategorySet),
+      date: purchase.date,
+    }) ?? false;
   }
 
   function editTransaction(transaction: Transaction) {
@@ -3810,6 +3856,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <strong>{kr(freeMoney)}</strong>
               <p>Kvar att spendera denna period</p>
               <button className="mobile-primary-action" onClick={() => startFreePurchase()} type="button">Lägg till köp</button>
+              <ReceiptScanner
+                categories={receiptCategories}
+                defaultCategory="Fria köp"
+                disabled={Boolean(editingTransactionId)}
+                onSave={saveScannedReceipt}
+                suggestCategory={suggestReceiptCategory}
+              />
             </div>
             <div className="free-money-ring" aria-hidden="true">
               <WalletCards size={42} />
@@ -3976,6 +4029,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "transactions" && (
         <SectionPanel title="Transaktioner" description="Lägg till alla köp och inkomster här. Appen avgör automatiskt om köpet går mot en budget eller fria pengar.">
+          <ReceiptScanner
+            categories={receiptCategories}
+            defaultCategory={transactionForm.category === "Lön" ? "Fria köp" : transactionForm.category}
+            disabled={Boolean(editingTransactionId)}
+            onSave={saveScannedReceipt}
+            suggestCategory={suggestReceiptCategory}
+          />
           <form className="management-form purchase-form compact-transaction-form" onSubmit={addTransaction}>
               <select value={transactionForm.type} onChange={(event) => setTransactionForm((form) => ({ ...form, type: event.target.value as TransactionType, source: event.target.value === "income" ? "budget" : "free", category: event.target.value === "income" ? "Lön" : "Fria köp" }))}>
                 <option value="expense">Köp / utgift</option>

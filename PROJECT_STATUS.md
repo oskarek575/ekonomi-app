@@ -2374,3 +2374,9 @@ Mobilens tidigare horisontella, scrollbara bottennavigation har ersatts med en s
 Översiktens fyra ekonomivärden visar nu utvecklingen jämfört med föregående löneperiod. Jämförelsen använder samma `calculateFinanceSummary` som den vanliga ekonomiberäkningen och föregående periods bokförda transaktioner från Supabase. Om jämförelsedata inte är tillgänglig visas detta uttryckligen i stället för en uppskattad procentsiffra.
 
 Mobilens stående navigation är nu infällbar och ligger ovanpå innehållet när den öppnas. Den öppnas med en liten kantknapp och stängs med kryss, tryck utanför, sidval eller vänstersvep. Därmed använder Översikten åter hela skärmbredden när menyn är stängd. Desktopnavigationen är oförändrad.
+
+### Lokal kvittoskanning – första beta 2026-09-17
+
+Översikten och Transaktioner har fått en enkel kvittoskanner. Användaren fotograferar eller väljer ett kvitto, varefter OCR körs lokalt i webbläsaren och försöker läsa butik, totalbelopp och datum. Resultatet visas alltid i ett redigerbart granskningssteg före sparning. Kategori föreslås från tidigare köp hos samma butik och kan ändras manuellt.
+
+Godkända kvitton sparas genom samma transaktionsflöde som vanliga köp, så befintlig budget- och Fria pengar-logik återanvänds utan en parallell ekonomiberäkning. Kvittobilden skickas inte till Supabase och lagras inte av appen; den tillfälliga bildreferensen rensas efter sparning, avbryt eller stängning. Funktionen använder `tesseract.js` och har parsertester för svenska datum och beloppsformat.
