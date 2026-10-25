@@ -3,6 +3,7 @@ import { BUSINESS_RULES_2026 } from "./rules/2026.ts";
 import type {
   AmountEntryMode,
   BusinessProfile,
+  BusinessRecurringCost,
   BusinessScenarioAssumptions,
   BusinessTransaction,
   CompanyForm,
@@ -113,9 +114,49 @@ function isExpenseKind(kind: BusinessTransaction["kind"]): boolean {
   return kind === "expense" || kind === "investment" || kind === "interest" || kind === "salary_payment";
 }
 
+function addMonths(date: string, months: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
+}
+
+export function getRecurringCostOccurrences(
+  recurringCost: BusinessRecurringCost,
+  from: string,
+  to: string,
+): string[] {
+  if (!recurringCost.active || recurringCost.next_due_date > to) return [];
+
+  const interval = Math.max(1, Math.round(recurringCost.frequency_months));
+  const occurrences: string[] = [];
+  let monthOffset = 0;
+  let dueDate = recurringCost.next_due_date;
+
+  while (dueDate < from) {
+    monthOffset += interval;
+    dueDate = addMonths(recurringCost.next_due_date, monthOffset);
+  }
+  while (dueDate <= to) {
+    occurrences.push(dueDate);
+    monthOffset += interval;
+    dueDate = addMonths(recurringCost.next_due_date, monthOffset);
+  }
+
+  return occurrences;
+}
+
+export function annualizeRecurringCosts(recurringCosts: BusinessRecurringCost[]): number {
+  return recurringCosts
+    .filter((item) => item.active)
+    .reduce((sum, item) => sum + Math.round(item.amount_ore * 12 / Math.max(1, item.frequency_months)), 0);
+}
+
 export function calculateBusinessSummary(input: {
   profile: BusinessProfile;
   transactions: BusinessTransaction[];
+  recurringCosts?: BusinessRecurringCost[];
   from: string;
   to: string;
 }) {
@@ -149,10 +190,20 @@ export function calculateBusinessSummary(input: {
   const unpaidInvoicesOre = input.transactions
     .filter((item) => item.kind === "sale" && item.payment_status !== "paid")
     .reduce((sum, item) => sum + Math.max(item.gross_amount_ore - item.paid_amount_ore, 0), 0);
+  const recurringCommitmentsOre = (input.recurringCosts ?? [])
+    .filter((item) => item.profile_id === profile.id)
+    .reduce((sum, recurringCost) => {
+      const uncoveredOccurrences = getRecurringCostOccurrences(recurringCost, from, to)
+        .filter((dueDate) => !input.transactions.some((transaction) =>
+          transaction.recurring_cost_id === recurringCost.id
+          && (transaction.occurred_on === dueDate || transaction.due_date === dueDate)));
+      return sum + uncoveredOccurrences.length * recurringCost.amount_ore;
+    }, 0);
   const unpaidCommitmentsOre = input.transactions
     .filter((item) => isExpenseKind(item.kind) && item.payment_status !== "paid")
     .reduce((sum, item) => sum + Math.max(item.gross_amount_ore - item.paid_amount_ore, 0), 0)
-    + profile.opening_payables_ore;
+    + profile.opening_payables_ore
+    + recurringCommitmentsOre;
 
   const cashMovementOre = paidInPeriod.reduce((sum, item) => {
     const amount = item.paid_amount_ore || item.gross_amount_ore;
@@ -176,6 +227,7 @@ export function calculateBusinessSummary(input: {
     taxRemainingOre,
     unpaidInvoicesOre: unpaidInvoicesOre + profile.opening_receivables_ore,
     unpaidCommitmentsOre,
+    recurringCommitmentsOre,
     availableCashOre,
     cashMovementOre,
     reservationsOre,
@@ -190,6 +242,7 @@ export function calculateBusinessSummary(input: {
 export function calculateScenario(
   assumptions: BusinessScenarioAssumptions,
   companyForm: CompanyForm,
+  recurringAnnualCostsOre = 0,
 ) {
   const taxableShare = (100 - assumptions.exemptSharePercent) / 100;
   const annualClients = Math.max(Math.round(assumptions.clientsPerWeek * assumptions.workingWeeks), 0);
@@ -210,7 +263,8 @@ export function calculateScenario(
   const annualRevenueOre = taxableClients * taxablePrice.netOre + exemptClients * exemptPrice.netOre;
   const annualVatOre = taxableClients * taxablePrice.vatOre;
   const annualVariableCostsOre = annualClients * assumptions.variableCostPerClientOre;
-  const resultBeforeTaxOre = annualRevenueOre - assumptions.annualFixedCostsOre - annualVariableCostsOre;
+  const annualFixedCostsOre = assumptions.annualFixedCostsOre + recurringAnnualCostsOre;
+  const resultBeforeTaxOre = annualRevenueOre - annualFixedCostsOre - annualVariableCostsOre;
   const corporateTaxOre = companyForm === "limited_company"
     ? multiplyBasisPoints(Math.max(resultBeforeTaxOre, 0), BUSINESS_RULES_2026.corporateTaxBasisPoints)
     : null;
@@ -222,12 +276,13 @@ export function calculateScenario(
   const requiredResultOre = companyForm === "limited_company"
     ? Math.ceil(privateTargetAnnualOre / (1 - BUSINESS_RULES_2026.corporateTaxBasisPoints / 10_000))
     : privateTargetAnnualOre;
-  const requiredClients = Math.ceil((requiredResultOre + assumptions.annualFixedCostsOre) / contributionPerClientOre);
+  const requiredClients = Math.ceil((requiredResultOre + annualFixedCostsOre) / contributionPerClientOre);
   return {
     annualClients,
     annualRevenueOre,
     annualVatOre,
-    annualCostsOre: assumptions.annualFixedCostsOre + annualVariableCostsOre,
+    annualCostsOre: annualFixedCostsOre + annualVariableCostsOre,
+    recurringAnnualCostsOre,
     resultBeforeTaxOre,
     corporateTaxOre,
     resultAfterKnownTaxOre: resultBeforeTaxOre - (corporateTaxOre ?? 0),

@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  annualizeRecurringCosts,
   calculateBusinessSummary,
   calculateEmployerContribution,
   calculateExpenseAmounts,
   calculateSalaryScenario,
   calculateSaleAmounts,
+  calculateScenario,
+  getRecurringCostOccurrences,
 } from "../app/lib/business/calculator.ts";
 
 const profile = (overrides = {}) => ({
@@ -29,6 +32,12 @@ const transaction = (overrides = {}) => ({
   purchase_vat_scope: null, vat_deduction_percent: 0, allocation_basis: null, recurring_cost_id: null,
   linked_private_purchase_id: null, rule_year: 2026, created_at: "2026-06-10", updated_at: "2026-06-10",
   ...overrides,
+});
+
+const recurringCost = (overrides = {}) => ({
+  id: "r1", user_id: "u1", profile_id: "p1", name: "Lokal", category: "Lokal",
+  amount_ore: 250000, frequency_months: 1, next_due_date: "2026-06-30", active: true,
+  created_at: "2026-06-01", updated_at: "2026-06-01", ...overrides,
 });
 
 test("25 percent VAT works for inclusive and exclusive sale amounts", () => {
@@ -103,4 +112,59 @@ test("an unsupported rule year never presents automatic corporate tax as complet
   assert.equal(summary.supportedRuleYear, false);
   assert.equal(summary.calculatedTaxOre, null);
   assert.equal(summary.taxCalculationComplete, false);
+});
+
+test("recurring costs become commitments until a linked transaction exists", () => {
+  const cost = recurringCost();
+  const before = calculateBusinessSummary({
+    profile: profile(), transactions: [], recurringCosts: [cost], from: "2026-06-01", to: "2026-06-30",
+  });
+  assert.equal(before.recurringCommitmentsOre, 250000);
+  assert.equal(before.unpaidCommitmentsOre, 250000);
+
+  const booked = transaction({
+    kind: "expense", category: "Lokal", occurred_on: "2026-06-30", due_date: "2026-06-30",
+    recurring_cost_id: cost.id, gross_amount_ore: 250000, paid_amount_ore: 0,
+    net_amount_ore: 250000, income_tax_deductible_ore: 250000, vat_amount_ore: 0,
+    payment_status: "unpaid", paid_on: null,
+  });
+  const after = calculateBusinessSummary({
+    profile: profile(), transactions: [booked], recurringCosts: [cost], from: "2026-06-01", to: "2026-06-30",
+  });
+  assert.equal(after.recurringCommitmentsOre, 0);
+  assert.equal(after.unpaidCommitmentsOre, 250000);
+});
+
+test("recurring dates preserve the intended day and clamp short months", () => {
+  const dates = getRecurringCostOccurrences(
+    recurringCost({ frequency_months: 1, next_due_date: "2026-01-31" }),
+    "2026-01-01",
+    "2026-03-31",
+  );
+  assert.deepEqual(dates, ["2026-01-31", "2026-02-28", "2026-03-31"]);
+});
+
+test("forecast includes active recurring costs without changing saved assumptions", () => {
+  const recurringAnnual = annualizeRecurringCosts([recurringCost({ amount_ore: 100000, frequency_months: 1 })]);
+  const assumptions = {
+    servicePriceOre: 100000, priceIncludesVat: true, vatRateBasisPoints: 2500,
+    exemptSharePercent: 100, clientsPerWeek: 1, workingWeeks: 12,
+    annualFixedCostsOre: 200000, variableCostPerClientOre: 0, desiredPrivateMonthlyOre: 0,
+  };
+  const result = calculateScenario(assumptions, "sole_trader", recurringAnnual);
+  assert.equal(recurringAnnual, 1200000);
+  assert.equal(result.annualCostsOre, 1400000);
+  assert.equal(assumptions.annualFixedCostsOre, 200000);
+});
+
+test("business calculation survives a save, reload, edit and delete flow", () => {
+  const saved = transaction({ kind: "expense", gross_amount_ore: 100000, paid_amount_ore: 100000, net_amount_ore: 100000, income_tax_deductible_ore: 100000, vat_amount_ore: 0 });
+  const reloaded = JSON.parse(JSON.stringify([saved]));
+  assert.equal(calculateBusinessSummary({ profile: profile(), transactions: reloaded, from: "2026-01-01", to: "2026-12-31" }).costsOre, 100000);
+
+  const edited = reloaded.map((item) => item.id === saved.id ? { ...item, gross_amount_ore: 150000, paid_amount_ore: 150000, net_amount_ore: 150000, income_tax_deductible_ore: 150000 } : item);
+  assert.equal(calculateBusinessSummary({ profile: profile(), transactions: edited, from: "2026-01-01", to: "2026-12-31" }).costsOre, 150000);
+
+  const deleted = edited.filter((item) => item.id !== saved.id);
+  assert.equal(calculateBusinessSummary({ profile: profile(), transactions: deleted, from: "2026-01-01", to: "2026-12-31" }).costsOre, 0);
 });

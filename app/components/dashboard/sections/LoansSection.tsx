@@ -106,7 +106,7 @@ export default function LoansSection({
                 <strong>{formatCurrency(loan.amortization)}<small>amortering/mån</small></strong>
                 <span className="row-actions">
                   <button onClick={() => onEditLoan(loan)} type="button">Redigera</button>
-                  <button onClick={() => onRemoveLoan(loan.id)} type="button"><Trash2 size={14}/></button>
+                  <button aria-label={`Radera lånet ${loan.name}`} onClick={() => onRemoveLoan(loan.id)} type="button"><Trash2 size={14}/></button>
                 </span>
               </div>
             )) : <EmptyState text="Lägg till första lånet för att se skuld, månadsbetalning och ungefärlig tid kvar." />}

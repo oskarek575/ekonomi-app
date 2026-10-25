@@ -382,15 +382,18 @@ export async function addPurchase(
   kategori: string,
   subscription_id?: number,
   created_at?: string,
-  source?: PurchaseSource
+  source?: PurchaseSource,
+  idempotency_key?: string,
 ) {
   const payload: {
+    user_id?: string;
     beskrivning: string;
     belopp: number;
     kategori: string;
     subscription_id?: number;
     created_at?: string;
     source?: PurchaseSource;
+    idempotency_key?: string;
   } = {
     beskrivning,
     belopp,
@@ -409,17 +412,39 @@ export async function addPurchase(
     payload.source = source;
   }
 
-  const insertPurchase = async (nextPayload: typeof payload) => supabase
-    .from("kop")
-    .insert([nextPayload])
-    .select()
-    .single();
+  if (idempotency_key !== undefined) {
+    const user = await getCurrentUser();
+    if (!user) throw new Error("Du behöver vara inloggad för att spara köpet.");
+    payload.user_id = user.id;
+    payload.idempotency_key = idempotency_key;
+  }
+
+  let useIdempotency = idempotency_key !== undefined;
+  const insertPurchase = async (nextPayload: typeof payload) => {
+    const query = supabase.from("kop");
+    return useIdempotency
+      ? query.upsert([nextPayload], { onConflict: "user_id,idempotency_key" }).select().single()
+      : query.insert([nextPayload]).select().single();
+  };
 
   let { data, error } = await insertPurchase(payload);
+
+  if (error && idempotency_key !== undefined && error.message.includes("idempotency_key")) {
+    // Keeps older deployed databases working until the accompanying migration has been applied.
+    useIdempotency = false;
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.idempotency_key;
+    delete fallbackPayload.user_id;
+    ({ data, error } = await supabase.from("kop").insert([fallbackPayload]).select().single());
+  }
 
   if (error && source !== undefined) {
     const fallbackPayload = { ...payload };
     delete fallbackPayload.source;
+    if (!useIdempotency) {
+      delete fallbackPayload.idempotency_key;
+      delete fallbackPayload.user_id;
+    }
     ({ data, error } = await insertPurchase(fallbackPayload));
   }
 

@@ -216,6 +216,7 @@ export default function HabitsSection() {
 
   async function removeHabit(habit: Habit) {
     if (saving) return;
+    if (!window.confirm(`Vill du radera vanan ${habit.name}? Det går inte att ångra.`)) return;
 
     setSaving(true);
     try {
@@ -347,7 +348,7 @@ export default function HabitsSection() {
                   {isHabitPaused(habit) ? <Play size={15}/> : <Pause size={15}/>}
                   {isHabitPaused(habit) ? "Återuppta" : "Pausa"}
                 </button>
-                <button className="danger-action" onClick={() => removeHabit(habit)} type="button"><Trash2 size={15}/></button>
+                <button aria-label={`Radera vanan ${habit.name}`} className="danger-action" onClick={() => removeHabit(habit)} type="button"><Trash2 size={15}/></button>
               </div>
             ))}
           </div>

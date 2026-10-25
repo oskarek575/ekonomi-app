@@ -1868,6 +1868,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setNotice(message);
   }
 
+  function confirmDeletion(label: string) {
+    return window.confirm(`Vill du radera ${label}? Det går inte att ångra.`);
+  }
+
   function isDuplicateSubmit(key: string) {
     const now = Date.now();
     const lastSubmit = lastSubmitRef.current;
@@ -2100,6 +2104,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function removeTransaction(id: string) {
     const transaction = data.transactions.find((item) => item.id === id) ?? null;
+    if (!confirmDeletion(transaction ? `transaktionen ${transaction.title}` : "transaktionen")) return;
     const savingsAdjustments = getSavingsAdjustments(transaction, null, data.savings);
     const remoteId = toRemoteId(id);
     if (remoteReady && remoteId) {
@@ -2196,6 +2201,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   async function removeBudget(id: string) {
+    const budget = data.budgets.find((item) => item.id === id);
+    if (!confirmDeletion(budget ? `budgeten ${budget.category}` : "budgeten")) return;
     const remoteId = toRemoteId(id);
     if (remoteReady && remoteId) {
       await deleteRemoteBudget(remoteId);
@@ -2365,6 +2372,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   async function removeSubscription(id: string) {
+    const subscription = data.subscriptions.find((item) => item.id === id);
+    if (!confirmDeletion(subscription ? `den fasta utgiften ${subscription.name}` : "den fasta utgiften")) return;
     const remoteId = toRemoteId(id);
     if (remoteReady && remoteId) {
       await deleteRemoteSubscription(remoteId);
@@ -2411,7 +2420,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             transaction.category,
             transaction.subscriptionId ? toRemoteId(transaction.subscriptionId) ?? undefined : undefined,
             toDateTime(transaction.date),
-            "budget"
+            "budget",
+            `subscription:${transaction.subscriptionId}:${transaction.date}`,
           ) as RemotePurchase;
 
           return { ...transaction, id: String(created.id) };
@@ -2455,6 +2465,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       show("Den här kategorin behövs av appen och kan inte raderas.");
       return;
     }
+
+    if (!confirmDeletion(`kategorin ${name}`)) return;
 
     if (remoteReady) {
       try {
@@ -2556,6 +2568,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   async function removeGoal(id: string) {
+    const goal = data.goals.find((item) => item.id === id);
+    if (!confirmDeletion(goal ? `målet ${goal.title}` : "målet")) return;
     const remoteId = toRemoteId(id);
     if (remoteReady && remoteId) {
       try {
@@ -2706,6 +2720,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function removeSavings(id: string) {
     const saving = data.savings.find((item) => item.id === id);
+    if (!confirmDeletion(saving ? `sparkontot ${saving.name}` : "sparkontot")) return;
     const linkedSavingsTransaction = saving ? findLinkedSavingsTransaction(saving, data.transactions) : null;
     const remoteId = toRemoteId(id);
     if (remoteReady && remoteId) {
@@ -2937,6 +2952,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function removeLoan(id: string) {
     const loan = data.loans.find((item) => item.id === id);
+    if (!confirmDeletion(loan ? `lånet ${loan.name}` : "lånet")) return;
     const linkedSubscription = loan
       ? data.subscriptions.find((subscription) =>
           subscription.plan === loanSubscriptionPlan &&
@@ -3098,6 +3114,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   async function removeTravelBudget(id: string) {
+    const travelBudget = data.travelBudgets.find((item) => item.id === id);
+    if (!confirmDeletion(travelBudget ? `resebudgeten ${travelBudget.name}` : "resebudgeten")) return;
     const remoteId = toRemoteId(id);
     if (remoteReady && remoteId) {
       try {
@@ -3181,6 +3199,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   async function removeTravelPurchase(travelId: string, purchaseId: string) {
+    const travelPurchase = data.travelBudgets.find((item) => item.id === travelId)?.purchases.find((item) => item.id === purchaseId);
+    if (!confirmDeletion(travelPurchase ? `reseköpet ${travelPurchase.title}` : "reseköpet")) return;
     const remoteId = toRemoteId(purchaseId);
     if (remoteReady && remoteId) {
       try {
@@ -3357,7 +3377,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         amount: incomeAmount,
         category: "Lön",
         type: "income" as TransactionType,
-        date: dateForPeriodDay(month, salaryDay),
+        date: formatDateInput(getFinancialPeriod(month).start),
       };
       let id = crypto.randomUUID();
 
@@ -3793,7 +3813,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             />
             <button disabled={authLoading} type="submit">{authLoading ? "Vänta..." : authMode === "signin" ? "Logga in" : "Skapa konto"}</button>
           </form>
-          {authMessage && <div className="notice-bar auth-notice">{authMessage}</div>}
+          {authMessage && <div aria-live="polite" className="notice-bar auth-notice" role="status">{authMessage}</div>}
           <button
             className="inline-link"
             onClick={() => {
@@ -3814,8 +3834,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       <header className="topbar">
         <div><h1>{greeting}, {displayName}! <span>👋</span></h1><p>Här är din ekonomiöversikt för idag.</p></div>
         <div className="top-actions">
-          <button className="icon-button" onClick={() => show("Du har inga nya notiser just nu.")} type="button"><Bell size={19}/></button>
-          <button className="top-avatar" onClick={() => onNavigate("settings")} type="button">{initials}</button>
+          <button aria-label="Visa notiser" className="icon-button" onClick={() => show("Du har inga nya notiser just nu.")} type="button"><Bell size={19}/></button>
+          <button aria-label="Öppna inställningar" className="top-avatar" onClick={() => onNavigate("settings")} type="button">{initials}</button>
         </div>
       </header>
 
@@ -3824,7 +3844,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         <span className="period-range">{periodTitle}: {dateFormatter.format(period.start)} – {dateFormatter.format(new Date(period.end.getTime() - 86400000))}</span>
       </div>
 
-      <div className="notice-bar">{notice}</div>
+      <div aria-live="polite" className="notice-bar" role="status">{notice}</div>
 
       <SyncStatusPanel
         loading={syncLoading}
@@ -4060,7 +4080,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
             </form>
           <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök transaktion..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option>Alla</option>{data.categories.map((category) => <option key={category}>{category}</option>)}</select></div>
-          <div className="data-table">{filteredTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={data.categoryDetails}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={new Date(item.date).toLocaleDateString("sv-SE")} categoryDetails={data.categoryDetails}/></span></span><strong className={item.type === "income" ? "plus" : "minus"}>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <div className="data-table">{filteredTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={data.categoryDetails}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={new Date(item.date).toLocaleDateString("sv-SE")} categoryDetails={data.categoryDetails}/></span></span><strong className={item.type === "income" ? "plus" : "minus"}>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button aria-label={`Radera ${item.title}`} onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
@@ -4081,7 +4101,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </button>
           </article>
           <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök fria köp..." value={search} onChange={(event) => setSearch(event.target.value)} /></label></div>
-          <div className="data-table">{freePurchaseTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={data.categoryDetails}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={`fria pengar · ${new Date(item.date).toLocaleDateString("sv-SE")}`} categoryDetails={data.categoryDetails}/></span></span><strong className="minus">-{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <div className="data-table">{freePurchaseTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={data.categoryDetails}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={`fria pengar · ${new Date(item.date).toLocaleDateString("sv-SE")}`} categoryDetails={data.categoryDetails}/></span></span><strong className="minus">-{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button aria-label={`Radera ${item.title}`} onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
@@ -4092,7 +4112,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>−</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>−</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>{budgetOverspendTotal > 0 && <><i>−</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget över</small></span></>}<i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span></div>
           </div>
           <form className="management-form budget-form" onSubmit={addBudget}><select value={budgetForm.category} onChange={(event) => setBudgetForm((form) => ({ ...form, category: event.target.value }))}>{data.categories.filter((category) => !["Lön", "Fria köp", "Prenumerationer"].includes(category)).map((category) => <option key={category}>{category}</option>)}</select><input inputMode="decimal" placeholder="Månadsbudget" value={budgetForm.limit} onChange={(event) => setBudgetForm((form) => ({ ...form, limit: event.target.value }))}/><button disabled={submittingAction === "budget"} type="submit"><Plus size={16}/> {submittingAction === "budget" ? "Sparar..." : editingBudgetId ? "Spara ändring" : "Spara budget"}</button>{editingBudgetId && <button className="secondary-action" onClick={cancelBudgetEdit} type="button">Avbryt</button>}</form>
-          <div className="data-table">{budgetRows.map((budget) => <div className="table-row budget-table-row" key={budget.id}><span><b>{budget.category}</b><small>{kr(budget.used)} använt · {budget.overspent ? `${kr(budget.overspent)} över budget` : `${kr(budget.remaining)} kvar inom budgeten`}</small></span><div className="table-progress"><i style={{ width: `${budget.pct}%` }}/></div><strong>{kr(budget.limit)} reserverat</strong><span className="row-actions"><button onClick={() => editBudget(budget)} type="button">Redigera</button><button onClick={() => removeBudget(budget.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <div className="data-table">{budgetRows.map((budget) => <div className="table-row budget-table-row" key={budget.id}><span><b>{budget.category}</b><small>{kr(budget.used)} använt · {budget.overspent ? `${kr(budget.overspent)} över budget` : `${kr(budget.remaining)} kvar inom budgeten`}</small></span><div className="table-progress"><i style={{ width: `${budget.pct}%` }}/></div><strong>{kr(budget.limit)} reserverat</strong><span className="row-actions"><button onClick={() => editBudget(budget)} type="button">Redigera</button><button aria-label={`Radera budgeten ${budget.category}`} onClick={() => removeBudget(budget.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
@@ -4206,7 +4226,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                       <div className="premium-progress"><i style={{ width: `${progress}%` }}/></div>
                       <div className="premium-card-actions">
                         <button onClick={() => editGoal(goal)} type="button">Redigera</button>
-                        <button onClick={() => removeGoal(goal.id)} type="button"><Trash2 size={14}/></button>
+                        <button aria-label={`Radera målet ${goal.title}`} onClick={() => removeGoal(goal.id)} type="button"><Trash2 size={14}/></button>
                       </div>
                     </div>
                   );
@@ -4223,7 +4243,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                     <div><b>{saving.name}</b><small>Räknas med i totalt sparat</small></div>
                     <strong>{kr(saving.amount)}</strong>
                     <button onClick={() => editSavings(saving)} type="button">Redigera</button>
-                    <button onClick={() => removeSavings(saving.id)} type="button"><Trash2 size={14}/></button>
+                    <button aria-label={`Radera sparkontot ${saving.name}`} onClick={() => removeSavings(saving.id)} type="button"><Trash2 size={14}/></button>
                   </div>
                 )) : <EmptyState text="Lägg till ett sparkonto för att följa pengar du flyttar undan." />}
               </div>
@@ -4336,7 +4356,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                     <div className={`table-row travel-table-row ${travel.id === activeTravelBudget?.id ? "active" : ""}`} key={travel.id}>
                       <span><b>{travel.name}</b><small>{travel.startDate} – {travel.endDate} · {travel.separateFromFreeMoney ? "separat från fria pengar" : "påverkar fria pengar"}</small></span>
                       <strong>{kr(remaining)} kvar</strong>
-                      <span className="row-actions"><button onClick={() => setActiveTravelId(travel.id)} type="button">Visa</button><button onClick={() => editTravelBudget(travel)} type="button">Redigera</button><button onClick={() => removeTravelBudget(travel.id)} type="button"><Trash2 size={14}/></button></span>
+                      <span className="row-actions"><button onClick={() => setActiveTravelId(travel.id)} type="button">Visa</button><button onClick={() => editTravelBudget(travel)} type="button">Redigera</button><button aria-label={`Radera resebudgeten ${travel.name}`} onClick={() => removeTravelBudget(travel.id)} type="button"><Trash2 size={14}/></button></span>
                     </div>
                   );
                 })}
@@ -4350,7 +4370,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                   <div className="table-row transaction-table-row" key={purchase.id}>
                     <span><b>{purchase.title}</b><small>{purchase.category} · {new Date(purchase.date).toLocaleDateString("sv-SE")}</small></span>
                     <strong className="minus">-{kr(purchase.amount)}</strong>
-                    <span className="row-actions"><button onClick={() => removeTravelPurchase(activeTravelBudget.id, purchase.id)} type="button"><Trash2 size={14}/></button></span>
+                    <span className="row-actions"><button aria-label={`Radera reseköpet ${purchase.title}`} onClick={() => removeTravelPurchase(activeTravelBudget.id, purchase.id)} type="button"><Trash2 size={14}/></button></span>
                   </div>
                 )) : <EmptyState text="Inga reseköp ännu." />}
               </div>
@@ -5247,7 +5267,7 @@ function SubscriptionsPanel({
             <small>{item.isDueThisPeriod && item.dueDate ? `Dras denna period: ${new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : item.nextDueDate ? `Nästa dragning: ${new Date(`${item.nextDueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : "Ingen aktiv dragning"}</small>
           </span>
           <span className="row-value"><b>{kr(item.amount)}</b><small>{item.active ? (item.isDueThisPeriod ? "Räknas nu" : "Kommande") : "Pausad"}</small></span>
-          <span className="row-actions"><button onClick={() => onEdit(item)} type="button">Redigera</button><button onClick={() => onToggle(item.id)} type="button">{item.active ? "Pausa" : "Aktivera"}</button><button onClick={() => onRemove(item.id)} type="button"><Trash2 size={14}/></button></span>
+          <span className="row-actions"><button onClick={() => onEdit(item)} type="button">Redigera</button><button onClick={() => onToggle(item.id)} type="button">{item.active ? "Pausa" : "Aktivera"}</button><button aria-label={`Radera den fasta utgiften ${item.name}`} onClick={() => onRemove(item.id)} type="button"><Trash2 size={14}/></button></span>
         </div>
       ))}</div>
       <button className="wide-button" onClick={onGenerate} type="button">Skapa utgifter <ArrowRight size={15}/></button>

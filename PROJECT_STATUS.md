@@ -2396,3 +2396,11 @@ Kontroller körda efter implementationen: `npm run test` (37 godkända), `npm ru
 
 Löneperioden börjar normalt den 25:e. Om den 25:e infaller på lördag eller söndag flyttas periodstarten automatiskt till föregående fredag, vilket motsvarar när lönen normalt betalas ut. Samma gemensamma periodberäkning används för aktuell månad, datahämtning, fria pengar, budgetar och fasta utgifter. Tester täcker både lördag och söndag samt periodens båda gränser.
 
+# Stabiliseringsrunda – 2026-10-25
+
+Startguidens lön använder nu samma helgjusterade periodstart som resten av appen. Generering av fasta utgifter har fått en serverbaserad idempotensnyckel via migrationen `202610250002_add_purchase_idempotency.sql`, så ett avbrutet försök säkert kan köras igen utan dubbla köp när migrationen är installerad. Klienten behåller bakåtkompatibilitet tills migrationen har körts.
+
+Företagets aktiva återkommande kostnader ingår nu i kommande betalningar och helårsprognosen. Frekvens och nästa förfallodatum kan anges, och en återkommande kostnad kan förifyllas som en kopplad affärshändelse. När den kopplade posten finns räknas åtagandet inte dubbelt.
+
+Destruktiva raderingar kräver nu bekräftelse. Centrala statusmeddelanden använder live-regioner, ikonknappar har tydligare tillgängliga namn och företagsformulärets beloppsfel visas intill formuläret. Automatiska dataflödestester täcker nu spara, läsa om, redigera och radera utan att använda produktionsdata.
+

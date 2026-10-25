@@ -333,3 +333,20 @@ describe("finance calculator", () => {
     assert.equal(result.actualBalance, 26_300);
   });
 });
+
+describe("local transaction user flow", () => {
+  it("keeps calculations stable through save, reload, edit and delete", () => {
+    const purchase = { id: "coffee", title: "Kaffe", category: "Fria köp", amount: 50, date: "2026-07-10", type: "expense", source: "free" };
+    const saved = [purchase];
+    assert.equal(summary({ transactions: saved }).freeMoney, 24_950);
+
+    const reloaded = JSON.parse(JSON.stringify(saved));
+    assert.equal(summary({ transactions: reloaded }).freeMoney, 24_950);
+
+    const edited = reloaded.map((item) => item.id === purchase.id ? { ...item, amount: 75 } : item);
+    assert.equal(summary({ transactions: edited }).freeMoney, 24_925);
+
+    const deleted = edited.filter((item) => item.id !== purchase.id);
+    assert.equal(summary({ transactions: deleted }).freeMoney, 25_000);
+  });
+});

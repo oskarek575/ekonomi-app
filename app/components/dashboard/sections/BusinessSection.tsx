@@ -19,6 +19,7 @@ import {
   updateBusinessProfile,
 } from "../../../lib/business-api";
 import {
+  annualizeRecurringCosts,
   calculateBusinessSummary,
   calculateExpenseAmounts,
   calculateSalaryScenario,
@@ -33,6 +34,7 @@ import type {
   BusinessProfileInput,
   BusinessScenarioAssumptions,
   BusinessTransaction,
+  BusinessTransactionInput,
   BusinessTransactionKind,
   BusinessWorkspace,
   CompanyForm,
@@ -82,6 +84,7 @@ type TransactionForm = {
   amountEntry: AmountEntryMode; paymentStatus: PaymentStatus; paidAmount: string;
   dueDate: string; paidOn: string; purchaseScope: PurchaseVatScope; deductionPercent: string;
   allocationBasis: string;
+  recurringCostId: string;
 };
 
 function defaultTransactionForm(): TransactionForm {
@@ -89,7 +92,7 @@ function defaultTransactionForm(): TransactionForm {
     kind: "sale", date: today(), category: "Behandling", description: "", amount: "",
     actualVat: "0", vatTreatment: "healthcare_exempt", vatRate: 2500, amountEntry: "inclusive",
     paymentStatus: "paid", paidAmount: "", dueDate: "", paidOn: today(), purchaseScope: "taxable",
-    deductionPercent: "100", allocationBasis: "",
+    deductionPercent: "100", allocationBasis: "", recurringCostId: "",
   };
 }
 
@@ -138,6 +141,7 @@ export default function BusinessSection() {
   const [showCalculation, setShowCalculation] = useState(false);
   const [profileForm, setProfileForm] = useState(defaultProfileInput);
   const [transactionForm, setTransactionForm] = useState(defaultTransactionForm);
+  const [transactionError, setTransactionError] = useState("");
   const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [scenario, setScenario] = useState(DEFAULT_SCENARIO);
   const [scenarioName, setScenarioName] = useState("Grundscenario");
@@ -147,6 +151,8 @@ export default function BusinessSection() {
   const [serviceAmount, setServiceAmount] = useState("");
   const [recurringName, setRecurringName] = useState("");
   const [recurringAmount, setRecurringAmount] = useState("");
+  const [recurringFrequency, setRecurringFrequency] = useState("1");
+  const [recurringNextDue, setRecurringNextDue] = useState(today());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -173,12 +179,17 @@ export default function BusinessSection() {
     () => workspace.transactions.filter((item) => item.profile_id === profileId),
     [workspace.transactions, profileId],
   );
+  const recurringCosts = useMemo(
+    () => workspace.recurringCosts.filter((item) => item.profile_id === profileId),
+    [workspace.recurringCosts, profileId],
+  );
   const from = period === "month" ? `${selectedMonth}-01` : `${selectedMonth.slice(0, 4)}-01-01`;
   const to = period === "month"
     ? new Date(Number(selectedMonth.slice(0, 4)), Number(selectedMonth.slice(5, 7)), 0).toISOString().slice(0, 10)
     : `${selectedMonth.slice(0, 4)}-12-31`;
-  const summary = profile ? calculateBusinessSummary({ profile, transactions, from, to }) : null;
-  const scenarioResult = profile ? calculateScenario(scenario, profile.company_form) : null;
+  const summary = profile ? calculateBusinessSummary({ profile, transactions, recurringCosts, from, to }) : null;
+  const recurringAnnualCostsOre = annualizeRecurringCosts(recurringCosts);
+  const scenarioResult = profile ? calculateScenario(scenario, profile.company_form, recurringAnnualCostsOre) : null;
   const salaryScenario = profile?.company_form === "limited_company" && summary
     ? calculateSalaryScenario({
       grossSalaryOre: parseMoneyToOre(grossSalary) ?? 0,
@@ -194,6 +205,11 @@ export default function BusinessSection() {
     try { await action(); setNotice(success); await load(); }
     catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Det gick inte att spara."); }
     finally { setSaving(false); }
+  }
+
+  async function removeWithConfirmation(label: string, action: () => Promise<void>, success: string) {
+    if (!window.confirm(`Vill du radera ${label}? Det går inte att ångra.`)) return;
+    await runSave(action, success);
   }
 
   async function submitProfile(event: FormEvent) {
@@ -254,19 +270,29 @@ export default function BusinessSection() {
       purchase_vat_scope: isExpense ? transactionForm.purchaseScope : null,
       vat_deduction_percent: isExpense ? Number(transactionForm.deductionPercent) : 0,
       allocation_basis: isExpense && transactionForm.purchaseScope === "mixed" ? transactionForm.allocationBasis.trim() || null : null,
-      recurring_cost_id: null, linked_private_purchase_id: null, rule_year: Number(transactionForm.date.slice(0, 4)),
+      recurring_cost_id: transactionForm.recurringCostId || null,
+      linked_private_purchase_id: null, rule_year: Number(transactionForm.date.slice(0, 4)),
     };
   }
 
   async function submitTransaction(event: FormEvent) {
     event.preventDefault();
+    let input: BusinessTransactionInput;
+    try {
+      input = buildTransactionInput();
+      setTransactionError("");
+    } catch (validationError) {
+      setTransactionError(validationError instanceof Error ? validationError.message : "Kontrollera uppgifterna.");
+      return;
+    }
     await runSave(async () => {
-      await saveBusinessTransaction(buildTransactionInput(), editingTransactionId ?? undefined);
+      await saveBusinessTransaction(input, editingTransactionId ?? undefined);
       setTransactionForm(defaultTransactionForm()); setEditingTransactionId(null);
     }, editingTransactionId ? "Affärshändelsen uppdaterades." : "Affärshändelsen sparades.");
   }
 
   function editTransaction(item: BusinessTransaction) {
+    setTransactionError("");
     setEditingTransactionId(item.id);
     setTransactionForm({
       kind: item.kind, date: item.occurred_on, category: item.category, description: item.description,
@@ -277,8 +303,26 @@ export default function BusinessSection() {
       paidAmount: String(item.paid_amount_ore / 100).replace(".", ","), dueDate: item.due_date ?? "",
       paidOn: item.paid_on ?? "", purchaseScope: item.purchase_vat_scope ?? "taxable",
       deductionPercent: String(item.vat_deduction_percent), allocationBasis: item.allocation_basis ?? "",
+      recurringCostId: item.recurring_cost_id ?? "",
     });
     setTab("transactions");
+  }
+
+  function registerRecurringCost(recurringCost: BusinessWorkspace["recurringCosts"][number]) {
+    setEditingTransactionId(null);
+    setTransactionForm({
+      ...defaultTransactionForm(),
+      kind: "expense",
+      date: recurringCost.next_due_date,
+      category: recurringCost.category,
+      description: recurringCost.name,
+      amount: String(recurringCost.amount_ore / 100).replace(".", ","),
+      dueDate: recurringCost.next_due_date,
+      paidOn: recurringCost.next_due_date,
+      recurringCostId: recurringCost.id,
+    });
+    setTab("transactions");
+    setNotice(`${recurringCost.name} är förifylld. Kontrollera betalstatus och spara.`);
   }
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
@@ -318,7 +362,7 @@ export default function BusinessSection() {
         <article className="business-intro panel">
           <BriefcaseBusiness size={32}/><div><h3>Skapa din företagsprofil</h3><p>Företagets ekonomi hålls helt åtskild från din privata budget.</p></div>
         </article>
-        {error && <div className="business-message error"><AlertTriangle size={16}/>{error}</div>}
+        {error && <div aria-live="assertive" className="business-message error" role="alert"><AlertTriangle size={16}/>{error}</div>}
         <form className="business-form panel" onSubmit={submitProfile}>
           <label><span>Företagsnamn</span><input required value={profileForm.name} onChange={(event) => setProfileForm((item) => ({ ...item, name: event.target.value }))}/></label>
           <label><span>Företagsform</span><select value={profileForm.company_form} onChange={(event) => setProfileForm((item) => ({ ...item, company_form: event.target.value as CompanyForm }))}><option value="sole_trader">Enskild firma</option><option value="limited_company">Aktiebolag</option></select></label>
@@ -351,7 +395,7 @@ export default function BusinessSection() {
         <span className="business-form-badge">{profile.company_form === "sole_trader" ? "Enskild firma" : "Aktiebolag"}</span>
       </header>
 
-      {(error || notice) && <div className={`business-message ${error ? "error" : "success"}`}>{error || notice}</div>}
+      {(error || notice) && <div aria-live={error ? "assertive" : "polite"} className={`business-message ${error ? "error" : "success"}`} role={error ? "alert" : "status"}>{error || notice}</div>}
 
       <nav className="business-tabs" aria-label="Företagets avsnitt">
         {(["overview", "transactions", "tax", "withdrawal", "forecast", "settings"] as BusinessTab[]).map((item) => (
@@ -379,11 +423,12 @@ export default function BusinessSection() {
         <div className="business-two-column">
           <form className="business-form panel" onSubmit={submitTransaction}>
             <h3>{editingTransactionId ? "Redigera affärshändelse" : "Ny affärshändelse"}</h3>
+            {transactionError && <small className="business-help warning" role="alert">{transactionError}</small>}
             <label><span>Typ</span><select value={transactionForm.kind} onChange={(event) => setTransactionForm((item) => ({ ...item, kind: event.target.value as BusinessTransactionKind }))}>{Object.entries(TRANSACTION_LABELS).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
             <label><span>Datum</span><input required type="date" value={transactionForm.date} onChange={(event) => setTransactionForm((item) => ({ ...item, date: event.target.value }))}/></label>
             <label><span>Kategori/tjänst</span><input list="business-categories" required value={transactionForm.category} onChange={(event) => setTransactionForm((item) => ({ ...item, category: event.target.value }))}/><datalist id="business-categories">{EXPENSE_CATEGORIES.map((item) => <option key={item}>{item}</option>)}</datalist></label>
             <label><span>Beskrivning (inga patientuppgifter)</span><input value={transactionForm.description} onChange={(event) => setTransactionForm((item) => ({ ...item, description: event.target.value }))}/></label>
-            <label><span>Belopp</span><input required inputMode="decimal" value={transactionForm.amount} onChange={(event) => setTransactionForm((item) => ({ ...item, amount: event.target.value }))}/></label>
+            <label><span>Belopp</span><input aria-invalid={Boolean(transactionError)} required inputMode="decimal" value={transactionForm.amount} onChange={(event) => { setTransactionError(""); setTransactionForm((item) => ({ ...item, amount: event.target.value })); }}/></label>
             {transactionForm.kind === "sale" && <>
               <label><span>Momshantering</span><select value={transactionForm.vatTreatment} onChange={(event) => setTransactionForm((item) => ({ ...item, vatTreatment: event.target.value as VatTreatment }))}><option value="healthcare_exempt">Momsfri sjukvård</option><option value="taxable">Momspliktig försäljning</option></select></label>
               {transactionForm.vatTreatment === "taxable" && <label><span>Momssats</span><select value={transactionForm.vatRate} onChange={(event) => setTransactionForm((item) => ({ ...item, vatRate: Number(event.target.value) as VatRate }))}><option value={2500}>25 %</option><option value={1200}>12 %</option><option value={600}>6 %</option></select></label>}
@@ -405,7 +450,7 @@ export default function BusinessSection() {
             {editingTransactionId && <button className="secondary" onClick={() => { setEditingTransactionId(null); setTransactionForm(defaultTransactionForm()); }} type="button">Avbryt</button>}
           </form>
           <article className="panel business-history"><div className="business-card-title"><div><h3>Historik</h3><p>{transactions.length} affärshändelser</p></div><button onClick={() => downloadCsv(profile, transactions)} type="button"><Download size={15}/> CSV</button></div>
-            <div className="business-list">{transactions.length ? transactions.map((item) => <div key={item.id}><span><b>{item.category}</b><small>{TRANSACTION_LABELS[item.kind]} · {item.occurred_on} · {item.payment_status === "paid" ? "betald" : item.payment_status === "partial" ? "delbetald" : "obetald"}</small></span><strong>{formatOre(item.gross_amount_ore)}</strong><span className="business-row-actions"><button onClick={() => editTransaction(item)} type="button"><Edit3 size={14}/></button><button onClick={() => void runSave(() => deleteBusinessTransaction(item.id), "Affärshändelsen togs bort.")} type="button"><Trash2 size={14}/></button></span></div>) : <p className="business-empty">Ingen historik ännu.</p>}</div>
+            <div className="business-list">{transactions.length ? transactions.map((item) => <div key={item.id}><span><b>{item.category}</b><small>{TRANSACTION_LABELS[item.kind]} · {item.occurred_on} · {item.payment_status === "paid" ? "betald" : item.payment_status === "partial" ? "delbetald" : "obetald"}</small></span><strong>{formatOre(item.gross_amount_ore)}</strong><span className="business-row-actions"><button aria-label={`Redigera ${item.category}`} onClick={() => editTransaction(item)} type="button"><Edit3 size={14}/></button><button aria-label={`Radera ${item.category}`} onClick={() => void removeWithConfirmation("affärshändelsen", () => deleteBusinessTransaction(item.id), "Affärshändelsen togs bort.")} type="button"><Trash2 size={14}/></button></span></div>) : <p className="business-empty">Ingen historik ännu.</p>}</div>
           </article>
         </div>
       )}
@@ -432,8 +477,8 @@ export default function BusinessSection() {
 
       {tab === "forecast" && scenarioResult && (
         <div className="business-two-column">
-          <form className="business-form panel" onSubmit={(event) => event.preventDefault()}><h3>Scenario – inte bokfört utfall</h3><label><span>Namn</span><input value={scenarioName} onChange={(event) => setScenarioName(event.target.value)}/></label><label><span>Pris per behandling/uppdrag</span><input inputMode="decimal" value={String(scenario.servicePriceOre / 100)} onChange={(event) => setScenario((item) => ({ ...item, servicePriceOre: parseMoneyToOre(event.target.value) ?? 0 }))}/></label><label><span>Kunder per vecka</span><input min="0" type="number" value={scenario.clientsPerWeek} onChange={(event) => setScenario((item) => ({ ...item, clientsPerWeek: Number(event.target.value) }))}/></label><label><span>Arbetsveckor</span><input min="1" max="52" type="number" value={scenario.workingWeeks} onChange={(event) => setScenario((item) => ({ ...item, workingWeeks: Number(event.target.value) }))}/></label><label><span>Andel momsfri vård (%)</span><input min="0" max="100" type="number" value={scenario.exemptSharePercent} onChange={(event) => setScenario((item) => ({ ...item, exemptSharePercent: Number(event.target.value) }))}/></label><label><span>Årliga fasta kostnader</span><input inputMode="decimal" value={String(scenario.annualFixedCostsOre / 100)} onChange={(event) => setScenario((item) => ({ ...item, annualFixedCostsOre: parseMoneyToOre(event.target.value) ?? 0 }))}/></label><label><span>Rörlig kostnad per kund</span><input inputMode="decimal" value={String(scenario.variableCostPerClientOre / 100)} onChange={(event) => setScenario((item) => ({ ...item, variableCostPerClientOre: parseMoneyToOre(event.target.value) ?? 0 }))}/></label><label><span>Önskat privat per månad</span><input inputMode="decimal" value={String(scenario.desiredPrivateMonthlyOre / 100)} onChange={(event) => setScenario((item) => ({ ...item, desiredPrivateMonthlyOre: parseMoneyToOre(event.target.value) ?? 0 }))}/></label><button disabled={saving} onClick={() => void saveScenarioNow()} type="button"><Save size={15}/> Spara scenario</button></form>
-          <article className="panel business-forecast-result"><h3>Beräknad helårsprognos</h3><div className="business-result-list"><span>Uppdrag <b>{scenarioResult.annualClients}</b></span><span>Omsättning exkl. moms <b>{formatOre(scenarioResult.annualRevenueOre)}</b></span><span>Kostnader <b>{formatOre(scenarioResult.annualCostsOre)}</b></span><span>Resultat före skatt <b>{formatOre(scenarioResult.resultBeforeTaxOre)}</b></span><span>Resultat efter känd skatt <b>{formatOre(scenarioResult.resultAfterKnownTaxOre)}</b></span><span>Behov för privat mål <b>{scenarioResult.requiredClients} uppdrag ({scenarioResult.requiredClientsPerWeek?.toFixed(1) ?? "–"}/vecka)</b></span></div><small>Enskild firmas personskatt är inte avdragen här utan verifierat personligt årsunderlag. Prognosen skriver aldrig transaktioner.</small><div className="business-saved-scenarios">{workspace.scenarios.filter((item) => item.profile_id === profile.id).map((item) => <span key={item.id}><button onClick={() => { setScenario(item.assumptions); setScenarioName(item.name); }} type="button">{item.name}</button><button aria-label={`Ta bort ${item.name}`} onClick={() => void runSave(() => deleteBusinessScenario(item.id), "Scenariot togs bort.")} type="button"><Trash2 size={13}/></button></span>)}</div></article>
+          <form className="business-form panel" onSubmit={(event) => event.preventDefault()}><h3>Scenario – inte bokfört utfall</h3><label><span>Namn</span><input value={scenarioName} onChange={(event) => setScenarioName(event.target.value)}/></label><label><span>Pris per behandling/uppdrag</span><input inputMode="decimal" value={String(scenario.servicePriceOre / 100)} onChange={(event) => setScenario((item) => ({ ...item, servicePriceOre: parseMoneyToOre(event.target.value) ?? 0 }))}/></label><label><span>Kunder per vecka</span><input min="0" type="number" value={scenario.clientsPerWeek} onChange={(event) => setScenario((item) => ({ ...item, clientsPerWeek: Number(event.target.value) }))}/></label><label><span>Arbetsveckor</span><input min="1" max="52" type="number" value={scenario.workingWeeks} onChange={(event) => setScenario((item) => ({ ...item, workingWeeks: Number(event.target.value) }))}/></label><label><span>Andel momsfri vård (%)</span><input min="0" max="100" type="number" value={scenario.exemptSharePercent} onChange={(event) => setScenario((item) => ({ ...item, exemptSharePercent: Number(event.target.value) }))}/></label><label><span>Övriga årliga fasta kostnader</span><input inputMode="decimal" value={String(scenario.annualFixedCostsOre / 100)} onChange={(event) => setScenario((item) => ({ ...item, annualFixedCostsOre: parseMoneyToOre(event.target.value) ?? 0 }))}/></label><label><span>Rörlig kostnad per kund</span><input inputMode="decimal" value={String(scenario.variableCostPerClientOre / 100)} onChange={(event) => setScenario((item) => ({ ...item, variableCostPerClientOre: parseMoneyToOre(event.target.value) ?? 0 }))}/></label><label><span>Önskat privat per månad</span><input inputMode="decimal" value={String(scenario.desiredPrivateMonthlyOre / 100)} onChange={(event) => setScenario((item) => ({ ...item, desiredPrivateMonthlyOre: parseMoneyToOre(event.target.value) ?? 0 }))}/></label><button disabled={saving} onClick={() => void saveScenarioNow()} type="button"><Save size={15}/> Spara scenario</button></form>
+          <article className="panel business-forecast-result"><h3>Beräknad helårsprognos</h3><div className="business-result-list"><span>Uppdrag <b>{scenarioResult.annualClients}</b></span><span>Omsättning exkl. moms <b>{formatOre(scenarioResult.annualRevenueOre)}</b></span><span>Kostnader <b>{formatOre(scenarioResult.annualCostsOre)}</b></span>{scenarioResult.recurringAnnualCostsOre > 0 && <span>Varav sparade återkommande kostnader <b>{formatOre(scenarioResult.recurringAnnualCostsOre)}</b></span>}<span>Resultat före skatt <b>{formatOre(scenarioResult.resultBeforeTaxOre)}</b></span><span>Resultat efter känd skatt <b>{formatOre(scenarioResult.resultAfterKnownTaxOre)}</b></span><span>Behov för privat mål <b>{scenarioResult.requiredClients} uppdrag ({scenarioResult.requiredClientsPerWeek?.toFixed(1) ?? "–"}/vecka)</b></span></div><small>Enskild firmas personskatt är inte avdragen här utan verifierat personligt årsunderlag. Prognosen skriver aldrig transaktioner.</small><div className="business-saved-scenarios">{workspace.scenarios.filter((item) => item.profile_id === profile.id).map((item) => <span key={item.id}><button onClick={() => { setScenario(item.assumptions); setScenarioName(item.name); }} type="button">{item.name}</button><button aria-label={`Ta bort ${item.name}`} onClick={() => void removeWithConfirmation(`scenariot ${item.name}`, () => deleteBusinessScenario(item.id), "Scenariot togs bort.")} type="button"><Trash2 size={13}/></button></span>)}</div></article>
         </div>
       )}
 
@@ -441,8 +486,22 @@ export default function BusinessSection() {
         <div className="business-settings-grid">
           <form className="business-form panel" onSubmit={saveSettings}><h3>Företags- och skatteunderlag</h3><label><span>Företagsnamn</span><input name="name" required defaultValue={profile.name}/></label><label><span>Avstämt kontosaldo</span><input name="bankBalance" inputMode="decimal" defaultValue={profile.bank_balance_ore === null ? "" : profile.bank_balance_ore / 100}/></label><label><span>Avstämningsdatum</span><input name="balanceDate" type="date" defaultValue={profile.balance_date ?? ""}/></label><label><span>Driftbuffert</span><input name="buffer" inputMode="decimal" defaultValue={profile.buffer_ore / 100}/></label><label><span>Redan betald skatt</span><input name="paidTax" inputMode="decimal" defaultValue={profile.paid_tax_ore / 100}/></label>{profile.company_form === "sole_trader" && <label><span>Verifierad total personlig årsskatt</span><input name="annualTax" inputMode="decimal" defaultValue={profile.manual_annual_income_tax_ore === null ? "" : profile.manual_annual_income_tax_ore / 100}/></label>}<label><span>Födelseår</span><input name="birthYear" inputMode="numeric" defaultValue={profile.birth_year ?? ""}/></label><label><span>Kommun</span><input name="municipality" defaultValue={profile.municipality ?? ""}/></label><label><span>Redovisningsmetod</span><select name="accountingMethod" defaultValue={profile.accounting_method}><option value="cash">Kontantmetoden</option><option value="invoice">Fakturametoden</option></select></label><label><span>Momsperiod</span><select name="vatPeriod" defaultValue={profile.vat_period}><option value="monthly">Månad</option><option value="quarterly">Kvartal</option><option value="yearly">År</option></select></label><label className="business-check"><input name="healthcare" type="checkbox" defaultChecked={profile.licensed_healthcare_profile}/><span>Profil för legitimerad vård</span></label><button disabled={saving} type="submit"><Save size={15}/> Spara inställningar</button></form>
           <div className="business-settings-stack">
-            <form className="panel business-mini-form" onSubmit={(event) => { event.preventDefault(); void runSave(async () => { await saveBusinessServiceTemplate({ profile_id: profile.id, name: serviceName, category: serviceName, default_amount_ore: fieldOre(serviceAmount), vat_treatment: "taxable", vat_rate_basis_points: 2500, amount_entry: "inclusive" }); setServiceName(""); setServiceAmount(""); }, "Tjänstemallen sparades."); }}><h3>Tjänstemallar</h3><input required placeholder="Namn" value={serviceName} onChange={(event) => setServiceName(event.target.value)}/><input required inputMode="decimal" placeholder="Standardpris" value={serviceAmount} onChange={(event) => setServiceAmount(event.target.value)}/><button type="submit"><Plus size={14}/> Lägg till</button><div className="business-compact-list">{workspace.serviceTemplates.filter((item) => item.profile_id === profile.id).map((item) => <span key={item.id}>{item.name}<button onClick={() => void runSave(() => deleteBusinessServiceTemplate(item.id), "Tjänstemallen togs bort.")} type="button"><Trash2 size={13}/></button></span>)}</div></form>
-            <form className="panel business-mini-form" onSubmit={(event) => { event.preventDefault(); void runSave(async () => { await saveBusinessRecurringCost({ profile_id: profile.id, name: recurringName, category: "Återkommande", amount_ore: fieldOre(recurringAmount), frequency_months: 1, next_due_date: today(), active: true }); setRecurringName(""); setRecurringAmount(""); }, "Den återkommande kostnaden sparades."); }}><h3>Återkommande kostnader</h3><input required placeholder="Namn" value={recurringName} onChange={(event) => setRecurringName(event.target.value)}/><input required inputMode="decimal" placeholder="Belopp" value={recurringAmount} onChange={(event) => setRecurringAmount(event.target.value)}/><button type="submit"><Plus size={14}/> Lägg till</button><div className="business-compact-list">{workspace.recurringCosts.filter((item) => item.profile_id === profile.id).map((item) => <span key={item.id}>{item.name} · {formatOre(item.amount_ore)}<button onClick={() => void runSave(() => deleteBusinessRecurringCost(item.id), "Kostnadsmallen togs bort.")} type="button"><Trash2 size={13}/></button></span>)}</div></form>
+            <form className="panel business-mini-form" onSubmit={(event) => { event.preventDefault(); void runSave(async () => { await saveBusinessServiceTemplate({ profile_id: profile.id, name: serviceName, category: serviceName, default_amount_ore: fieldOre(serviceAmount), vat_treatment: "taxable", vat_rate_basis_points: 2500, amount_entry: "inclusive" }); setServiceName(""); setServiceAmount(""); }, "Tjänstemallen sparades."); }}>
+              <h3>Tjänstemallar</h3>
+              <input required placeholder="Namn" value={serviceName} onChange={(event) => setServiceName(event.target.value)}/>
+              <input required inputMode="decimal" placeholder="Standardpris" value={serviceAmount} onChange={(event) => setServiceAmount(event.target.value)}/>
+              <button type="submit"><Plus size={14}/> Lägg till</button>
+              <div className="business-compact-list">{workspace.serviceTemplates.filter((item) => item.profile_id === profile.id).map((item) => <span key={item.id}>{item.name}<button aria-label={`Radera tjänstemallen ${item.name}`} onClick={() => void removeWithConfirmation(`tjänstemallen ${item.name}`, () => deleteBusinessServiceTemplate(item.id), "Tjänstemallen togs bort.")} type="button"><Trash2 size={13}/></button></span>)}</div>
+            </form>
+            <form className="panel business-mini-form business-recurring-form" onSubmit={(event) => { event.preventDefault(); void runSave(async () => { await saveBusinessRecurringCost({ profile_id: profile.id, name: recurringName.trim(), category: "Återkommande", amount_ore: fieldOre(recurringAmount), frequency_months: Number(recurringFrequency), next_due_date: recurringNextDue, active: true }); setRecurringName(""); setRecurringAmount(""); }, "Den återkommande kostnaden sparades."); }}>
+              <h3>Återkommande kostnader</h3>
+              <input aria-label="Namn på återkommande kostnad" required placeholder="Namn" value={recurringName} onChange={(event) => setRecurringName(event.target.value)}/>
+              <input aria-label="Belopp för återkommande kostnad" required inputMode="decimal" placeholder="Belopp" value={recurringAmount} onChange={(event) => setRecurringAmount(event.target.value)}/>
+              <select aria-label="Hur ofta kostnaden återkommer" value={recurringFrequency} onChange={(event) => setRecurringFrequency(event.target.value)}><option value="1">Varje månad</option><option value="3">Varje kvartal</option><option value="6">Varje halvår</option><option value="12">Varje år</option></select>
+              <input aria-label="Nästa förfallodatum" required type="date" value={recurringNextDue} onChange={(event) => setRecurringNextDue(event.target.value)}/>
+              <button type="submit"><Plus size={14}/> Lägg till</button>
+              <div className="business-compact-list">{recurringCosts.map((item) => <span key={item.id}><span>{item.name} · {formatOre(item.amount_ore)} · nästa {item.next_due_date}</span><span className="business-row-actions"><button aria-label={`Registrera betalning för ${item.name}`} onClick={() => registerRecurringCost(item)} type="button"><ReceiptText size={13}/></button><button aria-label={`Radera kostnadsmallen ${item.name}`} onClick={() => void removeWithConfirmation(`kostnadsmallen ${item.name}`, () => deleteBusinessRecurringCost(item.id), "Kostnadsmallen togs bort.")} type="button"><Trash2 size={13}/></button></span></span>)}</div>
+            </form>
           </div>
         </div>
       )}
