@@ -63,6 +63,7 @@ import type { AdminStats } from "../../lib/api";
 import {
   calculateFinanceSummary,
   getCurrentFinancialMonth,
+  getFinancialPeriod as calculateFinancialPeriod,
 } from "../../lib/finance-calculator";
 import type { AppSection } from "../Sidebar";
 import ReceiptScanner from "./ReceiptScanner";
@@ -519,13 +520,7 @@ function currentMonthValue(date = new Date()) {
 }
 
 function getFinancialPeriod(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const selectedMonthIndex = monthNumber - 1;
-
-  return {
-    start: new Date(year, selectedMonthIndex - 1, salaryDay, 0, 0, 0, 0),
-    end: new Date(year, selectedMonthIndex, salaryDay, 0, 0, 0, 0),
-  };
+  return calculateFinancialPeriod(month, salaryDay);
 }
 
 function isInFinancialPeriod(date: string, month: string) {
@@ -567,7 +562,7 @@ function defaultDateForPeriod(month: string) {
     return formatDateInput(today);
   }
 
-  return dateForPeriodDay(month, salaryDay);
+  return formatDateInput(getFinancialPeriod(month).start);
 }
 
 function toRemoteId(id: string) {
@@ -4630,7 +4625,7 @@ function OnboardingPanel({
       </div>
       <form className="onboarding-form" onSubmit={onSubmit}>
         <div className="onboarding-step onboarding-step-primary">
-          <div><b>1. Lägg in lönen</b><small>Det här är basen. Appen räknar perioden från lönen den 25:e till nästa 24:e.</small></div>
+          <div><b>1. Lägg in lönen</b><small>Det här är basen. Perioden börjar den 25:e, eller föregående fredag när den 25:e infaller på en helg.</small></div>
           <label><span>Månadslön</span><input inputMode="decimal" placeholder="25000" value={form.income} onChange={(event) => onChange({ ...form, income: event.target.value })}/></label>
         </div>
 

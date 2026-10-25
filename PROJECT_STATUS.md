@@ -2392,3 +2392,7 @@ Beständig lagring och användarseparering definieras i `supabase/migrations/202
 
 Kontroller körda efter implementationen: `npm run test` (37 godkända), `npm run lint` (godkänd) och `npm run build` (godkänd). Lokal webbläsarkontroll bekräftade navigation och inloggningsflöde; full visuell kontroll av företagsinnehållet kräver en inloggad testanvändare och den nya migrationen.
 
+# Helgjusterad löneperiod – 2026-10-25
+
+Löneperioden börjar normalt den 25:e. Om den 25:e infaller på lördag eller söndag flyttas periodstarten automatiskt till föregående fredag, vilket motsvarar när lönen normalt betalas ut. Samma gemensamma periodberäkning används för aktuell månad, datahämtning, fria pengar, budgetar och fasta utgifter. Tester täcker både lördag och söndag samt periodens båda gränser.
+

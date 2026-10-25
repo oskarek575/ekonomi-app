@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { calculateFinanceSummary, getCurrentFinancialMonth } from "../app/lib/finance-calculator.ts";
+import { calculateFinanceSummary, getCurrentFinancialMonth, getFinancialPeriod } from "../app/lib/finance-calculator.ts";
 
 const month = "2026-07";
 const today = new Date("2026-07-10T12:00:00");
@@ -27,6 +27,23 @@ describe("finance calculator", () => {
     assert.equal(getCurrentFinancialMonth(new Date("2026-08-25T12:00:00")), "2026-09");
     assert.equal(getCurrentFinancialMonth(new Date("2026-08-31T12:00:00")), "2026-09");
     assert.equal(getCurrentFinancialMonth(new Date("2026-09-25T12:00:00")), "2026-10");
+  });
+
+  it("starts a new salary period on Friday when the 25th is on a weekend", () => {
+    assert.equal(getCurrentFinancialMonth(new Date("2026-07-23T12:00:00")), "2026-07");
+    assert.equal(getCurrentFinancialMonth(new Date("2026-07-24T12:00:00")), "2026-08");
+    assert.equal(getCurrentFinancialMonth(new Date("2026-10-22T12:00:00")), "2026-10");
+    assert.equal(getCurrentFinancialMonth(new Date("2026-10-23T12:00:00")), "2026-11");
+  });
+
+  it("uses the adjusted payday for both ends of a financial period", () => {
+    const november = getFinancialPeriod("2026-11");
+    assert.equal(november.start.getFullYear(), 2026);
+    assert.equal(november.start.getMonth(), 9);
+    assert.equal(november.start.getDate(), 23);
+    assert.equal(november.end.getFullYear(), 2026);
+    assert.equal(november.end.getMonth(), 10);
+    assert.equal(november.end.getDate(), 25);
   });
 
   it("does not reduce free money for purchases that fit inside a budget", () => {
