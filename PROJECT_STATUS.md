@@ -2382,3 +2382,13 @@ Mobilens stående navigation är nu infällbar och ligger ovanpå innehållet n�
 Godkända kvitton sparas genom samma transaktionsflöde som vanliga köp, så befintlig budget- och Fria pengar-logik återanvänds utan en parallell ekonomiberäkning. Kvittobilden skickas inte till Supabase och lagras inte av appen; den tillfälliga bildreferensen rensas efter sparning, avbryt eller stängning. Funktionen använder `tesseract.js` och har parsertester för svenska datum och beloppsformat.
 
 Butiksidentifieringen har därefter förbättrats så att den inte längre väljer första läsbara raden blint. Kända svenska butikskedjor och vanliga OCR-feltolkningar prioriteras, medan adresser, kvittorubriker, betalningstext och organisationsuppgifter filtreras bort. Okända lokala butiker identifieras med en försiktig poängmodell och resultatet kan fortfarande rättas före sparning.
+# Företag – implementerad 2026-10-25
+
+En ny, isolerad företagsmodul finns i huvudnavigationen under **Företag**. Modulen håller företagsdata skild från privatekonomin och stödjer företagsprofiler för enskild firma och aktiebolag, affärshändelser med betalstatus, momsfri sjukvård och momspliktig försäljning, faktisk ingående moms och blandad avdragsrätt, skatte-/momsreserv, likviditets- och uttagsutrymme, AB-lönescenario, prognoser, tjänstemallar, återkommande kostnadsmallar samt CSV-export.
+
+Beräkningslogiken ligger i `app/lib/business/` och använder heltalsören. Svenska regler som automatiseras är årsversionerade för 2026. Bolagsskatt (20,6 procent), normal arbetsgivaravgift (31,42 procent) och den tillfälliga ungdomsnedsättningen från april 2026 är implementerade. Personskatt/nettolön visas inte som påhittade exakta belopp: enskild firma kräver verifierad total personlig årsprognos och AB-nettolön kräver verifierat skatteavdrag.
+
+Beständig lagring och användarseparering definieras i `supabase/migrations/202610250001_add_business_workspace.sql`. Migrationen skapar företagsprofiler, transaktioner, tjänstemallar, återkommande kostnader och scenarier med RLS mot `auth.uid()` och ägarkontroller även över profilrelationerna. Migrationen måste köras i Supabase innan modulen kan spara data i en driftsatt miljö.
+
+Kontroller körda efter implementationen: `npm run test` (37 godkända), `npm run lint` (godkänd) och `npm run build` (godkänd). Lokal webbläsarkontroll bekräftade navigation och inloggningsflöde; full visuell kontroll av företagsinnehållet kräver en inloggad testanvändare och den nya migrationen.
+

@@ -69,6 +69,7 @@ import ReceiptScanner from "./ReceiptScanner";
 import type { ScannedReceiptPurchase } from "./ReceiptScanner";
 import HabitsSection from "./sections/HabitsSection";
 import LoansSection from "./sections/LoansSection";
+import BusinessSection from "./sections/BusinessSection";
 
 type TransactionType = "income" | "expense";
 type PurchaseSource = "budget" | "free";
@@ -4372,6 +4373,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       {activeSection === "habits" && (
         <SectionPanel title="Vanor" description="Kolla av dagens vanor, se historik och skriv korta dagboksanteckningar.">
           <HabitsSection />
+        </SectionPanel>
+      )}
+
+      {activeSection === "business" && (
+        <SectionPanel title="Företag" description="Ekonomi, moms, skatt och planering för svenska småföretag.">
+          <BusinessSection />
         </SectionPanel>
       )}
 
