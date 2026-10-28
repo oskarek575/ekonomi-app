@@ -2404,3 +2404,9 @@ Företagets aktiva återkommande kostnader ingår nu i kommande betalningar och 
 
 Destruktiva raderingar kräver nu bekräftelse. Centrala statusmeddelanden använder live-regioner, ikonknappar har tydligare tillgängliga namn och företagsformulärets beloppsfel visas intill formuläret. Automatiska dataflödestester täcker nu spara, läsa om, redigera och radera utan att använda produktionsdata.
 
+# Vanespåraren borttagen – 2026-10-28
+
+Vanespåraren har tagits bort som en avgränsad produktfunktion. Navigationen, dashboardsektionen, presentationskomponenten, modelltyperna, Supabase-anropen, adminstatistiken och den tillhörande CSS-koden har rensats bort utan ändringar i ekonomi-, auth- eller företagslogiken.
+
+Den nya migrationen `202610280001_remove_habit_tracker.sql` tar bort de fyra dedikerade tabellerna `habit_checks`, `habit_pauses`, `journal_entries` och `habits` i säker beroendeordning utan `CASCADE`. Den historiska migrationsfilen som ursprungligen skapade funktionen behålls som migrationshistorik, medan `supabase/release-setup.sql` inte längre skapar vanespåraren i nya installationer.
+

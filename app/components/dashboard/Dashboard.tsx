@@ -68,7 +68,6 @@ import {
 import type { AppSection } from "../Sidebar";
 import ReceiptScanner from "./ReceiptScanner";
 import type { ScannedReceiptPurchase } from "./ReceiptScanner";
-import HabitsSection from "./sections/HabitsSection";
 import LoansSection from "./sections/LoansSection";
 import BusinessSection from "./sections/BusinessSection";
 
@@ -4382,12 +4381,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               {activeTravelCategoryRows.map((row) => <span key={row.category}><b>{row.category}</b><small>{kr(row.sum)}</small></span>)}
             </div>
           )}
-        </SectionPanel>
-      )}
-
-      {activeSection === "habits" && (
-        <SectionPanel title="Vanor" description="Kolla av dagens vanor, se historik och skriv korta dagboksanteckningar.">
-          <HabitsSection />
         </SectionPanel>
       )}
 

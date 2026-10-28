@@ -13,7 +13,6 @@ const sections: AppSection[] = [
   "categories",
   "goals",
   "travel",
-  "habits",
   "business",
   "subscriptions",
   "insights",

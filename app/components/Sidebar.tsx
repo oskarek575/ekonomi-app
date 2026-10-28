@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
-  Activity, BellRing, Boxes, BriefcaseBusiness, CalendarCheck, ChevronDown, CircleDollarSign,
+  Activity, BellRing, Boxes, BriefcaseBusiness, ChevronDown, CircleDollarSign,
   CreditCard, Crown, LayoutDashboard, Menu, Plane, Settings, WalletCards, X,
 } from "lucide-react";
 
@@ -15,7 +15,6 @@ export type AppSection =
   | "goals"
   | "loans"
   | "travel"
-  | "habits"
   | "business"
   | "subscriptions"
   | "insights"
@@ -28,7 +27,6 @@ const links = [
   ["Budget", "budgets", WalletCards],
   ["Fasta utgifter", "subscriptions", BellRing],
   ["Resebudget", "travel", Plane],
-  ["Vanor", "habits", CalendarCheck],
   ["Företag", "business", BriefcaseBusiness],
   ["Kategorier", "categories", Boxes],
   ["Rapporter", "reports", Activity],
