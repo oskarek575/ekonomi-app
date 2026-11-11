@@ -355,3 +355,5 @@ input[type="date"]{max-width:100%;min-width:0;box-sizing:border-box}
   .admin-metric-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
   .admin-metric-grid>*{padding:14px!important;min-width:0}
 }
+.subscription-row.is-posted .row-value small{color:#6fe0a1!important}
+.subscription-row:not(.is-posted).due-now .row-value small{color:#f3c97a!important}

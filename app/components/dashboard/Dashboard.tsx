@@ -4061,6 +4061,10 @@ function MobileSheet({
   );
 }
 
+function shortDate(dateValue: string) {
+  return new Date(`${dateValue.slice(0, 10)}T12:00:00`).toLocaleDateString("sv-SE", { day: "numeric", month: "short" });
+}
+
 function getDayLabel(dateValue: string) {
   const date = new Date(`${dateValue.slice(0, 10)}T12:00:00`);
   const today = new Date();
@@ -4795,7 +4799,7 @@ function SubscriptionsPanel({
   onRemove,
   showAll = false,
 }: {
-  subscriptions: (Subscription & { dueDate?: string | null; nextDueDate?: string | null; scheduleLabel?: string; isDueThisPeriod?: boolean })[];
+  subscriptions: (Subscription & { dueDate?: string | null; nextDueDate?: string | null; scheduleLabel?: string; isDueThisPeriod?: boolean; isPosted?: boolean })[];
   onNavigate: (section: AppSection) => void;
   onGenerate: () => void;
   onEdit: (subscription: Subscription) => void;
@@ -4809,14 +4813,14 @@ function SubscriptionsPanel({
     <article className="panel list-panel subscription-panel">
       <CardTitle link={showAll ? undefined : "Visa alla"} onClick={() => onNavigate("subscriptions")}>Fasta utgifter</CardTitle>
       <div>{visibleSubscriptions.map((item) => (
-        <div className={`list-row subscription-row ${item.active ? "" : "inactive"} ${item.isDueThisPeriod ? "due-now" : ""}`} key={item.id}>
+        <div className={`list-row subscription-row ${item.active ? "" : "inactive"} ${item.isDueThisPeriod ? "due-now" : ""} ${item.isPosted ? "is-posted" : ""}`} key={item.id}>
           <Logo title={item.name} tone={item.name === "Spotify" ? "spotify" : item.name === "Netflix" ? "black" : "white"} />
           <span className="row-copy">
             <b>{item.name}</b>
             <small>{item.plan} · {item.scheduleLabel ?? "Varje månad"} · dag {item.day}</small>
-            <small>{item.isDueThisPeriod && item.dueDate ? `Dras denna period: ${new Date(`${item.dueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : item.nextDueDate ? `Nästa dragning: ${new Date(`${item.nextDueDate}T12:00:00`).toLocaleDateString("sv-SE")}` : "Ingen aktiv dragning"}</small>
+            <small>{item.isDueThisPeriod && item.dueDate ? `${item.isPosted ? "Drogs" : "Dras"} ${shortDate(item.dueDate)}${item.isPosted && item.nextDueDate ? ` · nästa ${shortDate(item.nextDueDate)}` : ""}` : item.nextDueDate ? `Nästa dragning: ${shortDate(item.nextDueDate)}` : "Ingen aktiv dragning"}</small>
           </span>
-          <span className="row-value"><b>{kr(item.amount)}</b><small>{item.active ? (item.isDueThisPeriod ? "Räknas nu" : "Kommande") : "Pausad"}</small></span>
+          <span className="row-value"><b>{kr(item.amount)}</b><small>{item.active ? (item.isPosted ? "Dragen" : item.isDueThisPeriod ? "Kommande" : "Nästa period") : "Pausad"}</small></span>
           <span className="row-actions"><button onClick={() => onEdit(item)} type="button">Redigera</button><button onClick={() => onToggle(item.id)} type="button">{item.active ? "Pausa" : "Aktivera"}</button><button aria-label={`Radera den fasta utgiften ${item.name}`} onClick={() => onRemove(item.id)} type="button"><Trash2 size={14}/></button></span>
         </div>
       ))}</div>

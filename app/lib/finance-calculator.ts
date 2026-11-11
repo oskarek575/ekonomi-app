@@ -59,6 +59,8 @@ export type ScheduledFinanceSubscription = FinanceSubscription & {
   nextDueDate: string | null;
   scheduleLabel: string;
   isDueThisPeriod: boolean;
+  /** Dragen: bokförd som transaktion eller dragdatumet har passerat. */
+  isPosted: boolean;
 };
 
 export type FinanceBudgetRow = FinanceBudget & {
@@ -371,7 +373,7 @@ export function calculateFinanceSummary({
     .filter((item) => isFreePurchase(item, budgetCategorySet) && item.date === todayKey)
     .reduce((sum, item) => sum + item.amount, 0);
   const reservedBudgetTotal = budgets.reduce((sum, budget) => sum + budget.limit, 0);
-  const scheduledSubscriptions: ScheduledFinanceSubscription[] = subscriptions.map((subscription) => {
+  const baseScheduledSubscriptions = subscriptions.map((subscription) => {
     const dueDate = getSubscriptionDueDateInPeriod(subscription, month, salaryDay);
     const nextDueDate = getNextSubscriptionDueDate(subscription, today);
 
@@ -383,13 +385,13 @@ export function calculateFinanceSummary({
       isDueThisPeriod: Boolean(dueDate),
     };
   });
-  const fixedExpenseTotal = scheduledSubscriptions
+  const fixedExpenseTotal = baseScheduledSubscriptions
     .filter((subscription) => subscription.isDueThisPeriod)
     .reduce((sum, subscription) => sum + subscription.amount, 0);
   const matchedSubscriptionIds = new Set<string>();
   const usedSubscriptionTransactionIndexes = new Set<number>();
 
-  scheduledSubscriptions
+  baseScheduledSubscriptions
     .filter((subscription) => subscription.active && subscription.dueDate)
     .forEach((subscription) => {
       const matchIndex = findMatchingTransactionIndex(monthTransactions, {
@@ -404,9 +406,13 @@ export function calculateFinanceSummary({
       usedSubscriptionTransactionIndexes.add(matchIndex);
       matchedSubscriptionIds.add(subscription.id);
     });
+  // En fast utgift räknas som dragen när den är bokförd eller när dragdatumet har passerat.
+  const scheduledSubscriptions: ScheduledFinanceSubscription[] = baseScheduledSubscriptions.map((subscription) => ({
+    ...subscription,
+    isPosted: Boolean(subscription.active && subscription.dueDate && (matchedSubscriptionIds.has(subscription.id) || isOnOrBeforeToday(subscription.dueDate, today))),
+  }));
   const fixedExpenseRemaining = scheduledSubscriptions
-    .filter((subscription) => subscription.active && subscription.dueDate)
-    .filter((subscription) => !matchedSubscriptionIds.has(subscription.id))
+    .filter((subscription) => subscription.active && subscription.dueDate && !subscription.isPosted)
     .reduce((sum, subscription) => sum + subscription.amount, 0);
   const missingPostedSubscriptions = scheduledSubscriptions
     .filter((subscription) => subscription.active && subscription.dueDate && isOnOrBeforeToday(subscription.dueDate, today))

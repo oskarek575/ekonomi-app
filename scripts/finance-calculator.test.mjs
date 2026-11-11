@@ -211,9 +211,26 @@ describe("finance calculator", () => {
     });
 
     assert.equal(result.fixedExpenseTotal, 200);
-    assert.equal(result.fixedExpenseRemaining, 100);
+    // Dragdatumet har passerat, så båda räknas som dragna även om bara en är bokförd.
+    assert.equal(result.fixedExpenseRemaining, 0);
     assert.equal(result.missingPostedFixedExpenses, 100);
     assert.equal(result.actualBalance, 24_800);
+  });
+
+  it("treats a fixed expense as drawn once its due date has passed", () => {
+    const result = summary({
+      subscriptions: [
+        { id: "insurance", name: "Försäkring", plan: "Hem", amount: 475, day: 1, active: true },
+        { id: "storage", name: "Lagring", plan: "Moln", amount: 12, day: 17, active: true },
+      ],
+    });
+    const insurance = result.scheduledSubscriptions.find((item) => item.id === "insurance");
+    const storage = result.scheduledSubscriptions.find((item) => item.id === "storage");
+
+    assert.equal(insurance.isPosted, true);
+    assert.equal(storage.isPosted, false);
+    assert.equal(result.fixedExpenseRemaining, 12);
+    assert.equal(result.freeMoney, 25_000 - 487);
   });
 
   it("matches budget categories without being sensitive to casing or surrounding whitespace", () => {
