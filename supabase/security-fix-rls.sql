@@ -74,73 +74,73 @@ drop policy if exists "Users can select their own budgets" on public.budgets;
 drop policy if exists "Users can insert their own budgets" on public.budgets;
 drop policy if exists "Users can update their own budgets" on public.budgets;
 drop policy if exists "Users can delete their own budgets" on public.budgets;
-create policy "Users can select their own budgets" on public.budgets for select using (auth.uid() = user_id);
-create policy "Users can insert their own budgets" on public.budgets for insert with check (auth.uid() = user_id);
-create policy "Users can update their own budgets" on public.budgets for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their own budgets" on public.budgets for delete using (auth.uid() = user_id);
+create policy "Users can select their own budgets" on public.budgets for select using ((select auth.uid()) = user_id);
+create policy "Users can insert their own budgets" on public.budgets for insert with check ((select auth.uid()) = user_id);
+create policy "Users can update their own budgets" on public.budgets for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users can delete their own budgets" on public.budgets for delete using ((select auth.uid()) = user_id);
 
 drop policy if exists "Users can select their own purchases" on public.kop;
 drop policy if exists "Users can insert their own purchases" on public.kop;
 drop policy if exists "Users can update their own purchases" on public.kop;
 drop policy if exists "Users can delete their own purchases" on public.kop;
-create policy "Users can select their own purchases" on public.kop for select using (auth.uid() = user_id);
-create policy "Users can insert their own purchases" on public.kop for insert with check (auth.uid() = user_id);
-create policy "Users can update their own purchases" on public.kop for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their own purchases" on public.kop for delete using (auth.uid() = user_id);
+create policy "Users can select their own purchases" on public.kop for select using ((select auth.uid()) = user_id);
+create policy "Users can insert their own purchases" on public.kop for insert with check ((select auth.uid()) = user_id);
+create policy "Users can update their own purchases" on public.kop for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users can delete their own purchases" on public.kop for delete using ((select auth.uid()) = user_id);
 
 drop policy if exists "Users can select their own transactions" on public.transactions;
 drop policy if exists "Users can insert their own transactions" on public.transactions;
 drop policy if exists "Users can update their own transactions" on public.transactions;
 drop policy if exists "Users can delete their own transactions" on public.transactions;
-create policy "Users can select their own transactions" on public.transactions for select using (auth.uid() = user_id);
-create policy "Users can insert their own transactions" on public.transactions for insert with check (auth.uid() = user_id);
-create policy "Users can update their own transactions" on public.transactions for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their own transactions" on public.transactions for delete using (auth.uid() = user_id);
+create policy "Users can select their own transactions" on public.transactions for select using ((select auth.uid()) = user_id);
+create policy "Users can insert their own transactions" on public.transactions for insert with check ((select auth.uid()) = user_id);
+create policy "Users can update their own transactions" on public.transactions for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users can delete their own transactions" on public.transactions for delete using ((select auth.uid()) = user_id);
 
 drop policy if exists "Users can select their own categories" on public.categories;
 drop policy if exists "Users can insert their own categories" on public.categories;
 drop policy if exists "Users can update their own categories" on public.categories;
 drop policy if exists "Users can delete their own categories" on public.categories;
-create policy "Users can select their own categories" on public.categories for select using (auth.uid() = user_id);
-create policy "Users can insert their own categories" on public.categories for insert with check (auth.uid() = user_id);
-create policy "Users can update their own categories" on public.categories for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their own categories" on public.categories for delete using (auth.uid() = user_id);
+create policy "Users can select their own categories" on public.categories for select using ((select auth.uid()) = user_id);
+create policy "Users can insert their own categories" on public.categories for insert with check ((select auth.uid()) = user_id);
+create policy "Users can update their own categories" on public.categories for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users can delete their own categories" on public.categories for delete using ((select auth.uid()) = user_id);
 
 drop policy if exists "Users can select their own subscriptions" on public.subscriptions;
 drop policy if exists "Users can insert their own subscriptions" on public.subscriptions;
 drop policy if exists "Users can update their own subscriptions" on public.subscriptions;
 drop policy if exists "Users can delete their own subscriptions" on public.subscriptions;
-create policy "Users can select their own subscriptions" on public.subscriptions for select using (auth.uid() = user_id);
-create policy "Users can insert their own subscriptions" on public.subscriptions for insert with check (auth.uid() = user_id);
-create policy "Users can update their own subscriptions" on public.subscriptions for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their own subscriptions" on public.subscriptions for delete using (auth.uid() = user_id);
+create policy "Users can select their own subscriptions" on public.subscriptions for select using ((select auth.uid()) = user_id);
+create policy "Users can insert their own subscriptions" on public.subscriptions for insert with check ((select auth.uid()) = user_id);
+create policy "Users can update their own subscriptions" on public.subscriptions for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users can delete their own subscriptions" on public.subscriptions for delete using ((select auth.uid()) = user_id);
 
 drop policy if exists "Users can select their own goals" on public.goals;
 drop policy if exists "Users can insert their own goals" on public.goals;
 drop policy if exists "Users can update their own goals" on public.goals;
 drop policy if exists "Users can delete their own goals" on public.goals;
-create policy "Users can select their own goals" on public.goals for select using (auth.uid() = user_id);
-create policy "Users can insert their own goals" on public.goals for insert with check (auth.uid() = user_id);
-create policy "Users can update their own goals" on public.goals for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their own goals" on public.goals for delete using (auth.uid() = user_id);
+create policy "Users can select their own goals" on public.goals for select using ((select auth.uid()) = user_id);
+create policy "Users can insert their own goals" on public.goals for insert with check ((select auth.uid()) = user_id);
+create policy "Users can update their own goals" on public.goals for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users can delete their own goals" on public.goals for delete using ((select auth.uid()) = user_id);
 
 drop policy if exists "Users can select their own savings accounts" on public.savings_accounts;
 drop policy if exists "Users can insert their own savings accounts" on public.savings_accounts;
 drop policy if exists "Users can update their own savings accounts" on public.savings_accounts;
 drop policy if exists "Users can delete their own savings accounts" on public.savings_accounts;
-create policy "Users can select their own savings accounts" on public.savings_accounts for select using (auth.uid() = user_id);
-create policy "Users can insert their own savings accounts" on public.savings_accounts for insert with check (auth.uid() = user_id);
-create policy "Users can update their own savings accounts" on public.savings_accounts for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their own savings accounts" on public.savings_accounts for delete using (auth.uid() = user_id);
+create policy "Users can select their own savings accounts" on public.savings_accounts for select using ((select auth.uid()) = user_id);
+create policy "Users can insert their own savings accounts" on public.savings_accounts for insert with check ((select auth.uid()) = user_id);
+create policy "Users can update their own savings accounts" on public.savings_accounts for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users can delete their own savings accounts" on public.savings_accounts for delete using ((select auth.uid()) = user_id);
 
 drop policy if exists "Users can select their own profile" on public.profile;
 drop policy if exists "Users can insert their own profile" on public.profile;
 drop policy if exists "Users can update their own profile" on public.profile;
 drop policy if exists "Users can delete their own profile" on public.profile;
-create policy "Users can select their own profile" on public.profile for select using (auth.uid() = user_id);
-create policy "Users can insert their own profile" on public.profile for insert with check (auth.uid() = user_id);
-create policy "Users can update their own profile" on public.profile for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "Users can delete their own profile" on public.profile for delete using (auth.uid() = user_id);
+create policy "Users can select their own profile" on public.profile for select using ((select auth.uid()) = user_id);
+create policy "Users can insert their own profile" on public.profile for insert with check ((select auth.uid()) = user_id);
+create policy "Users can update their own profile" on public.profile for update using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "Users can delete their own profile" on public.profile for delete using ((select auth.uid()) = user_id);
 
 select
   schemaname,

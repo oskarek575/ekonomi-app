@@ -1,6 +1,13 @@
 # PROJECT_STATUS.md
 
-Senast uppdaterad: 2026-08-31
+Senast uppdaterad: 2026-11-11
+
+## Senaste ändring: läsbarhet, städning och snabbare RLS
+
+- Minsta textstorlek höjd till 12–13 px och appen använder nu Geist (laddas redan i `layout.tsx`) istället för Arial.
+- Sidomenyn visar inloggad användares riktiga namn, e-post och initialer. Det tidigare "Pro-version"-kortet (som inte ledde till någon betalning) är borttaget.
+- Typer och rena hjälpfunktioner är utbrutna ur `Dashboard.tsx` till `app/components/dashboard/types.ts` och `helpers.ts` (första steget i att dela upp filen).
+- Alla RLS-policies använder `(select auth.uid())` så att Supabase utvärderar den en gång per fråga. Index för företagsdelens främmande nycklar har lagts till. Se `supabase/migrations/202611110001_rls_performance_and_fk_indexes.sql`.
 
 ## Senaste ändring: faktisk appaktivitet i adminpanelen
 

@@ -1,9 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { User } from "@supabase/supabase-js";
+import { onAuthChange } from "../lib/api";
 import {
   Activity, BellRing, Boxes, BriefcaseBusiness, ChevronDown, CircleDollarSign,
-  CreditCard, Crown, LayoutDashboard, Menu, Plane, Settings, WalletCards, X,
+  CreditCard, LayoutDashboard, Menu, Plane, Settings, WalletCards, X,
 } from "lucide-react";
 
 export type AppSection =
@@ -33,6 +35,21 @@ const links = [
   ["Inställningar", "settings", Settings],
 ] as const;
 
+function getDisplayName(user: User | null) {
+  const metadataName = user?.user_metadata?.full_name ?? user?.user_metadata?.name;
+  if (typeof metadataName === "string" && metadataName.trim()) return metadataName.trim();
+  return user?.email?.split("@")[0] ?? "Gäst";
+}
+
+function getInitials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "?";
+}
+
 type SidebarProps = {
   activeSection?: AppSection;
   onNavigate?: (section: AppSection) => void;
@@ -44,6 +61,14 @@ export default function Sidebar({
 }: SidebarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const touchStartX = useRef<number | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const { data } = onAuthChange(setUser);
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  const displayName = getDisplayName(user);
 
   function navigate(section: AppSection) {
     onNavigate?.(section);
@@ -114,14 +139,9 @@ export default function Sidebar({
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="pro-card">
-            <div className="pro-title"><Crown size={16} /> Pro-version</div>
-            <p>Få tillgång till alla funktioner och AI-insikter</p>
-            <button type="button" onClick={() => navigate("settings")}>Uppgradera nu</button>
-          </div>
           <button className="profile-row" onClick={() => navigate("settings")} type="button">
-            <span className="avatar">OE</span>
-            <span><b>Oskar Ek</b><small>oskarek@example.com</small></span>
+            <span className="avatar">{getInitials(displayName)}</span>
+            <span><b>{displayName}</b><small>{user?.email ?? "Inte inloggad"}</small></span>
             <ChevronDown size={15} />
           </button>
         </div>
