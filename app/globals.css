@@ -261,3 +261,97 @@ b,strong,h1,h2,h3{font-weight:600}
   .topbar h1{font-size:21px;line-height:1.2}
   .dashboard-shell{padding-top:calc(env(safe-area-inset-top) + 16px)}
 }
+
+/* === Mobil-redesign (2026-11-11): bottenmeny, ark, täta listor === */
+.mobile-tabbar,.mobile-sheet-trigger,.mobile-sheet-backdrop,.mobile-sheet-header{display:none}
+.mobile-sheet{display:contents}
+.free-money-meter,.free-money-meter-labels{display:none}
+.sync-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#3fcf7f;margin-right:7px;vertical-align:middle;font-style:normal}
+.free-money-hero.is-negative strong{color:#ff8a9c!important}
+
+.tx-day-list{display:flex;flex-direction:column;gap:16px;margin-top:6px}
+.tx-day-heading{display:flex;justify-content:space-between;font-size:13px;color:#9aa8b7;padding:0 4px 6px}
+.tx-day-rows{border-radius:18px;background:rgba(16,23,34,.9);border:1px solid rgba(255,255,255,.06);overflow:hidden}
+.tx-row{display:flex;align-items:center;border-bottom:1px solid rgba(255,255,255,.05)}
+.tx-row:last-child{border-bottom:0}
+.tx-row-main{flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:10px 4px 10px 14px;background:none;border:0;border-radius:0;color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:58px;box-shadow:none}
+.tx-row-main .merchant-logo{width:36px!important;height:36px!important;border-radius:10px!important;flex-shrink:0}
+.tx-row-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.tx-row-copy b{font-size:15px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-row-copy small{font-size:12px;color:#9aa8b7}
+.tx-row-main strong{font-size:15px;font-weight:600;white-space:nowrap;color:#f7f4ea}
+.tx-row-main strong.plus{color:#6fe0a1}
+.tx-row-delete{width:44px;height:44px;flex-shrink:0;background:none!important;border:0!important;color:#6f7c8b;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:none!important}
+.tx-row-delete:hover{color:#ff8a9c}
+
+.table-progress.is-over i{background:#f3a23a!important}
+.table-progress.is-full i{background:#c3ccd6!important}
+.table-progress.is-ok i{background:#3fcf7f!important}
+
+input[type="date"]{max-width:100%;min-width:0;box-sizing:border-box}
+.report-grid b{white-space:nowrap}
+.category-item{display:flex!important;align-items:center;gap:10px;text-align:left}
+.category-item i{flex-shrink:0}
+.category-item span{flex:1;min-width:0;text-align:left!important;order:1}
+.category-item i{order:0}
+.category-item b{order:2;white-space:nowrap}
+.category-item small{order:3;min-width:38px;text-align:right}
+.business-tabs{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;-webkit-mask-image:linear-gradient(90deg,#000 85%,transparent);mask-image:linear-gradient(90deg,#000 85%,transparent);padding-right:24px}
+.business-tabs::-webkit-scrollbar{display:none}
+.business-tabs>*{flex-shrink:0}
+
+@media(max-width:720px){
+  .mobile-nav-toggle{display:none!important}
+  .mobile-tabbar{display:grid;position:fixed;left:0;right:0;bottom:0;z-index:50;grid-template-columns:repeat(5,minmax(0,1fr));align-items:center;padding:6px 10px calc(6px + env(safe-area-inset-bottom));background:rgba(8,11,16,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid rgba(255,255,255,.07)}
+  .mobile-tabbar button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:50px;background:none;border:0;color:#9aa8b7;font:inherit;font-size:11px;font-weight:500;padding:0}
+  .mobile-tabbar button.active{color:var(--layout-accent)}
+  .mobile-tabbar .mobile-tabbar-add{justify-self:center;width:54px;height:54px;min-height:0;border-radius:50%;background:linear-gradient(135deg,var(--layout-accent-2),var(--layout-accent));color:var(--layout-text-on-accent);box-shadow:0 8px 22px var(--layout-glow)}
+
+  /* Kompakt topp */
+  .topbar{align-items:center!important;margin-bottom:4px!important}
+  .topbar h1{font-size:15px!important;font-weight:500!important;color:#b3bfcc;letter-spacing:0!important;line-height:1.3!important}
+  .topbar h1 span{font-size:15px!important}
+  .topbar p{display:none!important}
+  .top-actions .icon-button,.top-actions .top-avatar{width:42px!important;height:42px!important;min-width:42px}
+  .date-row{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:2px!important;margin:0 0 14px!important;padding:0!important;background:none!important;border:0!important}
+  .month-control{background:none!important;border:0!important;padding:0!important;min-height:0!important;width:auto!important;gap:6px!important;font-size:22px!important;font-weight:600!important;color:#f7f4ea!important;box-shadow:none!important}
+  .month-control svg:first-child{display:none}
+  .month-control input{font:inherit!important;font-size:22px!important;font-weight:600!important;color:inherit!important;background:none!important;border:0!important;padding:0!important;width:auto!important;min-width:0!important;max-width:210px}
+  .period-range{background:none!important;border:0!important;padding:0!important;min-height:0!important;font-size:12px!important;color:#9aa8b7!important;text-align:left!important;width:auto!important;box-shadow:none!important}
+  .notice-bar{position:fixed!important;left:16px;right:16px;top:calc(env(safe-area-inset-top) + 10px);z-index:70;margin:0!important;border-radius:14px!important;padding:12px 14px!important;font-size:14px!important;background:rgba(20,29,42,.96)!important;border:1px solid rgba(255,255,255,.1)!important;box-shadow:0 12px 30px rgba(0,0,0,.4)}
+  .notice-bar:empty{display:none!important}
+
+  /* Fria pengar-kortet */
+  .free-money-hero .free-money-ring{display:none!important}
+  .free-money-hero>div:first-child p{margin:4px 0 0!important;font-size:13px!important;color:#c3ccd6!important}
+  .free-money-meter{display:block;height:6px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:14px}
+  .free-money-meter i{display:block;height:6px;border-radius:3px;background:var(--layout-accent)}
+  .free-money-hero.is-negative .free-money-meter i{background:#ff8a9c}
+  .free-money-meter-labels{display:flex;justify-content:space-between;font-size:12px;color:#9aa8b7;margin-top:6px}
+  .hero-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px;align-items:stretch}
+  .hero-actions>*{margin:0!important;min-width:0}
+  .hero-actions .mobile-primary-action{margin:0!important;min-height:48px!important}
+  .hero-actions button{min-height:48px!important;height:100%;width:100%}
+
+  /* Ark nerifrån */
+  .mobile-sheet-trigger{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;min-height:48px;margin:0 0 14px;border-radius:14px;border:0;background:linear-gradient(90deg,var(--layout-accent-2),var(--layout-accent));color:var(--layout-text-on-accent);font:inherit;font-size:15px;font-weight:600}
+  .mobile-sheet-backdrop{display:block;position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.55);border:0;padding:0}
+  .mobile-sheet{display:block;position:fixed;left:0;right:0;bottom:0;z-index:90;max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;padding:8px 18px calc(22px + env(safe-area-inset-bottom));background:#101722;border-top:1px solid rgba(255,255,255,.08);border-radius:26px 26px 0 0;transform:translateY(105%);visibility:hidden;transition:transform .28s ease,visibility 0s linear .28s}
+  .mobile-sheet.open{transform:none;visibility:visible;transition:transform .28s ease}
+  .mobile-sheet-header{display:flex;align-items:center;justify-content:space-between;padding:10px 0 12px;position:sticky;top:-8px;background:#101722;z-index:1}
+  .mobile-sheet-header::before{content:"";position:absolute;top:0;left:50%;width:40px;height:5px;margin-left:-20px;border-radius:3px;background:rgba(255,255,255,.2)}
+  .mobile-sheet-header b{font-size:18px;font-weight:600;margin-top:8px}
+  .mobile-sheet-header button{width:36px;height:36px;border-radius:50%;border:0;background:rgba(255,255,255,.06);color:#c3ccd6;display:flex;align-items:center;justify-content:center;margin-top:8px}
+  .mobile-sheet form{margin:0!important;padding:0!important;background:none!important;border:0!important;box-shadow:none!important}
+
+  /* Fasta utgifter: tätare rader */
+  .subscription-row{padding:12px 14px!important;gap:10px!important}
+  .subscription-row .row-copy small:nth-of-type(2){display:none}
+  .subscription-row .row-actions{gap:6px!important}
+  .subscription-row .row-actions button{min-height:34px!important;height:34px!important;padding:0 12px!important;font-size:13px!important}
+
+  /* Rapporter och admin */
+  .report-grid b{font-size:22px!important}
+  .admin-metric-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px!important}
+  .admin-metric-grid>*{padding:14px!important;min-width:0}
+}

@@ -8,7 +8,7 @@ import {
   ChevronDown, ChevronRight, CircleCheck, CircleHelp, Crosshair, Dumbbell, Edit3,
   Gamepad2, HeartPulse, Home, Lightbulb, PawPrint, Receipt,
   Database, Download, MessageSquare, PiggyBank, Plane, Plus, ShoppingBag, ShoppingCart, Utensils,
-  RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Users, WalletCards, Wrench,
+  RefreshCw, Search, ShieldCheck, Sparkles, Trash2, Users, WalletCards, Wrench, X,
 } from "lucide-react";
 import {
   addBudget as addRemoteBudget,
@@ -601,6 +601,32 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   const [lastLocalSave, setLastLocalSave] = useState<string | null>(null);
   const [showBalanceAnalysis, setShowBalanceAnalysis] = useState(false);
   const [showFreeMoneyDetails, setShowFreeMoneyDetails] = useState(false);
+  const [mobileSheet, setMobileSheet] = useState<string | null>(null);
+
+  useEffect(() => {
+    function handleAddPurchase() {
+      startFreePurchase();
+    }
+    window.addEventListener("ekonomi:add-purchase", handleAddPurchase);
+    return () => window.removeEventListener("ekonomi:add-purchase", handleAddPurchase);
+  });
+
+  useEffect(() => {
+    const sheetSections: Record<string, AppSection> = {
+      transaction: "transactions",
+      budget: "budgets",
+      subscription: "subscriptions",
+      travel: "travel",
+      "travel-purchase": "travel",
+    };
+    setMobileSheet((current) => (current && sheetSections[current] !== activeSection ? null : current));
+  }, [activeSection]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const [confirmedDuplicateTransactionKey, setConfirmedDuplicateTransactionKey] = useState("");
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [onboardingForm, setOnboardingForm] = useState({
@@ -1164,7 +1190,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       : "Du har koll på fria köp";
   const morningStatusItems = [
     `${kr(freeMoneyPerDay)} fritt idag`,
-    `${remainingDays} dagar kvar`,
+    `${remainingDays} ${remainingDays === 1 ? "dag" : "dagar"} kvar`,
     fixedExpenseRemaining ? `${kr(fixedExpenseRemaining)} fasta kvar` : "Fasta utgifter är i fas",
   ];
   const quickPurchaseSuggestions = useMemo<QuickPurchaseSuggestion[]>(() => {
@@ -1473,7 +1499,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
   async function addTransaction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await saveTransaction(transactionForm);
+    const saved = await saveTransaction(transactionForm);
+    if (saved) setMobileSheet(null);
   }
 
   async function saveScannedReceipt(purchase: ScannedReceiptPurchase) {
@@ -1498,11 +1525,13 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       source: transaction.source ?? "budget",
       date: transaction.date,
     });
+    setMobileSheet("transaction");
     onNavigate("transactions");
     show("Redigerar transaktion.");
   }
 
   function cancelTransactionEdit() {
+    setMobileSheet(null);
     setEditingTransactionId(null);
     setTransactionForm((form) => ({ ...form, title: "", amount: "" }));
     setShowTransactionCategories(false);
@@ -1589,6 +1618,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         show("Budgeten är sparad.");
       }
 
+      setMobileSheet(null);
       setBudgetForm((form) => ({ ...form, limit: "" }));
     } finally {
       setSubmittingAction("");
@@ -1598,10 +1628,12 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   function editBudget(budget: Budget) {
     setEditingBudgetId(budget.id);
     setBudgetForm({ category: budget.category, limit: String(budget.limit) });
+    setMobileSheet("budget");
     show("Redigerar budget.");
   }
 
   function cancelBudgetEdit() {
+    setMobileSheet(null);
     setEditingBudgetId(null);
     setBudgetForm((form) => ({ ...form, limit: "" }));
     show("Redigering avbruten.");
@@ -1618,6 +1650,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setData((current) => ({ ...current, budgets: current.budgets.filter((budget) => budget.id !== id) }));
     if (editingBudgetId === id) {
       setEditingBudgetId(null);
+      setMobileSheet(null);
       setBudgetForm((form) => ({ ...form, limit: "" }));
     }
     show("Budgeten togs bort och fria pengar räknades om.");
@@ -1724,6 +1757,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         show("Den fasta utgiften är tillagd och fria pengar räknades om.");
       }
 
+      setMobileSheet(null);
       setSubscriptionForm(defaultSubscriptionForm());
     } finally {
       setSubmittingAction("");
@@ -1731,6 +1765,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   function editSubscription(subscription: Subscription) {
+    setMobileSheet("subscription");
     setEditingSubscriptionId(subscription.id);
     setSubscriptionForm({
       name: subscription.name,
@@ -1745,6 +1780,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   function cancelSubscriptionEdit() {
+    setMobileSheet(null);
     setEditingSubscriptionId(null);
     setSubscriptionForm(defaultSubscriptionForm());
     show("Redigering avbruten.");
@@ -1789,6 +1825,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
     setData((current) => ({ ...current, subscriptions: current.subscriptions.filter((subscription) => subscription.id !== id) }));
     if (editingSubscriptionId === id) {
       setEditingSubscriptionId(null);
+      setMobileSheet(null);
       setSubscriptionForm(defaultSubscriptionForm());
     }
     show("Fast utgift togs bort och fria pengar räknades om.");
@@ -2501,6 +2538,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         show("Resebudgeten är skapad.");
       }
 
+      setMobileSheet(null);
       setTravelForm(defaultTravelForm());
     } finally {
       setSubmittingAction("");
@@ -2508,6 +2546,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   function editTravelBudget(travel: TravelBudget) {
+    setMobileSheet("travel");
     setEditingTravelId(travel.id);
     setActiveTravelId(travel.id);
     setTravelForm({ name: travel.name, budget: String(travel.budget), startDate: travel.startDate, endDate: travel.endDate, separateFromFreeMoney: travel.separateFromFreeMoney });
@@ -2515,6 +2554,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
   }
 
   function cancelTravelEdit() {
+    setMobileSheet(null);
     setEditingTravelId(null);
     setTravelForm(defaultTravelForm());
     show("Redigering av resebudget avbruten.");
@@ -2598,6 +2638,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
         ...current,
         travelBudgets: current.travelBudgets.map((travel) => travel.id === activeTravelBudget.id ? { ...travel, purchases: [purchase, ...travel.purchases] } : travel),
       }));
+      setMobileSheet(null);
       setTravelPurchaseForm((form) => ({ ...form, title: "", amount: "" }));
       show(activeTravelBudget.separateFromFreeMoney ? "Reseköpet sparades i resebudgeten." : "Reseköpet sparades och påverkar fria pengar.");
     } finally {
@@ -3006,6 +3047,8 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
       category,
     }));
     setCategoryFilter("Alla");
+    setEditingTransactionId(null);
+    setMobileSheet("transaction");
     onNavigate("transactions");
   }
 
@@ -3248,7 +3291,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       <div className="date-row">
         <label className="month-control"><CalendarDays size={17}/><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /> <ChevronDown size={14}/></label>
-        <span className="period-range">{periodTitle}: {dateFormatter.format(period.start)} – {dateFormatter.format(new Date(period.end.getTime() - 86400000))}</span>
+        <span className="period-range">{remoteReady && !syncError && !syncLoading && <i className="sync-dot" aria-label="Synkad" />}{periodTitle}: {dateFormatter.format(period.start)} – {dateFormatter.format(new Date(period.end.getTime() - 86400000))}</span>
       </div>
 
       <div aria-live="polite" className="notice-bar" role="status">{notice}</div>
@@ -3273,19 +3316,23 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "overview" && (
         <>
-          <section className="free-money-panel free-money-hero panel" style={freeMoneyStyle}>
+          <section className={`free-money-panel free-money-hero panel ${freeMoney < 0 ? "is-negative" : ""}`} style={freeMoneyStyle}>
             <div>
               <span>Fria pengar</span>
               <strong>{kr(freeMoney)}</strong>
-              <p>Kvar att spendera denna period</p>
-              <button className="mobile-primary-action" onClick={() => startFreePurchase()} type="button">Lägg till köp</button>
-              <ReceiptScanner
-                categories={receiptCategories}
-                defaultCategory="Fria köp"
-                disabled={Boolean(editingTransactionId)}
-                onSave={saveScannedReceipt}
-                suggestCategory={suggestReceiptCategory}
-              />
+              <p>{freeMoney < 0 ? "Över budget" : "Kvar att spendera"} · {remainingDays} {remainingDays === 1 ? "dag" : "dagar"} kvar</p>
+              <div className="free-money-meter" aria-hidden="true"><i style={{ width: `${freeMoney < 0 ? 100 : Math.min(100, Math.round((freePurchaseSpent / Math.max(1, freeMoney + freePurchaseSpent)) * 100))}%` }} /></div>
+              <div className="free-money-meter-labels"><span>Använt {kr(freePurchaseSpent)}</span><span>{kr(freeMoneyPerDay)}/dag</span></div>
+              <div className="hero-actions">
+                <button className="mobile-primary-action" onClick={() => startFreePurchase()} type="button">Lägg till köp</button>
+                <ReceiptScanner
+                  categories={receiptCategories}
+                  defaultCategory="Fria köp"
+                  disabled={Boolean(editingTransactionId)}
+                  onSave={saveScannedReceipt}
+                  suggestCategory={suggestReceiptCategory}
+                />
+              </div>
             </div>
             <div className="free-money-ring" aria-hidden="true">
               <WalletCards size={42} />
@@ -3452,6 +3499,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "transactions" && (
         <SectionPanel title="Transaktioner" description="Lägg till alla köp och inkomster här. Appen avgör automatiskt om köpet går mot en budget eller fria pengar.">
+          <MobileSheet id="transaction" openId={mobileSheet} title={editingTransactionId ? "Redigera köp" : "Nytt köp"} triggerLabel="Nytt köp" onOpen={() => { cancelTransactionEdit(); setMobileSheet("transaction"); }} onClose={() => (editingTransactionId ? cancelTransactionEdit() : setMobileSheet(null))}>
           <ReceiptScanner
             categories={receiptCategories}
             defaultCategory={transactionForm.category === "Lön" ? "Fria köp" : transactionForm.category}
@@ -3486,8 +3534,9 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <button disabled={submittingAction === "transaction"} type="submit"><Plus size={16}/> {submittingAction === "transaction" ? "Sparar..." : editingTransactionId ? "Spara ändring" : "Skapa köp"}</button>
               {editingTransactionId && <button className="secondary-action" onClick={cancelTransactionEdit} type="button">Avbryt</button>}
             </form>
+          </MobileSheet>
           <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök transaktion..." value={search} onChange={(event) => setSearch(event.target.value)} /></label><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option>Alla</option>{data.categories.map((category) => <option key={category}>{category}</option>)}</select></div>
-          <div className="data-table">{filteredTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={data.categoryDetails}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={new Date(item.date).toLocaleDateString("sv-SE")} categoryDetails={data.categoryDetails}/></span></span><strong className={item.type === "income" ? "plus" : "minus"}>{item.type === "income" ? "+" : "-"}{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button aria-label={`Radera ${item.title}`} onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <TransactionDayList items={filteredTransactions} categoryDetails={data.categoryDetails} onEdit={editTransaction} onRemove={removeTransaction} />
         </SectionPanel>
       )}
 
@@ -3508,7 +3557,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             </button>
           </article>
           <div className="tool-row filters-only"><label><Search size={16}/><input placeholder="Sök fria köp..." value={search} onChange={(event) => setSearch(event.target.value)} /></label></div>
-          <div className="data-table">{freePurchaseTransactions.map((item) => <div className="table-row transaction-table-row" key={item.id}><span className="transaction-copy"><TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={data.categoryDetails}/><span><b>{item.title}</b><CategoryMeta category={item.category} type={item.type} suffix={`fria pengar · ${new Date(item.date).toLocaleDateString("sv-SE")}`} categoryDetails={data.categoryDetails}/></span></span><strong className="minus">-{kr(item.amount)}</strong><span className="row-actions"><button onClick={() => editTransaction(item)} type="button">Redigera</button><button aria-label={`Radera ${item.title}`} onClick={() => removeTransaction(item.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          <TransactionDayList items={freePurchaseTransactions} categoryDetails={data.categoryDetails} onEdit={editTransaction} onRemove={removeTransaction} />
         </SectionPanel>
       )}
 
@@ -3518,8 +3567,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <div><span>Fria pengar</span><strong>{kr(freeMoney)}</strong></div>
             <div className="free-money-math"><span><b>{kr(income)}</b><small>Inkomst</small></span><i>−</i><span><b>{kr(reservedTotal)}</b><small>Reserverat</small></span><i>−</i><span><b>{kr(freePurchaseSpent)}</b><small>Fria köp</small></span>{budgetOverspendTotal > 0 && <><i>−</i><span><b>{kr(budgetOverspendTotal)}</b><small>Budget över</small></span></>}<i>=</i><span className="result"><b>{kr(freeMoney)}</b><small>Fritt</small></span></div>
           </div>
+          <MobileSheet id="budget" openId={mobileSheet} title={editingBudgetId ? "Redigera budget" : "Ny budget"} triggerLabel="Ny budget" onOpen={() => setMobileSheet("budget")} onClose={() => (editingBudgetId ? cancelBudgetEdit() : setMobileSheet(null))}>
           <form className="management-form budget-form" onSubmit={addBudget}><select value={budgetForm.category} onChange={(event) => setBudgetForm((form) => ({ ...form, category: event.target.value }))}>{data.categories.filter((category) => !["Lön", "Fria köp", "Prenumerationer"].includes(category)).map((category) => <option key={category}>{category}</option>)}</select><input inputMode="decimal" placeholder="Månadsbudget" value={budgetForm.limit} onChange={(event) => setBudgetForm((form) => ({ ...form, limit: event.target.value }))}/><button disabled={submittingAction === "budget"} type="submit"><Plus size={16}/> {submittingAction === "budget" ? "Sparar..." : editingBudgetId ? "Spara ändring" : "Spara budget"}</button>{editingBudgetId && <button className="secondary-action" onClick={cancelBudgetEdit} type="button">Avbryt</button>}</form>
-          <div className="data-table">{budgetRows.map((budget) => <div className="table-row budget-table-row" key={budget.id}><span><b>{budget.category}</b><small>{kr(budget.used)} använt · {budget.overspent ? `${kr(budget.overspent)} över budget` : `${kr(budget.remaining)} kvar inom budgeten`}</small></span><div className="table-progress"><i style={{ width: `${budget.pct}%` }}/></div><strong>{kr(budget.limit)} reserverat</strong><span className="row-actions"><button onClick={() => editBudget(budget)} type="button">Redigera</button><button aria-label={`Radera budgeten ${budget.category}`} onClick={() => removeBudget(budget.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
+          </MobileSheet>
+          <div className="data-table">{budgetRows.map((budget) => <div className="table-row budget-table-row" key={budget.id}><span><b>{budget.category}</b><small>{kr(budget.used)} använt · {budget.overspent ? `${kr(budget.overspent)} över budget` : `${kr(budget.remaining)} kvar inom budgeten`}</small></span><div className={`table-progress ${budget.overspent ? "is-over" : budget.pct >= 100 ? "is-full" : "is-ok"}`}><i style={{ width: `${budget.pct}%` }}/></div><strong>{kr(budget.limit)} reserverat</strong><span className="row-actions"><button onClick={() => editBudget(budget)} type="button">Redigera</button><button aria-label={`Radera budgeten ${budget.category}`} onClick={() => removeBudget(budget.id)} type="button"><Trash2 size={16}/></button></span></div>)}</div>
         </SectionPanel>
       )}
 
@@ -3715,7 +3766,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 <span>Aktiv resa</span>
                 <h3>{activeTravelBudget.name}</h3>
                 <strong>{kr(activeTravelRemaining)}</strong>
-                <p>{kr(activeTravelPerDay)} per dag · {activeTravelDaysLeft} dagar kvar</p>
+                <p>{kr(activeTravelPerDay)} per dag · {activeTravelDaysLeft} {activeTravelDaysLeft === 1 ? "dag" : "dagar"} kvar</p>
               </div>
               <div className="travel-ring"><Plane size={38}/></div>
               <div className="travel-mini-stats">
@@ -3729,6 +3780,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           )}
 
           <div className="travel-layout">
+            <MobileSheet id="travel" openId={mobileSheet} title={editingTravelId ? "Redigera resa" : "Ny resa"} triggerLabel="Ny resa" onOpen={() => setMobileSheet("travel")} onClose={() => (editingTravelId ? cancelTravelEdit() : setMobileSheet(null))}>
             <form className="management-form travel-form" onSubmit={saveTravelBudget}>
               <input placeholder="Resa, t.ex. Mallorca 2026" value={travelForm.name} onChange={(event) => setTravelForm((form) => ({ ...form, name: event.target.value }))}/>
               <input inputMode="decimal" placeholder="Total resebudget" value={travelForm.budget} onChange={(event) => setTravelForm((form) => ({ ...form, budget: event.target.value }))}/>
@@ -3738,8 +3790,10 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
               <button disabled={submittingAction === "travel-budget"} type="submit"><Plus size={16}/> {submittingAction === "travel-budget" ? "Sparar..." : editingTravelId ? "Spara resa" : "Skapa resa"}</button>
               {editingTravelId && <button className="secondary-action" onClick={cancelTravelEdit} type="button">Avbryt</button>}
             </form>
+            </MobileSheet>
 
             {activeTravelBudget && (
+              <MobileSheet id="travel-purchase" openId={mobileSheet} title="Nytt reseköp" triggerLabel="Nytt reseköp" onOpen={() => setMobileSheet("travel-purchase")} onClose={() => setMobileSheet(null)}>
               <form className="management-form travel-purchase-form" onSubmit={addTravelPurchase}>
                 <input placeholder="Ex. lunch, taxi, museum" value={travelPurchaseForm.title} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, title: event.target.value }))}/>
                 <input inputMode="decimal" placeholder="Belopp" value={travelPurchaseForm.amount} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, amount: event.target.value }))}/>
@@ -3749,6 +3803,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
                 <input type="date" value={travelPurchaseForm.date} onChange={(event) => setTravelPurchaseForm((form) => ({ ...form, date: event.target.value }))}/>
                 <button disabled={submittingAction === "travel-purchase"} type="submit"><Plus size={16}/> {submittingAction === "travel-purchase" ? "Sparar..." : "Lägg till reseköp"}</button>
               </form>
+              </MobileSheet>
             )}
           </div>
 
@@ -3800,6 +3855,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
       {activeSection === "subscriptions" && (
         <SectionPanel title="Fasta utgifter" description="Hyra, försäkring, lån, abonnemang och andra återkommande kostnader.">
+          <MobileSheet id="subscription" openId={mobileSheet} title={editingSubscriptionId ? "Redigera fast utgift" : "Ny fast utgift"} triggerLabel="Ny fast utgift" onOpen={() => setMobileSheet("subscription")} onClose={() => (editingSubscriptionId ? cancelSubscriptionEdit() : setMobileSheet(null))}>
           <form className="management-form subscription-form scheduled-subscription-form" onSubmit={addSubscription}>
             <input placeholder="Namn" value={subscriptionForm.name} onChange={(event) => setSubscriptionForm((form) => ({ ...form, name: event.target.value }))}/>
             <input placeholder="Typ / plan" value={subscriptionForm.plan} onChange={(event) => setSubscriptionForm((form) => ({ ...form, plan: event.target.value }))}/>
@@ -3825,6 +3881,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
             <button disabled={submittingAction === "subscription"} type="submit"><Plus size={16}/> {submittingAction === "subscription" ? "Sparar..." : editingSubscriptionId ? "Spara ändring" : "Skapa ny utgift"}</button>
             {editingSubscriptionId && <button className="secondary-action" onClick={cancelSubscriptionEdit} type="button">Avbryt</button>}
           </form>
+          </MobileSheet>
           <button className="wide-button action-wide" disabled={submittingAction === "subscription-expenses"} onClick={createSubscriptionExpenses} type="button">{submittingAction === "subscription-expenses" ? "Skapar..." : "Skapa månadens fasta utgifter som transaktioner"} <ArrowRight size={15}/></button>
           <SubscriptionsPanel subscriptions={scheduledSubscriptions} onNavigate={onNavigate} onGenerate={createSubscriptionExpenses} onEdit={editSubscription} onToggle={toggleSubscription} onRemove={removeSubscription} showAll />
         </SectionPanel>
@@ -3967,6 +4024,98 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           <div className="settings-status"><span>Läge</span><b>{proActive ? "Pro-demo aktiv" : "Standardläge"}</b></div>
         </SectionPanel>
       )}
+    </div>
+  );
+}
+
+function MobileSheet({
+  id,
+  openId,
+  title,
+  triggerLabel,
+  onOpen,
+  onClose,
+  children,
+}: {
+  id: string;
+  openId: string | null;
+  title: string;
+  triggerLabel: string;
+  onOpen: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const open = openId === id;
+  return (
+    <>
+      <button className="mobile-sheet-trigger" onClick={onOpen} type="button"><Plus size={16}/> {triggerLabel}</button>
+      {open && <button aria-label="Stäng" className="mobile-sheet-backdrop" onClick={onClose} type="button" />}
+      <div aria-label={title} className={`mobile-sheet ${open ? "open" : ""}`} role={open ? "dialog" : undefined}>
+        <div className="mobile-sheet-header">
+          <b>{title}</b>
+          <button aria-label="Stäng" onClick={onClose} type="button"><X size={18}/></button>
+        </div>
+        {children}
+      </div>
+    </>
+  );
+}
+
+function getDayLabel(dateValue: string) {
+  const date = new Date(`${dateValue.slice(0, 10)}T12:00:00`);
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const diffDays = Math.round((today.getTime() - date.getTime()) / 86400000);
+  const formatted = date.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "short" });
+  if (diffDays === 0) return `Idag · ${formatted}`;
+  if (diffDays === 1) return `Igår · ${formatted}`;
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+}
+
+function TransactionDayList({
+  items,
+  categoryDetails,
+  onEdit,
+  onRemove,
+}: {
+  items: Transaction[];
+  categoryDetails: Record<string, CategoryDetail>;
+  onEdit: (item: Transaction) => void;
+  onRemove: (id: string) => void;
+}) {
+  const groups: { key: string; label: string; total: number; items: Transaction[] }[] = [];
+  for (const item of items) {
+    const key = item.date.slice(0, 10);
+    let group = groups.find((entry) => entry.key === key);
+    if (!group) {
+      group = { key, label: getDayLabel(item.date), total: 0, items: [] };
+      groups.push(group);
+    }
+    group.items.push(item);
+    group.total += item.type === "income" ? item.amount : -item.amount;
+  }
+
+  if (groups.length === 0) return <EmptyState text="Inga köp hittades." />;
+
+  return (
+    <div className="tx-day-list">
+      {groups.map((group) => (
+        <section className="tx-day" key={group.key}>
+          <div className="tx-day-heading"><span>{group.label}</span><span>{group.total >= 0 ? "+" : "−"}{kr(Math.abs(group.total))}</span></div>
+          <div className="tx-day-rows">
+            {group.items.map((item) => (
+              <div className="tx-row" key={item.id}>
+                <button className="tx-row-main" onClick={() => onEdit(item)} type="button" aria-label={`Redigera ${item.title}`}>
+                  <TransactionIcon title={item.title} category={item.category} type={item.type} categoryDetails={categoryDetails}/>
+                  <span className="tx-row-copy"><b>{item.title}</b><small>{item.category}</small></span>
+                  <strong className={item.type === "income" ? "plus" : "minus"}>{item.type === "income" ? "+" : "−"}{kr(item.amount)}</strong>
+                </button>
+                <button aria-label={`Radera ${item.title}`} className="tx-row-delete" onClick={() => onRemove(item.id)} type="button"><Trash2 size={15}/></button>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

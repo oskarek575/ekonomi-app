@@ -2,7 +2,16 @@
 
 Senast uppdaterad: 2026-11-11
 
-## Senaste ändring: läsbarhet, städning och snabbare RLS
+## Senaste ändring: ny mobillayout
+
+- Bottenmeny på mobil (Översikt, Köp, +, Budget, Mer) ersätter den svävande hamburgarknappen. "+" skickar `ekonomi:add-purchase` som Dashboard lyssnar på.
+- Kompakt topp: hälsning, månad och period på tre korta rader, synkstatus som grön prick, notiser som toast som försvinner efter 4 s.
+- Fria pengar visas rött när negativt och har en förbrukningsstapel.
+- Formulär (köp, budget, fasta utgifter, resa, reseköp) ligger i `MobileSheet` – ett ark nerifrån på mobil, inline på desktop.
+- Köplistan är grupperad per dag (`TransactionDayList`), tryck på en rad för att redigera.
+- Budgetstaplar: grön/grå/orange efter status. Småfixar: datumfält, kr-radbrytning, kategorilegend, "1 dag", admin 2×2, skrollbara företagsflikar.
+
+## Tidigare: läsbarhet, städning och snabbare RLS
 
 - Minsta textstorlek höjd till 12–13 px och appen använder nu Geist (laddas redan i `layout.tsx`) istället för Arial.
 - Sidomenyn visar inloggad användares riktiga namn, e-post och initialer. Det tidigare "Pro-version"-kortet (som inte ledde till någon betalning) är borttaget.

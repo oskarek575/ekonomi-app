@@ -5,7 +5,7 @@ import type { User } from "@supabase/supabase-js";
 import { onAuthChange } from "../lib/api";
 import {
   Activity, BellRing, Boxes, BriefcaseBusiness, ChevronDown, CircleDollarSign,
-  CreditCard, LayoutDashboard, Menu, Plane, Settings, WalletCards, X,
+  CreditCard, LayoutDashboard, Menu, MoreHorizontal, Plane, Plus, Settings, WalletCards, X,
 } from "lucide-react";
 
 export type AppSection =
@@ -106,6 +106,14 @@ export default function Sidebar({
       >
         <Menu size={20} />
       </button>
+
+      <nav aria-label="Huvudmeny" className="mobile-tabbar">
+        <button className={activeSection === "overview" ? "active" : ""} onClick={() => navigate("overview")} type="button"><LayoutDashboard size={22} strokeWidth={1.8} /><span>Översikt</span></button>
+        <button className={activeSection === "transactions" ? "active" : ""} onClick={() => navigate("transactions")} type="button"><CreditCard size={22} strokeWidth={1.8} /><span>Köp</span></button>
+        <button aria-label="Lägg till köp" className="mobile-tabbar-add" onClick={() => { setMobileMenuOpen(false); window.dispatchEvent(new Event("ekonomi:add-purchase")); }} type="button"><Plus size={24} strokeWidth={2.2} /></button>
+        <button className={activeSection === "budgets" ? "active" : ""} onClick={() => navigate("budgets")} type="button"><WalletCards size={22} strokeWidth={1.8} /><span>Budget</span></button>
+        <button aria-expanded={mobileMenuOpen} className={!["overview", "transactions", "budgets"].includes(activeSection) ? "active" : ""} onClick={() => setMobileMenuOpen(true)} type="button"><MoreHorizontal size={22} strokeWidth={1.8} /><span>Mer</span></button>
+      </nav>
 
       <button
         aria-label="Stäng meny"
