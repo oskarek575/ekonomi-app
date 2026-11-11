@@ -455,3 +455,26 @@ export function getAffordabilityResult({
   };
 }
 
+
+const fixedExpenseTypeRules: [RegExp, string][] = [
+  [/försäkr|forsakr|\blf\b|if skade|folksam|trygg-?hansa|länsförsäkr/i, "Försäkring"],
+  [/hyra|bostad|avgift brf|\bbrf\b|elräkning|elavtal|vatten|värme/i, "Boende"],
+  [/netflix|spotify|hbo|max\b|disney|viaplay|youtube|prime|apple tv|tv4|c more|storytel|bookbeat/i, "Streaming"],
+  [/telia|tele2|telenor|tre\b|\b3\b|comviq|hallon|fello|vimla|bredband|internet|mobil/i, "Mobil & internet"],
+  [/chatgpt|openai|claude|icloud|apple lagring|google one|dropbox|adobe|microsoft|office/i, "Digitala tjänster"],
+  [/gym|sats|friskis|nordic wellness|fitness/i, "Träning"],
+  [/lån|csn|bolån|billån|kredit|avbetal/i, "Lånebetalning"],
+  [/bil|parkering|försäkring bil|leasing|sl\b|västtrafik|skånetrafiken|busskort/i, "Transport"],
+];
+
+/** Gissar en typ för en fast utgift utifrån namnet, så användaren slipper fylla i den. */
+export function guessFixedExpenseType(name: string) {
+  const match = fixedExpenseTypeRules.find(([pattern]) => pattern.test(name));
+  return match ? match[1] : "Fast utgift";
+}
+
+/** Visningstext för typen: gamla standardvärden ersätts med en gissning. */
+export function displayFixedExpenseType(name: string, plan: string) {
+  const trimmed = plan.trim();
+  return !trimmed || trimmed === "Månadsplan" || trimmed === "Fast utgift" ? guessFixedExpenseType(name) : trimmed;
+}

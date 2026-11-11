@@ -105,6 +105,8 @@ import {
   getGoalSavedAmount,
   getGoalDisplaySavedAmount,
   getAffordabilityResult,
+  displayFixedExpenseType,
+  guessFixedExpenseType,
 } from "./helpers";
 import type {
   TransactionType,
@@ -1677,7 +1679,7 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
 
     const nextSubscription = {
       name: subscriptionForm.name.trim(),
-      plan: subscriptionForm.plan.trim() || "Månadsplan",
+      plan: subscriptionForm.plan.trim() || guessFixedExpenseType(subscriptionForm.name),
       amount,
       day,
       frequency: subscriptionForm.frequency,
@@ -3858,7 +3860,6 @@ export default function Dashboard({ activeSection, onNavigate }: DashboardProps)
           <MobileSheet id="subscription" openId={mobileSheet} title={editingSubscriptionId ? "Redigera fast utgift" : "Ny fast utgift"} triggerLabel="Ny fast utgift" onOpen={() => setMobileSheet("subscription")} onClose={() => (editingSubscriptionId ? cancelSubscriptionEdit() : setMobileSheet(null))}>
           <form className="management-form subscription-form scheduled-subscription-form" onSubmit={addSubscription}>
             <input placeholder="Namn" value={subscriptionForm.name} onChange={(event) => setSubscriptionForm((form) => ({ ...form, name: event.target.value }))}/>
-            <input placeholder="Typ / plan" value={subscriptionForm.plan} onChange={(event) => setSubscriptionForm((form) => ({ ...form, plan: event.target.value }))}/>
             <input inputMode="decimal" placeholder="Belopp" value={subscriptionForm.amount} onChange={(event) => setSubscriptionForm((form) => ({ ...form, amount: event.target.value }))}/>
             <label className="form-field">
               <span>Dragdatum</span>
@@ -4817,7 +4818,7 @@ function SubscriptionsPanel({
           <Logo title={item.name} tone={item.name === "Spotify" ? "spotify" : item.name === "Netflix" ? "black" : "white"} />
           <span className="row-copy">
             <b>{item.name}</b>
-            <small>{item.plan} · {item.scheduleLabel ?? "Varje månad"} · dag {item.day}</small>
+            <small>{displayFixedExpenseType(item.name, item.plan)} · {item.scheduleLabel ?? "Varje månad"} · dag {item.day}</small>
             <small>{item.isDueThisPeriod && item.dueDate ? `${item.isPosted ? "Drogs" : "Dras"} ${shortDate(item.dueDate)}${item.isPosted && item.nextDueDate ? ` · nästa ${shortDate(item.nextDueDate)}` : ""}` : item.nextDueDate ? `Nästa dragning: ${shortDate(item.nextDueDate)}` : "Ingen aktiv dragning"}</small>
           </span>
           <span className="row-value"><b>{kr(item.amount)}</b><small>{item.active ? (item.isPosted ? "Dragen" : item.isDueThisPeriod ? "Kommande" : "Nästa period") : "Pausad"}</small></span>
